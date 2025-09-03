@@ -129,4 +129,4 @@ La aplicación web estará disponible en `http://localhost:8080`.
 Para una descripción detallada de la estructura interna, los modelos de la base de datos y los componentes de Vue, consulta los archivos `README.md` específicos dentro de cada carpeta.
 
 * backend readme: `backend/README.md` ([Ver aquí](./backend/README.md))
-* frontend readme: `frontend/README.md` ([Ver aquí](./frontend/README.md))
+* frontend readme: `frontend/README.md` ([Ver aquí](./front/README.md))
