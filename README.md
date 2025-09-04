@@ -84,7 +84,7 @@ DB_PORT=5432
 Navega a la carpeta del frontend:
 
 ```bash
-cd frontend
+cd front
 ```
 
 Instala las dependencias:
@@ -96,7 +96,7 @@ npm install
 Crea un archivo `.env` para apuntar a la URL del backend:
 
 ```env
-# frontend/.env
+# front/.env
 VUE_APP_API_URL=http://localhost:3000/api
 ```
 
@@ -116,7 +116,7 @@ El servidor de la API debería estar corriendo en `http://localhost:3000`. Al ar
 ### Terminal 2: Iniciar el Frontend
 
 ```bash
-cd frontend
+cd front
 npm run serve
 ```
 
@@ -130,3 +130,27 @@ Para una descripción detallada de la estructura interna, los modelos de la base
 
 * backend readme: `backend/README.md` ([Ver aquí](./backend/README.md))
 * frontend readme: `frontend/README.md` ([Ver aquí](./front/README.md))
+
+## Donde se encuentra alojado el proyecto
+
+El proyecto está alojado en un servidor privado dentro de la red de la empresa.
+El frontend y el backend se encuentran en `C:\Users\cstears\Desktop\timer`. Para hacer modificaciones del backend, basta con reemplazar los archivos en la carpeta `backend` y reiniciar el proceso (idealmente cambiar solo los archivos que modificas).
+
+Para aplicar modificaciones en el frontend en producción, primero debes
+ejecutar el comando:
+
+```bash
+npm run build
+```
+
+Es recomendable realizar este proceso en tu máquina local. Esto generará los archivos estáticos necesarios, los cuales se encontrarán en la carpeta `dist`.
+
+Luego, debes reemplazar dichos archivos en el servidor de producción, en la ruta:
+
+```bash
+C:\inetpub\wwwroot
+```
+
+Finalmente, para visualizar correctamente los cambios en todos los
+entornos de la empresa, puede ser necesario limpiar la caché del
+navegador utilizando la combinación de teclas `Ctrl + F5` (en cada computador).
