@@ -374,6 +374,8 @@ exports.play = async function (req, res) {
     let record = await Record.findOne({
         where: { id: req.body.id, id_user: userId } 
     });
+
+    console.log('Found record:', record);
     
     let registry = await Registry.findOne({
         where: { id_ot: req.body.id, id_user: userId },
@@ -475,9 +477,13 @@ exports.play = async function (req, res) {
   
     const now = Date.now();
     const isMontaje = !record.finished_assembly;
-    const fullDuration = isMontaje
-      ? (record.assembly_time > 0 ? record.assembly_time : 10)
-      : (record.estimated_time > 0 ? record.estimated_time : 10);
+    if(isMontaje){
+        //montaje
+        fullDuration = record.assembly_missing_time > 0 ? (record.assembly_time - record.assembly_missing_time) : record.assembly_time
+    }else{
+        //curso
+        fullDuration = record.missing_time > 0 ? record.missing_time : record.estimated_time
+    }
   
     const endTime = now + fullDuration * 60 * 1000;
   
