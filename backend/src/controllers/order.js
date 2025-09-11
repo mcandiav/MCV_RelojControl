@@ -479,7 +479,7 @@ exports.play = async function (req, res) {
     const isMontaje = !record.finished_assembly;
     if(isMontaje){
         //montaje
-        fullDuration = record.assembly_missing_time > 0 ? (record.assembly_time - record.assembly_missing_time) : record.assembly_time
+        fullDuration = record.assembly_missing_time > 0 ? record.assembly_missing_time : record.assembly_time
     }else{
         //curso
         fullDuration = record.missing_time > 0 ? record.missing_time : record.estimated_time
