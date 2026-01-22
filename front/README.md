@@ -49,11 +49,10 @@ Sigue estos pasos para configurar y ejecutar el proyecto en un entorno de desarr
     npm install
     ```
 
-3.  **Configura las variables de entorno:**
-    Crea un archivo `.env` en la raíz del proyecto de frontend para apuntar a la URL del backend.
-    ```env
-    # Archivo .env
-    VUE_APP_API_URL=http://localhost:3000/api
+3.  **Configura la lectura del backend:**
+    Una vez instaladas las dependencias, basta con colocar la URL del backend en el archivo `src/main.js`, línea 13:
+    ```javascript
+    axios.defaults.baseURL = 'http://ip:port/'; // Cambia esta URL según tu configuración
     ```
 
 4.  **Inicia el servidor de desarrollo:**
@@ -67,7 +66,7 @@ Sigue estos pasos para configurar y ejecutar el proyecto en un entorno de desarr
     ```bash
     npm run build
     ```
-    Esto generará los archivos estáticos en la carpeta `dist/` listos para ser desplegados a wwwroot de windows, que es donde esta alojado el frontend.
+    Esto generará los archivos estáticos en la carpeta `dist/` listos para ser desplegados a **wwwroot** de windows, que es donde esta alojado el frontend.
 
 ## Estructura del Proyecto
 
