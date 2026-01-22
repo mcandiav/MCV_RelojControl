@@ -10,7 +10,7 @@ import VueCookies from 'vue-cookies'
 require('@/store/subscriber')
 
 Vue.config.productionTip = false
-axios.defaults.baseURL= 'http://192.168.101.5:8000/' //'http://128.1.1.197:8000/' //'http://192.168.101.4:8000/'//'http://192.168.101.4:8000/'//'http://128.1.1.197:8000/'//'http://192.168.101.20:8000'//'http://128.1.1.77:8000/'
+axios.defaults.baseURL= 'http://192.168.101.5:8000/' //'http://128.1.1.197:8000/' //'http://192.168.101.5:8000/' //'http://128.1.1.197:8000/' //'http://192.168.101.4:8000/'//'http://192.168.101.4:8000/'//'http://128.1.1.197:8000/'//'http://192.168.101.20:8000'//'http://128.1.1.77:8000/'
 axios.defaults.headers.common['Access-Control-Allow-Origin'] = '*';
 //axios.defaults.baseURL = 'http://52.207.214.131:8000'
 

@@ -51,7 +51,6 @@ export default {
             console.log('Buscando...', search, pagination, status)
             axios.get('/order?search=' + search + '&pag=' + pagination + '&items=' + itemsPerPage + '&status=' + status).then((response) => {
                 if(response.status == 200){
-                    console.log(response.data)
                     commit("SET_LIST_WORKS_ORDERS", response.data.orders)
                     commit("SET_STATS_ORDERS", response.data.group)
                     commit("SET_LAST_SEARCH", search)

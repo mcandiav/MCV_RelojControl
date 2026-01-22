@@ -71,9 +71,6 @@
                                             <th class="text-left">
                                                 Reloj estado
                                             </th>
-                                            <th class="text-center"> <!--texto centrado-->
-                                                Descargado
-                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -90,7 +87,6 @@
                                             <td> {{ item.start_time | formatDate}}</td>
                                             <td>{{ item.end_time === null ? null:item.end_time | formatDate }}</td>
                                             <td> {{item.state}}</td>
-                                            <td>{{ item.found === true ? 'Sí' : 'No' }}</td>
                                         </tr>
                                     </tbody>
                                 </template>

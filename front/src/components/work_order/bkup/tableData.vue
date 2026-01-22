@@ -100,22 +100,22 @@
           <div v-if="!item.stoped">
             <div v-if="getCurrentTime(item) < 0" class="error">
               {{
-                getCurrentTime(item) + " min restantess"
+                getCurrentTime(item) + " min restantes"
               }}
             </div>
             <div v-else>
               {{
-                getCurrentTime(item) + " min restantess"
+                getCurrentTime(item) + " min restantes"
               }}
             </div>
           </div>
         </div>
         <div v-if="item.state === 'Pausado' && item.finished_assembly">
           <div v-if="item.missing_time < 0 " class="error">
-            {{ item.missing_time }} minutoss
+            {{ item.missing_time }} minutos
           </div>
           <div v-else>
-            {{ item.missing_time }} minutoss
+            {{ item.missing_time }} minutos
           </div>
         </div>
         <div v-if="item.state === 'Completado' && item.missing_time !== null">  <!-- Si se completó y tiene missing_time (se ejecutó con nuestra app...) -->
@@ -359,9 +359,158 @@ import _ from 'lodash'
           })
         }
       },
+      // convertToCSV(objArray, 
+      // values=['date','name','resource','ot','item','estimated_time','missing_time', 'quantity'], 
+      // str='Fecha,Nombre,Recurso,Orden de trabajo,Secuencia,Tiempo estimado,Tiempo gastado,Cantidad' + '\r\n',
+      // lastId=10
+      // ) {
+      //   var array = typeof objArray != 'object' ? JSON.parse(objArray) : objArray;
+      //   for (var i = 0; i < 1; i++) {
+      //       var line = '';
+      //       for (var index of values) {
+      //         if(values.indexOf(index) != -1 ){
+      //           if(index === 'id'){
+      //             if (line != '') line += ','
+      //             line += lastId
+      //             continue;
+      //           }
+      //           if(index === 'missing_time'){
+      //             if (line != '') line += ','
+      //             line += array[i]['estimated_time'] - array[i][index];
+      //             continue;
+      //           }
+      //           if(index === 'ot'){
+      //             if (line != '') line += ','
+      //             line += 'Orden de trabajo #OT' + array[i][index]
+      //             continue;
+      //           }
+      //           if(index === 'JSON'){
+      //             if (line != '') line += ','
+      //             for (var k = 0; k < objArray.length; k++) {
+      //               delete objArray[k].id
+      //               delete objArray[k].ot
+      //             }
+      //             line += '"' + JSON.stringify(objArray) + '"'
+      //             continue;
+      //           }
+      //           if (line != '') line += ','
+      //           line += array[i][index];
+      //         }
+      //       }
+      //       str += line + '\r\n';
+      //   }
+      //   //str += '\r\n';
+      //   return str;
+      // },
+      // descargar(){
+      //   // [{"secuencia":"1","horasConfiguracion":"10","horasEjecucion":"15", "cantidadCompletada":"0"},
+      //   // {"secuencia":"2","horasConfiguracion":"20","horasEjecucion":"25", "cantidadCompletada":"0"}]
+      //   // Se obtiene el ultimo id registrado
+      //   this.getLastId()
+      //   // Se obtienen todos los registros acutales
+      //   axios.get('/order').then((response) => {
+      //     if(response.status == 200){
+
+      //       // Se obtienen todas las ots.
+      //       const allOTs = this.getOts(response.data.group)
+      //       // Se cambian los nombres de las llaves.
+      //       const dataModified = response.data.group.map(
+      //           obj => {
+      //             return {
+      //                 "id": obj.id,
+      //                 "ot": obj.ot,
+      //                 "secuencia":obj.item,
+      //                 "horasConfiguracion":obj.total_estimated_time,
+      //                 "horasEjecucion":obj.total_time,
+      //                 "cantidadCompletada":obj.total_quantity
+      //               }
+      //             }
+      //         );
+            
+      //       // Se recorren y se agrupan las mismas ots.
+      //       allOTs.forEach(element => {
+      //         // Se obtienen los valores filtrados
+      //         this.dataJson.push(dataModified.filter(key => key.ot == element))
+      //       });
+            
+      //       // Ahora se deben filtrar aquellos datos con cantidadCompletada distintas en una misma OT.
+      //       for (let idx = 0; idx < this.dataJson.length; idx++) {
+      //         var lastOt = -1
+      //         var lastValue = -1
+      //         // Se recorre el objeto agrupado por OT.
+      //         for (const json of this.dataJson[idx]) {
+      //           // Si el valor anterior de ot y de cantidad completada son iguales
+      //           // entonces no debemos guardalor nuevamente.
+      //           if ((lastOt == json.ot) && lastValue == json.cantidadCompletada) continue;
+                
+      //           this.dataJsonFilter.push(dataModified.filter(x => (x.cantidadCompletada == json.cantidadCompletada) && (x.ot == json.ot)))
+                
+      //           lastOt = json.ot
+      //           lastValue = json.cantidadCompletada
+      //         }
+      //       }
+
+      //       var lastid = this.currentLastId
+
+      //       // Se convierte en formato .csv
+      //       var csv = ""
+      //       for (let i = 0; i < this.dataJsonFilter.length; i++) {
+      //         var jsonObject1 = this.dataJsonFilter[i]//JSON.stringify(this.dataJson[i]);
+
+      //         // Se define el newid, para que nos valores no sean repetidos.
+      //         var newid = lastid + i
+      //         if(i == 0){
+      //           csv += this.convertToCSV(jsonObject1, ["id", "ot", "JSON"], "ID Externo,OT,JSON" + '\r\n', newid);
+      //         }else{
+      //           csv += this.convertToCSV(jsonObject1, ["id", "ot", "JSON"], "", newid);
+      //         }
+      //       }
+            
+      //       // Se crea el objeto URL para descargar el .csv
+      //       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+      //       const link = document.createElement('a')
+      //       link.href = url
+      //       link.setAttribute(
+      //         'download',
+      //         `Timer-${new Date().toLocaleDateString()}.csv`
+      //       )
+      //       document.body.appendChild(link)
+      //       link.click()
+
+      //       // Ahora, para finalizar debemos actualizar el lastId
+
+      //       this.updatelastId({"lastid": newid})
+      //       this.dataJson = [],
+      //       this.dataJsonFilter = []
+
+      //       // var jsonObject = JSON.stringify(response.data.orders);
+      //       // var jsonObjectStats = JSON.stringify(response.data.group);
+      //       // //console.log(jsonObjectStats)
+      //       // var csv = this.convertToCSV(jsonObject);
+      //       // csv += this.convertToCSV(jsonObjectStats, ["ot", "item", "total_quantity", "total_time", "total_estimated_time"], 'ORDEN DE TRABAJO,SECUENCIA,CANTIDAD,TIEMPO TOTAL UTILIZADO,TIEMPO PLANIFICADO' + '\r\n');
+
+
+      //       // let csvOT = this.convertToCSV(jsonObject, ["ot"], 'ORDEN DE TRABAJO' + '\r\n');
+      //       // const url_ot = URL.createObjectURL(new Blob([csvOT], { type: 'text/csv;charset=utf-8;' }))
+      //       // link.href = url_ot
+      //       // link.setAttribute(
+      //       //   'download',
+      //       //   `OTs-${new Date().toLocaleDateString()}.xls`
+      //       // )
+      //       // document.body.appendChild(link)
+      //       // link.click()
+      //     }
+      //   })
+      // },
       getOts(array){
         return new Set(array.map(element => element.ot))
       },
+      // diffhours(time){
+      //   return time
+      //   return setTimeout( function(){ 
+      //     parseInt((new Date(time).getTime() - new Date(Date.now()).getTime())/ (1000 * 60)) + " min", 1000
+      //   }, 1000)
+      // }
     },
   }
 </script>

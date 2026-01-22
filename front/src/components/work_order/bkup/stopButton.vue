@@ -72,7 +72,7 @@
 
 <script>
 import axios from 'axios'
-import { mapActions, mapGetters, mapMutations } from 'vuex'
+import { mapActions, mapGetters } from 'vuex'
 
 export default {
     props: ['items'],
@@ -86,64 +86,42 @@ export default {
     }),
     methods: {
       ...mapActions({
-        getListOrder: 'order/getListOrder',
+      getListOrder: 'order/getListOrder',
       }),
-      ...mapMutations({
-        setListOrder: 'order/SET_LIST_WORKS_ORDERS'
-      }),
-      pause(item) {
-        if (!this.items.finished_assembly) {
+      pause(item){
+        if(!this.items.finished_assembly){
           item.quantity = this.quantity
           // En el caso de que la cantidad ingresada supere la cantidad planificada, alertar al usuario.
           axios.post('/order/stop', item).then(response => {
-            if (response.status == 200) {
-              console.log('Pausado exitosamente.')
-              this.getListOrder({
-                "search": this.currentSearch,
-                "pagination": 1,
-                "itemsPerPage": 50,
-                "status": ''
-              })
-              this.dialog = false
-            }
-          })
-        }
-        if ((this.quantity !== null && this.quantity >= 0) && this.items.finished_assembly) {
-
-          axios.get('/order?search=' + this.currentSearch + '&pag=' + 1 + '&items=' + 50 + '&status=' + '').then((response) => {
                 if(response.status == 200){
-                    this.setListOrder(response.data.orders)
+                    console.log('Pausado exitosamente.')
+                    this.getListOrder(this.currentSearch)
+                    this.dialog = false
                 }
-          })
-
-          if (this.quantity + this.items.quantity > this.items.n_times_paused) {
-            alert('La cantidad ingresada supera la cantidad planificada.')
-            return
-          }
-          item.quantity = this.quantity
-          console.log(item)
-          axios.post('/order/stop', item).then(response => {
-            if (response.status == 200) {
-              console.log('Pausado exitosamente.')
-              this.getListOrder({
-                "search": this.currentSearch,
-                "pagination": 1,
-                "itemsPerPage": 50,
-                "status": ''
-              })
-              this.dialog = false
-            }
-          })
+            })
         }
-        // else {
-        //   axios.post('/order/stop', item).then(response => {
-        //     if (response.status == 200) {
-        //       console.log('Pausado exitosamente.')
-        //       this.getListOrder(this.currentSearch)
-        //       this.dialog = false
-        //     }
-        //   })
-        // }
+        if((this.quantity !== null && this.quantity >=0) && this.items.finished_assembly){
+            item.quantity = this.quantity
+            if(this.quantity > this.items.n_times_paused){
+              if(confirm('La cantidad ingresada supera la cantidad planificada. ¿Desea continuar?')){
+                axios.post('/order/stop', item).then(response => {
+                  if(response.status == 200){
+                      console.log('Pausado exitosamente.')
+                      this.getListOrder(this.currentSearch)
+                      this.dialog = false
+                  }
+                })
+              }
+            }else{
+              axios.post('/order/stop', item).then(response => {
+                if(response.status == 200){
+                    console.log('Pausado exitosamente.')
+                    this.getListOrder(this.currentSearch)
+                    this.dialog = false
+                }
+              })
+            }
+        }
       },
     },
     computed:{

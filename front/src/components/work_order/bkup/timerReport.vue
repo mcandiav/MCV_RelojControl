@@ -2,35 +2,42 @@
     <div>
         <v-dialog v-model="dialog" height="500px">
             <template v-slot:activator="{ on, attrs }">
-                <v-btn class="my-0 py-0 mx-3" dark color="light-blue" v-bind="attrs" v-on="on">
-                    Lista
+                <v-btn class="my-3 py-0 mx-3" dark color="black" v-bind="attrs" v-on="on">
+                    Reporte Reloj control
                 </v-btn>
             </template>
             <v-card>
                 <v-card-title class="text-center">
-                    Lista de usuarios
+                    Reporte Reloj Control
                 </v-card-title>
                 <v-card-text>
                     <v-row>
-                        <v-col cols="4">
-                            <v-date-picker v-model="dates" range :max="new Date().toISOString()"
-                                locale="es-CL"></v-date-picker>
-                            <br>
-                            <v-btn color="success" :disabled="disabled" @click="buscar">
-                                Filtrar
-                            </v-btn>
+                        <v-col cols="3">
+                            <v-select
+                            v-model="pickerType"
+                            :items="pickerTypes"
+                            label="Tipo de selección"
+                            ></v-select>
+                            <v-row justify="center" class="my-2">
+                                <v-date-picker
+                                v-model="picker"
+                                :type="pickerType"
+                                locale="es"
+                                :max="new Date().toISOString()"
+                                :allowed-dates="val => {
+                                        const [year, month] = val.split('-').map(num => parseInt(num, 10));
+                                        const currentYear = new Date().getFullYear();
+                                        const currentMonth = new Date().getMonth() + 1;
+
+                                        // Permitir años anteriores al actual o meses válidos en el año actual
+                                        return year < currentYear || (year === currentYear && month <= currentMonth);
+                                    }"
+                                multiple
+                                ></v-date-picker>
+                            </v-row>
                         </v-col>
                         <v-divider vertical thickness="5"></v-divider>
-                        <v-col cols="8">
-                            <v-toolbar flat>
-                                <v-spacer></v-spacer>
-                                <v-switch
-                                v-model="details"
-                                label="Ver detalles"
-                                class="mt-2"
-                                :disabled="true"
-                                ></v-switch>
-                            </v-toolbar>
+                        <v-col cols="9">
                             <v-simple-table dense height="500px" :show-expand="true" :expanded.sync="expanded">
                                 <template v-slot:default>
                                     <thead>
@@ -51,7 +58,19 @@
                                                 Operación
                                             </th>
                                             <th class="text-left">
+                                                Secuencia
+                                            </th>
+                                            <th class="text-left">
+                                                Cantidad planificada
+                                            </th>
+                                            <th class="text-left">
                                                 Cantidad
+                                            </th>
+                                            <th class="text-left">
+                                                Tiempo montaje planificado (min)
+                                            </th>
+                                            <th class="text-left">
+                                                Tiempo ejecución planificado (min)
                                             </th>
                                             <th class="text-left">
                                                 Tiempo montaje (min)
@@ -60,7 +79,7 @@
                                                 Tiempo ejecución (min)
                                             </th>
                                             <th class="text-left">
-                                                Tiempo en pausa (min)
+                                                Timepo pausa (min)
                                             </th>
                                             <th class="text-left">
                                                 Reloj inicio
@@ -68,29 +87,25 @@
                                             <th class="text-left">
                                                 Reloj fin
                                             </th>
-                                            <th class="text-left">
-                                                Reloj estado
-                                            </th>
-                                            <th class="text-center"> <!--texto centrado-->
-                                                Descargado
-                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="item in workers" :key="item.start_time">
+                                        <tr v-for="item in reportInfo" :key="item.start_time">
                                             <!-- <td>{{ item.User.sign_in | formatDate }}</td>
                                             <td>{{ item.User.sign_out === null ? null:item.User.sign_out | formatDate }}</td> -->
                                             <td>{{ item.name}}</td>
                                             <td>{{ item.ot }}</td>
                                             <td>{{ item.resource }}</td>
+                                            <td>{{ item.item }}</td>
+                                            <td>{{ item.quantity_expected }}</td>
                                             <td>{{ item.quantity }}</td>
+                                            <td>{{ item.assembly_time }}</td>
+                                            <td>{{ item.ejecution_time }}</td>
                                             <td>{{ item.total_time_assembly}}</td>
                                             <td>{{ item.total_time_ejecution }}</td>
                                             <td>{{ item.time_out }}</td>
                                             <td> {{ item.start_time | formatDate}}</td>
                                             <td>{{ item.end_time === null ? null:item.end_time | formatDate }}</td>
-                                            <td> {{item.state}}</td>
-                                            <td>{{ item.found === true ? 'Sí' : 'No' }}</td>
                                         </tr>
                                     </tbody>
                                 </template>
@@ -103,9 +118,14 @@
                             </v-simple-table>
                         </v-col>
                         <v-col>
-                            <v-btn color="success" @click="descargar">
+                            <v-card-actions>
+                            <v-btn @click="buscar(picker)" dark color="light-green" :disabled="picker === null" :loading="buttonGenerateReport" >
+                                Generar reporte
+                            </v-btn>
+                            <v-btn @click="descargar()" dark class="mx-5" color="#EF5350" :disabled="this.reportInfo === null" >
                                 Descargar
                             </v-btn>
+                        </v-card-actions>
                         </v-col>
                     </v-row>
                 </v-card-text>
@@ -127,7 +147,16 @@ export default {
             workers: [],
             workers_copy: [],
             expanded: [],
-            details: false
+            details: false,
+            // Variables para el selector de fechas
+            reportInfo: null,
+            picker: null,
+            pickerType: 'month',
+            pickerTypes: [
+                //{ text: 'Día', value: 'date' },
+                { text: 'Mes', value: 'month' }
+            ],
+            buttonGenerateReport: false
         }
     },
     filters: {
@@ -141,6 +170,45 @@ export default {
         }
     },
     methods: {
+        async buscar(yearMonthdays){
+            // Hacemos que el boton quede en estado de carga
+            this.buttonGenerateReport = true
+            console.log('yearMonthdays: ', yearMonthdays)
+
+            if(this.pickerType === 'month'){
+
+                // Consumimos los recursos de la API report
+                await axios.post('/order/timerReport', { yearMonthdays })
+                    .then(response => {
+                        if(response.status === 200){
+                            this.reportInfo = response.data;
+                        }
+                    })
+                    .catch(error => {
+                        // Manejar el error
+                        console.log(error)
+                    })
+
+                console.log('this.reportInfo: ', this.reportInfo)
+            }
+            if(this.pickerType === 'date'){
+
+                // Consumimos los recursos de la API report
+                await axios.post('/order/timerReportbyDay', { yearMonthdays })
+                    .then(response => {
+                        if(response.status === 200){
+                            this.reportInfo = response.data;
+                        }
+                    })
+                    .catch(error => {
+                        // Manejar el error
+                        console.log(error)
+                    })
+
+                console.log('this.reportInfo: ', this.reportInfo)
+            }
+            this.buttonGenerateReport = false
+        },
         formatDateDownload: function (value) {
             const date = new Date(value);
             // Si la fecha es igual a "12/31/1969, 9:00:00 PM", es porque el valor es null
@@ -148,32 +216,6 @@ export default {
                 return 'Sin registro';
             }
             return date.toLocaleString(); // Se puede utilizar cualquier otro formato de fecha
-        },
-        async buscar() {
-            if (this.dates.length === 2) {
-                this.dates.sort((a, b) => {
-                    const dateA = new Date(a).getTime();
-                    const dateB = new Date(b).getTime();
-                    return dateA - dateB;
-                });
-                this.linkurl = this.dates[0] + "&end=" + this.dates[1]
-            } else {
-                this.linkurl = this.dates[0]
-            }
-
-            await axios.get('/order/workers?start=' + this.linkurl)
-                .then(response => {
-                    // Manejar la respuesta
-                    this.workers = response.data
-                    // Copiamos los datos para tener respaldo cuando sean cambiados
-                    this.workers_copy = response.data
-                })
-                .catch(error => {
-                    // Manejar el error
-                    console.log(error)
-                })
-            this.details = false
-            console.log(this.workers)
         },
         formatFinalized(item){
             if(item.Finalized === null && item.Record === null){
@@ -192,9 +234,11 @@ export default {
         async descargar(){
             // Primero debemos cargar los datos a la variable "this.workers"
             // await this.buscar();
-            if(this.workers.length === 0){
+            if(this.reportInfo.length === 0){
                 return;
             }
+
+            console.log("Descargando...")
                 
             // Crea un nuevo libro de trabajo
             const workbook = new ExcelJS.Workbook();
@@ -209,17 +253,20 @@ export default {
                 { header: 'Nombre', key: 'name', width: 30 },
                 { header: 'Orden de trabajo', key: 'ot', width: 30 },
                 { header: 'Operación', key: 'resource', width: 50 },
+                { header: 'Secuencia', key: 'item', width: 10 },
+                { header: 'Cantidad planificada', key: 'quantity_expected', width: 10 },
                 { header: 'Cantidad', key: 'quantity', width: 10 },
+                { header: 'Tiempo montaje planificado (min)', key: 'assembly_time', width: 30 },
+                { header: 'Tiempo ejecución planificado (min)', key: 'ejecution_time', width: 30 },
                 { header: 'Tiempo montaje (min)', key: 'total_time_assembly', width: 30 },
                 { header: 'Tiempo ejecución (min)', key: 'total_time_ejecution', width: 30},
-                { header: 'Tiempo en pausa (min)', key: 'time_out', width: 30 },
+                { header: 'Tiempo pausa (min)', key: 'time_out', width: 30 },
                 { header: 'Reloj inicio', key: 'start_time', width: 30 },
                 { header: 'Reloj fin', key: 'end_time', width: 30 },
-                { header: 'Reloj estado', key: 'state', width: 30 },
             ];
 
             // Transformamos el objeto "this.workers" a un array de objetos
-            const workersArray = Object.values(this.workers);
+            const workersArray = Object.values(this.reportInfo);
             
             // Recorre los datos y agrega las filas a la hoja de trabajo
             workersArray.forEach(worker => {
@@ -230,13 +277,16 @@ export default {
                     name: worker.name,
                     ot: worker.ot,
                     resource: worker.resource,
+                    item: worker.item,
+                    quantity_expected: worker.quantity_expected,
                     quantity: worker.quantity,
+                    assembly_time: worker.assembly_time,
+                    ejecution_time: worker.ejecution_time,
                     total_time_assembly: worker.total_time_assembly ,
                     total_time_ejecution: worker.total_time_ejecution,
                     time_out: worker.time_out,
                     start_time: new Date(worker.start_time).getFullYear() === 1969 ? "Sin registro":this.formatDateDownload(worker.start_time),
                     end_time: new Date(worker.end_time).getFullYear() === 1969 ? "Sin registro":this.formatDateDownload(worker.end_time),
-                    state: worker.state,
                 };
                 worksheet.addRow(row);
             });
@@ -245,7 +295,7 @@ export default {
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             // Agregar la fecha actual al nombre del archivo
-            const fileName = 'Lista de usuarios ' + new Date().toLocaleDateString() + '.xlsx';
+            const fileName = 'ReporteRelojControl_' + new Date().toLocaleDateString() + '.xlsx';
             if (window.navigator.msSaveOrOpenBlob) {
                 // Para IE11
                 window.navigator.msSaveOrOpenBlob(blob, fileName);
