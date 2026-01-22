@@ -1,6 +1,10 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db')
 
+/**
+ * Modelo de datos, donde se guardan las OT's que se cargan desde el archivo Excel.
+ */
+
 const dataSchema = sequelize.define('Data', {
       id: {
         type: DataTypes.INTEGER,
