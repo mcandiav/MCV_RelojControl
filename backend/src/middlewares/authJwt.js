@@ -5,6 +5,10 @@ const User = require('../models/user')
 const Role = require('../models/role')
 const Workplace = require('../models/workplace')
 
+/**
+ * Middleware para verificar el token JWT en las solicitudes entrantes.
+ * Si el token es válido, se añade el ID del usuario decodificado a la solicitud.
+ */
 exports.verifyToken = async (req, res, next) => {
     try {
         const token = req.headers["x-access-token"]
