@@ -6,7 +6,7 @@ const security = require('../middlewares/authJwt')
 const file = require('../controllers/file');
 
 router.use (function (req,res,next) {
-  console.log('/' + req.method);
+  // console.log('/' + req.method);
   next();
 });
 
@@ -14,10 +14,10 @@ router.get('/',function(req,res){
     res.status(200)
 });
 
-
+// Configuración de almacenamiento para multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, '/home/chr/timer/backend/src/uploads/');
+    cb(null, './timer/backend/src/uploads/');
   },
   filename: function (req, file, cb) {
     // Asignar un nombre personalizado al archivo
