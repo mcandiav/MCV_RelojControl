@@ -1,6 +1,6 @@
 # Frontend - Sistema de Gestión de Tiempos Bignotti
 
-Este repositorio contiene el código fuente del frontend para el Sistema de Gestión de Tiempos y Órdenes de Trabajo. La aplicación está desarrollada con **Vue.js** y la librería de componentes **Vuetify**, y proporciona la interfaz de usuario para que los operarios y administradores interactúen con el sistema.
+Este repositorio contiene el código fuente del frontend para el Sistema de Gestión de Tiempos y Órdenes de Trabajo. La aplicación está desarrollada con **Vue.js** y la librería de componentes **Vuetify**, que proporciona la interfaz de usuario para que los operarios y administradores interactúen con el sistema.
 
 ## Características Principales
 
@@ -33,7 +33,7 @@ Sigue estos pasos para configurar y ejecutar el proyecto en un entorno de desarr
     ```bash
     nvm use v10.24.1
     ```
-* **npm** o **yarn**
+* **npm**
 
 ### **Instalación**
 
@@ -61,12 +61,13 @@ Sigue estos pasos para configurar y ejecutar el proyecto en un entorno de desarr
     npm run serve
     ```
     La aplicación estará disponible en `http://localhost:8080` (o el puerto que indique la terminal).
+    Debes verificar que el backend esté corriendo para que la aplicación funcione correctamente. Además, en la linea 13 del archivo `src/main.js`, asegúrate de colocar la URL correcta del backend, de lo contrario el frontend no se podra comunicar con el backend.
 
 5.  **Compila para producción:**
     ```bash
     npm run build
     ```
-    Esto generará los archivos estáticos en la carpeta `dist/` listos para ser desplegados en un servidor web.
+    Esto generará los archivos estáticos en la carpeta `dist/` listos para ser desplegados a wwwroot de windows, que es donde esta alojado el frontend.
 
 ## Estructura del Proyecto
 
