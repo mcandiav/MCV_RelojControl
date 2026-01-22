@@ -82,30 +82,32 @@ Instalar dependencias:
 npm install
 ```
 
-Configurar variables de entorno en un archivo `.env`:
+Configurar variables de entorno en un archivo del archivo `./backend/config/config.js`. Asegúrate de ajustar los valores según tu entorno local:
 
-```env
-# Configuración del servidor
-PORT=3000
+```js
+module.exports = {
+    // Configuración token login
+    SECRET: "api-secret-",
+    // Configuración base de datos.
+    HOST: "localhost",
+    PORT: 1433, // Puerto predeterminado para SQL Server
+    USER: "user_bdd",
+    PASSWORD: "pass_bdd",
+    DB: "databse",
+    dialect: "mssql", // Indica que estás utilizando SQL Server
 
-# Secreto JWT
-SECRET=tu-secreto-super-secreto
-
-# Configuración de la base de datos
-DB_USER=postgres
-DB_PASSWORD=admin
-DB_HOST=localhost
-DB_NAME=timer_db
-DB_PORT=5432
+    // Clave para eliminar recursos.
+    DELETE_SECRET: "b1234", // Asumo que DELETE_SECRET es diferente de SECRET
+}
 ```
 
 Ejecutar el servidor:
 
 ```bash
-npm start
+npm run dev
 ```
 
-El servidor estará disponible en `http://localhost:3000`.
+El servidor estará disponible en `http://localhost:3000`. Debes tener una base de datos local (o remota) para que Sequelize pueda crear automáticamente las tablas en la base de datos configurada. De lo contrario, el backend no funcionará. Una vez con la base de datos lista, se recomienda descargar una muestra de la base de datos desde el servidor de producción para tener datos de prueba. Con ellos, el sistema podrá ser probado correctamente.
 
 ---
 
@@ -208,3 +210,4 @@ El servidor estará disponible en `http://localhost:3000`.
 
 ## Notas
 - Se deben pedir los accesos al servidor donde se encuentra la aplicación para descargar la base de datos y hacer pruebas locales.
+- Dentro del mimso código se tiene más información sobre el funcionamiento de cada endpoint y modelo.
