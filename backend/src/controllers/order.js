@@ -5,8 +5,10 @@
 // =========================================
 
 const sequelize = require('../config/db.js');
-const cron = require('node-cron');
-const { Op } = require("sequelize");
+const cron = require('node-cron');  // Libería para programar cierres automáticos de órdenes
+const { Op } = require("sequelize"); // Lebreria para utilizar la base de datos mssql de microsoft
+
+// Funciones de manejo de fechas
 const { 
     isValid, 
     startOfMonth, 
@@ -23,19 +25,19 @@ const {
 } = require('date-fns');
 
 // Importación de Modelos de la Base de Datos
-const Order = require('../models/order.js');
-const Resource = require('../models/resource.js');
-const Count = require('../models/count.js');
-const Data = require('../models/data');
-const User = require('../models/user');
-const Role = require('../models/role');
-const Workplace = require('../models/workplace');
-const Finalized = require('../models/finalized');
-const Record = require('../models/record');
-const Discharged = require('../models/discharged');
-const Registry = require('../models/registry');
-const Log = require('../models/log');
-const TaskIntervals = require('../models/task_interval');
+const Order = require('../models/order.js');             // Modelo de órdenes de trabajo
+const Resource = require('../models/resource.js');       // Modelo de recursos
+const Count = require('../models/count.js');             // Modelo para conteo de IDs
+const Data = require('../models/data');                  // Modelo de datos de órdenes de trabajo 
+const User = require('../models/user');                  // Modelo de usuarios
+const Role = require('../models/role');                  // Modelo de roles de usuario
+const Workplace = require('../models/workplace');        // Modelo que define los puestos de trabajo para cada usuario
+const Finalized = require('../models/finalized');        // Modelo de órdenes finalizadas
+const Record = require('../models/record');              // Modelo de registros activos
+const Discharged = require('../models/discharged');      // Modelo de órdenes descargadas
+const Registry = require('../models/registry');          // Modelo de registros de tiempo de órdenes 
+const Log = require('../models/log');                    // Modelo de logs de actividad
+const TaskIntervals = require('../models/task_interval');// Modelo de intervalos de tareas
 
 // Servicios y configuración
 const config = require('../config/config.js');
@@ -54,6 +56,8 @@ const { getSafeTimer, minutesToMs, getChileOffsetHours } = require('./timeServic
  * @returns {Promise<object>} Objeto con las duraciones en minutos para montaje, curso y pausado.
  */
 async function getFinalizedTaskDurations(taskId, userId, parentId) {
+    // Se buscan todos los intervalos relacionados con la tarea y el usuario, ordenados por tiempo de inicio y que hayan finalizado.
+    // Es importante resaltar que el ID por intervalo de tarea es único, y el parentId agrupa la secuencia completa de intervalos para esa tarea.
     const intervals = await TaskIntervals.findAll({
       where: {
         task_id: taskId,
@@ -62,11 +66,13 @@ async function getFinalizedTaskDurations(taskId, userId, parentId) {
       },
       order: [['start_time', 'ASC']]
     });
-  
+
+    // Los tiempos se inicializan en cero
     let montaje = 0;
     let curso = 0;
     let pausado = 0;
   
+    // Se itera sobre cada intervalo para calcular las duraciones según su etapa
     for (let i = 0; i < intervals.length; i++) {
       const current = intervals[i];
       const next = intervals[i + 1] || null;
@@ -74,15 +80,17 @@ async function getFinalizedTaskDurations(taskId, userId, parentId) {
       const start = new Date(current.start_time);
       const end = current.end_time ? new Date(current.end_time) : null;
   
-      if (!isValid(start) || !isValid(end)) continue;
+      if (!isValid(start) || !isValid(end)) continue; // Si la orden de trabajo acaba de iniciar, no se considera
   
-      const duration = differenceInMinutes(end, start);
+      const duration = differenceInMinutes(end, start); // Se utiliza la funcion differenceInMinutes de date-fns para obtener la diferencia en minutos entre dos fechas
   
+      // Si el intervalo fue pausado, se calcula el tiempo en pausa
       if (current.paused) {
         const pauseEnd = next ? new Date(next.start_time) : new Date();
         pausado += differenceInMinutes(pauseEnd, end);
       }
   
+      // Lo mismo se hace para las etapas de montaje y curso
       if (current.stage === 'En montaje') {
         montaje += duration;
       } else if (current.stage === 'En curso' || current.stage === 'Completado') {
@@ -205,6 +213,8 @@ const stopAll = async function(req, res) {
  * Crea una nueva orden de trabajo en la base de datos.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Esta funcion crea una nueva orden de trabajo, con la estructura definida en models/data.js
+ * Además, esta se suele ejecutar de forma automatizada al subir un archivo CSV con órdenes de trabajo.
  */
 exports.create = async function (req, res) {
     console.log('Creando una nueva orden.')
@@ -221,7 +231,8 @@ exports.create = async function (req, res) {
         date: new Date()
     }
     
-    const minutesInMillisAssembly = assembly_time * 60 * 1000;
+    // Los tiempos establecidos en el .csv estan en horas y se convierten a milisegundos
+    const minutesInMillisAssembly = assembly_time * 60 * 1000; 
     new_order.assembly_max_time = new_order.date.getTime() + minutesInMillisAssembly
 
     const minutesInMillis = estimated_time * 60 * 1000;
@@ -244,6 +255,7 @@ exports.create = async function (req, res) {
  * Edita los detalles de una orden de trabajo existente.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Actualmente, esta funcion no se utiliza.
  */
 exports.edit = async function (req, res) {
     console.log('Actualizando información.')
@@ -366,7 +378,19 @@ exports.removeAll = async function (req, res) {
  * Cambia el estado a 'En montaje' o 'En curso'.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Al presionar el boton de play en el frontend se ejecuta esta funcion.
+ * La funcion busca si existe un registro activo en la tabla Record para el usuario y la orden de trabajo. Si no existe, crea uno nuevo.
+ * Luego, verifica si existe un registro en la tabla Registry para la orden y el usuario. Si no existe o si el último registro está finalizado, crea uno nuevo.
+ * Finalmente, crea un nuevo intervalo de tarea en la tabla TaskIntervals si no hay uno activo, y actualiza el estado y los tiempos de la orden en la tabla Record.
+ * 
  */
+
+/**
+ * 
+ * Considerar que cada orden puede ser ejecutada por varios usuarios a la vez, y que el tiempo total de la orden,
+ * ya sea en 'montaje' o 'en curso', es compartido entre todos los usuarios que esten trabajando en dicha orden.
+ */
+
 exports.play = async function (req, res) {
     console.log('Play order', req.body);
     
@@ -375,7 +399,7 @@ exports.play = async function (req, res) {
         where: { id: req.body.id, id_user: userId } 
     });
 
-    console.log('Found record:', record);
+    // console.log('Found record:', record);
     
     let registry = await Registry.findOne({
         where: { id_ot: req.body.id, id_user: userId },
@@ -543,11 +567,12 @@ exports.pause = async function (req, res) {
       currentInterval.paused = true;
       await currentInterval.save();
 
+    // Parte de codigo que establece en 1 el timer en caso de que haya un error grave en el calculo del tiempo restante.
     let options;
     if (!order.finished_assembly) {
         let timer = parseInt((new Date(order.assembly_max_time).getTime() - new Date(Date.now()).getTime()) / (1000 * 60))
         if(timer < -1000000 || timer > 1000000){
-            timer = 3
+            timer = 1
         }
         options = {
             "paused": true,
@@ -557,7 +582,7 @@ exports.pause = async function (req, res) {
     } else {
         let timer = parseInt((new Date(order.max_time).getTime() - new Date().getTime()) / (1000 * 60))
         if(timer < -1000000 || timer > 1000000){
-            timer = 3
+            timer = 1
         }
         options = {
             "paused": true,
@@ -591,6 +616,7 @@ exports.stop = async function (req, res) {
     console.log('Stop order', req.body.id);
     const userId = req.userId === req.body.id_user ? req.userId : req.body.id_user;
     const record = await Record.findOne({ where: { id: req.body.id, id_user: userId }, order: [[sequelize.literal('updatedAt'), 'DESC']] });
+    // console.log('Found record to stop:', record);
   
     if (!record) return res.status(400).send("None");
   
@@ -610,6 +636,7 @@ exports.stop = async function (req, res) {
         order: [['start_time', 'DESC']],
     });
 
+    // Logica para cerrar o cambiar de etapa el intervalo actual
     if (currentInterval){
         if (currentInterval.paused) {
             if (currentInterval.stage === 'En montaje') {
@@ -660,22 +687,26 @@ exports.stop = async function (req, res) {
         }
     }
 
-      if (!record.finished_assembly) {
-          const timer = getSafeTimer(record.assembly_max_time);
-          await record.update({
-              finished_assembly: true,
-              assembly_missing_time: timer,
-              state: "En curso",
-              max_time: now + minutesToMs(record.estimated_time)
-          });
-          return res.status(200).send({ text: "Montaje detenido, comienza fabricación." });
-      }
+    // Cambio de etapa o finalización de la orden
+    if (!record.finished_assembly) {
+        const timer = getSafeTimer(record.assembly_max_time);
+        await record.update({
+            finished_assembly: true,
+            assembly_missing_time: timer,
+            state: "En curso",
+            max_time: now + minutesToMs(record.estimated_time)
+        });
+        return res.status(200).send({ text: "Montaje detenido, comienza fabricación." });
+    }
   
+    // Finalización de la orden
     const timer = getSafeTimer(record.max_time);
     const user = await User.findOne({
       where: { id: req.userId },
       include: [Role, Workplace],
     });
+
+    const quantity_tmp = record.quantity;
   
     record.stoped = true;
     record.missing_time = timer;
@@ -694,6 +725,9 @@ exports.stop = async function (req, res) {
       register.end_time = now;
       await register.save();
     }
+
+    // se actualiza la cantidad actual sumando la cantidad anterior 
+    record.quantity = quantity_tmp + req.body.quantity;
   
     await Record.update({
       max_time: null,
@@ -724,10 +758,18 @@ exports.stop = async function (req, res) {
  * @param {object} res - Objeto de respuesta de Express.
  */
 exports.list = async function (req, res) {
+    /**
+     * Esta funcion obtiene una lista de ordenes de trabajo, tanto de la tabla Data como de la tabla Record.
+     * Si el usuario es admin, obtiene todas las ordenes que coincidan con el filtro de busqueda y estado.
+     * Si el usuario no es admin, obtiene solo las ordenes que coincidan con el filtro de busqueda y estado
+     * y que ademas pertenezcan al puesto de trabajo del usuario.
+     * 
+     * La lista inicial del frontend es obtenida con esta funcion.
+     */
     console.log('Get list of orders')
     const { search, pag, items, status } = req.query
 
-    filtersOptions = ["No iniciado", "En montaje", "En curso", "Completado", "Pausado"]
+    filtersOptions = ["No iniciado", "En montaje", "En curso", "Completado", "Pausado"] // Opciones de filtro de estado disponibles en el frontend
     if (search === undefined) return res.status(400).json({ message: "Invalid search." })
     searchFilter = status === undefined ? filtersOptions : filtersOptions.indexOf(status) === -1 ? filtersOptions : [status]
 
@@ -741,6 +783,7 @@ exports.list = async function (req, res) {
     })
     if (!userFound) return res.status(401).json({ message: "Invalid user." })
     
+    // Lógica para usuarios administradores y no administradores
     if(userFound.Role.name === "admin"){
         var records = await Record.findAll({
             where: {
@@ -872,6 +915,7 @@ exports.list = async function (req, res) {
  * Obtiene todos los recursos (órdenes) que coinciden con un término de búsqueda.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Funcion que ya no se utiliza en el frontend.
  */
 exports.getallresource = async function (req, res) {
     console.log('get all resource')
@@ -891,6 +935,7 @@ exports.getallresource = async function (req, res) {
  * Obtiene el último ID registrado en la tabla `Count` y le suma 1 para proponer un nuevo ID.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Funcion que ya no se utiliza en el frontend.
  */
 exports.lastId = async function (req, res) {
     console.log('Get list of orders')
@@ -913,6 +958,7 @@ exports.lastId = async function (req, res) {
  * Actualiza el último ID guardado en la tabla `Count`.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Funcion que ya no se utiliza en el frontend.
  */
 exports.updateLastId = async function (req, res) {
     console.log('Update last id')
@@ -937,6 +983,7 @@ exports.updateLastId = async function (req, res) {
  * Obtiene la lista completa de roles del sistema.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Cuando se crea un nuevo usuario, o cuando se edita uno existente, se utiliza esta funcion para obtener la lista de roles disponibles.
  */
 exports.listRoles = async function (req, res) {
     console.log('Get list of roles')
@@ -949,6 +996,8 @@ exports.listRoles = async function (req, res) {
  * Obtiene la lista completa de puestos de trabajo (workplaces).
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Cuando se crea un nuevo usuario, o cuando se edita uno existente, se utiliza esta funcion para obtener la lista de puestos de trabajo disponibles.
+ * De momento, no existe una funcionalidad en el frontend para crear o editar puestos de trabajo. Estos se crean directamente en la base de datos.
  */
 exports.listWorkplaces = async function (req, res) {
     console.log('Get list of workplaces')
@@ -961,6 +1010,7 @@ exports.listWorkplaces = async function (req, res) {
  * Verifica si un nombre de usuario ya existe en la base de datos.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Al crear un nuevo usuario, o al editar uno existente, se utiliza esta funcion para verificar si el nombre de usuario ya está en uso.
  */
 exports.getUsername = async function (req, res) {
     console.log('Get username')
@@ -982,6 +1032,7 @@ exports.getUsername = async function (req, res) {
  * Devuelve la hora actual del servidor en formato ISO.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
+ * Esta funcion puede ser utilizada para sincronizar la hora del cliente con la del servidor.
  */
 exports.getServerTime = function (req, res) {
     const serverTime = new Date().toISOString();
@@ -1001,11 +1052,19 @@ exports.getServerTime = function (req, res) {
  * @returns {Promise<object>} Un objeto con los datos de trabajo procesados.
  */
 exports.listWorkers_return = async function (req, res) {
+    /**
+    * Esta funcion la utilizan los administradores para obtener un listado con informacion de distinto tipo.
+    * Saber quienes han interactuado con la plataforma en un rango de fechas determinado.
+    * Cuantas ordenes han finalizado, tiempo total trabajado, tiempo en pausa, etc.
+    * Esta funcion se utiliza en la mayoria de los reportes del sistema.
+    */
     console.log('Get list of who interacted with the plataform by day return: ')
     var selectedDates = Object.assign({ end: req.query.start }, req.query)
     
     let selectedDateStart =  new Date(selectedDates.start)
     let selectedDateEnd = new Date(selectedDates.end + 'T23:59:59.999Z')
+
+    // console.log('Selected dates:', selectedDateStart, selectedDateEnd);
 
     const offset = Math.abs(getChileOffsetHours());
     let startOfDayInSantiago = addHours(selectedDateStart, +offset);
@@ -1015,6 +1074,8 @@ exports.listWorkers_return = async function (req, res) {
         start: startOfDayInSantiago,
         end: endOfDayInSantiago
     };
+
+    //console.log('Query dates adjusted to Santiago timezone:', queryDates.start, queryDates.end);
 
     if (differenceInMilliseconds(queryDates.end, queryDates.start)/1000/60/60 > 24){
         function generateIntermediateDays(startDate, endDate) {
@@ -1061,10 +1122,12 @@ exports.listWorkers_return = async function (req, res) {
             const start_time = reg.start_time ? new Date(reg.start_time).getTime() : null;
             const end_time = reg.end_time ? new Date(reg.end_time).getTime() : null;
             const estimated_time = reg.Datum?.estimated_time ? reg.Datum.estimated_time : 0;
-            const assembly_time = reg.Datum?.assembly_time ? reg.Datum.estimated_time : 0;
+            const assembly_time = reg.Datum?.assembly_time ? reg.Datum.assembly_time : 0;
     
+            // Se crea una clave única para cada combinación de usuario y orden
             if (reg.Finalized !== null) {
                 const key = `${reg.User.name}_${reg.User.lastname}_${reg.Finalized.id}${reg.Finalized.id_finalized}`;
+                // console.log("Processing Finalized key:", key);
                 if (!sums[key]) {
                     const raw_assembly = reg.Finalized.assembly_time - reg.Finalized.assembly_missing_time;
                     const raw_exec = reg.Finalized.estimated_time - reg.Finalized.missing_time;
@@ -1113,6 +1176,8 @@ exports.listWorkers_return = async function (req, res) {
         }
     });
 
+    // console.log("sums before sorting:", sums);
+
     var keys = Object.keys(sums).sort();
     var new_sums = {}
     keys.forEach(key => { new_sums[key] = sums[key] })
@@ -1128,6 +1193,36 @@ exports.listWorkers_return = async function (req, res) {
 exports.listWorkers = async function (req, res) {
     console.log('Get list of who interacted with the plataform by day: ')
     const workersData = await exports.listWorkers_return(req, res);
+    // console.log("workersData", workersData)
+
+    // Verificamos que se ha descargado (que valores se encuentra en la tabla Discharged)
+    const allTaskKeys = Object.keys(workersData);
+
+    const alreadyDischarged = await Discharged.findAll({
+        where: {
+            key: {
+                [Op.in]: allTaskKeys
+            }
+        },
+        attributes: ['key']
+    });
+
+    // Los valores encontrados lo agregamos como found a workersData
+    const dischargedKeysSet = new Set(alreadyDischarged.map(d => d.key));
+    console.log(`${dischargedKeysSet.size} tareas ya han sido descargadas previamente.`);
+
+    for (const key of allTaskKeys) {
+        if (workersData[key].state !== "Completado") {
+                workersData[key].found = false;
+                continue;
+        }
+        if (dischargedKeysSet.has(key)) {
+            // Si se encuentra en un estado distinto de "Completado", marcar como no encontrado
+            workersData[key].found = true;
+        } else {
+            workersData[key].found = false;
+        }
+    } 
     res.header('Access-Control-Allow-Credentials', true);
     res.status(200).send(workersData);
 };
@@ -1140,17 +1235,22 @@ exports.listWorkers = async function (req, res) {
 exports.listDownload = async function (req, res) {
     console.log('Get list of orders for download: ')
     var lista_usuarios = await exports.listWorkers_return(req, res);
+    const allTaskKeys = Object.keys(lista_usuarios);
 
+    // Funcion para sumar los tiempos de las tareas agrupandolas por OT e Item
     function sumTaskDetails(taskData) {
         const result = {};
         for (const key in taskData) {
+            // console.log("Processing key:", key);
             const task = taskData[key];
+            if (!task) continue;
+            
             var { name, resource, ot, item, assembly_time, estimated_time, total_time_assembly, total_time_ejecution, quantity, start_time, end_time, state, missing_time } = task;
             
             if(state !== "Completado") continue;
             
             const taskKey = `${ot}_${item}`;
-            var millisecondsDifference = end_time - start_time;
+            var millisecondsDifference = (end_time || 0) - (start_time || 0);
             var minutesDifference = parseInt(millisecondsDifference / (1000 * 60));
 
             if (!result[taskKey]) {
@@ -1159,16 +1259,52 @@ exports.listDownload = async function (req, res) {
                     total_time_assembly: 0, total_time_ejecution: 0, quantity: 0, minutesDifference: 0
                 };
             }
-            result[taskKey].total_time_assembly += total_time_assembly;
-            result[taskKey].total_time_ejecution += total_time_ejecution;
+            result[taskKey].total_time_assembly += Number(total_time_assembly || 0);
+            result[taskKey].total_time_ejecution += Number(total_time_ejecution || 0);
             result[taskKey].minutesDifference += minutesDifference;
-            result[taskKey].quantity += quantity;
+            result[taskKey].quantity += Number(quantity || 0);
         }
-        const sortedResult = Object.values(result).sort((a, b) => a.item.toString().localeCompare(b.item.toString()));
-        return Object.values(sortedResult);
+        const sortedResult = Object.values(result).sort((a, b) => a.item - b.item);
+        return sortedResult;
     }
 
-    const taskDate = sumTaskDetails(lista_usuarios);
+    // console.log("lista_usuarios", lista_usuarios)
+    // console.log("allTaskKeys", allTaskKeys)
+
+    const alreadyDischarged = await Discharged.findAll({
+        where: {
+            key: {
+                [Op.in]: allTaskKeys
+            }
+        },
+        attributes: ['key']
+    });
+
+    const dischargedKeysSet = new Set(alreadyDischarged.map(d => d.key));
+    console.log(`${dischargedKeysSet.size} tareas ya han sido descargadas previamente.`);
+
+    const newTasksToProcess = {};
+    for (const key of allTaskKeys) {
+        if (!dischargedKeysSet.has(key)) {
+            newTasksToProcess[key] = lista_usuarios[key];
+        }
+    }
+
+    const newTasksCount = Object.keys(newTasksToProcess).length;
+    if (newTasksCount === 0) {
+        console.log('No hay tareas nuevas para descargar.');
+        return res.status(200).send({ orders: [], group: [] });
+    }
+    console.log(`Procesando ${newTasksCount} tareas nuevas.`);
+
+    const taskDate = sumTaskDetails(newTasksToProcess);
+
+    const newDischargedEntries = Object.keys(newTasksToProcess).map(key => ({ key: key }));
+
+    if (newDischargedEntries.length > 0) {
+        await Discharged.bulkCreate(newDischargedEntries);
+        console.log(`Se han guardado ${newDischargedEntries.length} nuevos registros en la tabla Discharged.`);
+    }
     
     var information = {
         orders: [],
@@ -1190,8 +1326,7 @@ exports.complianceReport = async function (req, res) {
     const date = new Date(year, month - 1, 1, 0, 0, 0, 0);
 
     const holidays = [
-        new Date(year, 0, 1), new Date(year, 5, 1), new Date(year, 8, 18),
-        new Date(year, 8, 19), new Date(year, 11, 25)
+        new Date(year, 0, 1), new Date(year, 11, 25)
     ];
 
     function isHoliday(date) {
@@ -1224,6 +1359,7 @@ exports.complianceReport = async function (req, res) {
     req.query.end = new Date(end).toISOString().split('T')[0];
 
     const listWorkers = await exports.listWorkers_return(req);
+    console.log("listWorkers", listWorkers)
 
     const agroupByName = {}
     for (const key in listWorkers){
@@ -1272,6 +1408,7 @@ exports.complianceReportbyDay = async function (req, res) {
     req.query.end = req.query.start;
 
     const listWorkers = await exports.listWorkers_return(req);
+    // console.log("listWorkers", listWorkers)
 
     const agroupByName = {}
     for (const key in listWorkers){
@@ -1365,9 +1502,9 @@ exports.timerReport = async function (req, res) {
     res.status(200).send(agroupByName)
 };
 
-// =========================================
-// INTEGRIDAD Y CORRECCIÓN DE DATOS
-// =========================================
+// ============================================================================
+// INTEGRIDAD Y CORRECCIÓN DE DATOS | Actualmente no se utilizan
+// ============================================================================
 
 /**
  * Busca y lista órdenes de trabajo que presentan inconsistencias entre el tiempo total registrado y la suma
@@ -1491,65 +1628,57 @@ exports.fixOrderTime = async function (req, res) {
 };
 
 // =========================================
-// ENDPOINT DE PRUEBA
+// TAREAS PROGRAMADAS (CRON JOBS)
 // =========================================
 
 /**
- * Endpoint simple para verificar que el servicio está funcionando.
- * @param {object} req - Objeto de solicitud de Express.
- * @param {object} res - Objeto de respuesta de Express.
+ * 
+ * En su momento se utilizaron tareas programadas para detener todas las órdenes
+ * al final de cada jornada laboral.
+ * 
  */
-exports.test = async function (req, res) {
-    console.log('Test')
-    res.header('Access-Control-Allow-Credentials', true);
-    res.status(200).send({ "message": "Test." });
-}
-
-// =========================================
-// TAREAS PROGRAMADAS (CRON JOBS)
-// =========================================
 
 const commonCronOptions = {
     scheduled: true,
     timezone: 'America/Santiago'
 };
 
-// Tareas para detener todas las órdenes al final de la jornada laboral
-cron.schedule('10 17 * * *', () => {
-    try {
-        console.log('Ejecutando stopAll a las 17:10 PM');
-        stopAll({}, {});
-    } catch (error) {
-        console.log('Error en stopAll: ', error);
-    }
-}, commonCronOptions);
+// // Tareas para detener todas las órdenes al final de la jornada laboral
+// cron.schedule('10 17 * * *', () => {
+//     try {
+//         console.log('Ejecutando stopAll a las 17:10 PM');
+//         stopAll({}, {});
+//     } catch (error) {
+//         console.log('Error en stopAll: ', error);
+//     }
+// }, commonCronOptions);
 
-cron.schedule('12 17 * * *', () => {
-    try {
-        console.log('Ejecutando stopAll a las 17:12 PM');
-        stopAll({}, {});
-    } catch (error) {
-        console.log('Error en stopAll: ', error);
-    }
-}, commonCronOptions);
+// cron.schedule('12 17 * * *', () => {
+//     try {
+//         console.log('Ejecutando stopAll a las 17:12 PM');
+//         stopAll({}, {});
+//     } catch (error) {
+//         console.log('Error en stopAll: ', error);
+//     }
+// }, commonCronOptions);
 
-cron.schedule('15 17 * * *', () => {
-    try {
-        console.log('Ejecutando stopAll a las 17:15 PM');
-        stopAll({}, {});
-    } catch (error) {
-        console.log('Error en stopAll: ', error);
-    }
-}, commonCronOptions);
+// cron.schedule('15 17 * * *', () => {
+//     try {
+//         console.log('Ejecutando stopAll a las 17:15 PM');
+//         stopAll({}, {});
+//     } catch (error) {
+//         console.log('Error en stopAll: ', error);
+//     }
+// }, commonCronOptions);
 
 
-// Tareas para detener todas las órdenes antes del inicio de la jornada laboral (limpieza)
-cron.schedule('05 4 * * *', () => {
-  console.log('Ejecutando stopAll a las 4:05 AM');
-  stopAll({}, {});
-}, commonCronOptions);
+// // Tareas para detener todas las órdenes antes del inicio de la jornada laboral (limpieza)
+// cron.schedule('05 4 * * *', () => {
+//   console.log('Ejecutando stopAll a las 4:05 AM');
+//   stopAll({}, {});
+// }, commonCronOptions);
 
-cron.schedule('10 4 * * *', () => {
-  console.log('Ejecutando stopAll a las 4:10 AM');
-  stopAll({}, {});
-}, commonCronOptions);
+// cron.schedule('10 4 * * *', () => {
+//   console.log('Ejecutando stopAll a las 4:10 AM');
+//   stopAll({}, {});
+// }, commonCronOptions);

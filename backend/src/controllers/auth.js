@@ -2,6 +2,12 @@
 // IMPORTS Y CONFIGURACIÓN
 // =========================================
 
+/**
+ * 
+ * Se utiliza la logica JTW para la autenticación de usuarios. Es decir, cada vez que un usuario se logea (con cualquier rol)
+ * el programa le genera un token JWT que debe ser enviado en cada solicitud subsecuente para verificar su identidad y permisos.
+ */
+
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 
@@ -36,6 +42,8 @@ exports.signUp = async function (req, res) {
 
     const savedUser = await newUser.save();
 
+    // Por defecto, el token expira en 1 año una vez iniciada la sesión. En su momento se habló
+    // de hacer que expirara antes, pero se decidió dejarlo así para no complicar el flujo de trabajo.
     const token = jwt.sign({ id: savedUser._id }, config.SECRET, {
         expiresIn: 86400 * 365 // 1 año
     });
