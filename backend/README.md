@@ -3,6 +3,9 @@
 Este repositorio contiene el backend para el **Sistema de Gestión de Tiempos y Órdenes de Trabajo**.  
 La aplicación está construida con **Node.js** y **Express**, y se encarga de gestionar usuarios, órdenes de trabajo (OTs), el seguimiento del tiempo de los operarios y la generación de reportes.
 
+Las versiones instaladas y probadas son:
+- Node.js v10.24.1
+- npm v6.14.12
 ---
 
 ## Tabla de Contenidos
@@ -28,7 +31,7 @@ La aplicación está construida con **Node.js** y **Express**, y se encarga de g
 - **Gestión de Órdenes (CRUD)**  
   Creación, lectura, actualización y eliminación de órdenes de trabajo.
 
-- **Control de Tiempo Granular**  
+- **Control de Tiempo**  
   Los operarios pueden iniciar, pausar y detener el trabajo, registrando intervalos precisos para cada etapa (montaje, ejecución, pausa).
 
 - **Carga Masiva de Datos**  
@@ -46,7 +49,7 @@ La aplicación está construida con **Node.js** y **Express**, y se encarga de g
 
 - **Node.js** – Entorno de ejecución JavaScript.
 - **Express.js** – Framework para la API REST.
-- **Sequelize** – ORM para la base de datos (**PostgreSQL / MySQL**).
+- **Sequelize** – ORM para la base de datos (**MSSQL**).
 - **Bcrypt-nodejs** – Encriptación de contraseñas.
 - **JWT (JSON Web Token)** – Seguridad y sesiones.
 - **Multer** – Middleware para subida de archivos.
@@ -58,9 +61,11 @@ La aplicación está construida con **Node.js** y **Express**, y se encarga de g
 
 ### Prerrequisitos
 
-- Node.js (se recomienda usar **NVM**).
-- npm o yarn.
-- Una base de datos SQL (PostgreSQL, MySQL o MariaDB).
+- Node.js (se recomienda usar **NVM** para instalar las diferentes versiones de node).
+- npm.
+- Una base de datos SQL (mssql).
+- Acceso al servidor de base de datos con las tablas necesarias (pedir credenciales al administrador del sistema).
+- Si quieres hacer pruebas, idealmente tener una base de datos local.
 
 ### Instalación
 
@@ -200,3 +205,6 @@ El servidor estará disponible en `http://localhost:3000`.
 - `POST /upload` – Subir archivo Excel (.xlsx).
 
 ---
+
+## Notas
+- Se deben pedir los accesos al servidor donde se encuentra la aplicación para descargar la base de datos y hacer pruebas locales.
