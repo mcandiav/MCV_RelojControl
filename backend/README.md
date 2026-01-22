@@ -4,7 +4,7 @@ Este repositorio contiene el backend para el **Sistema de Gestión de Tiempos y 
 La aplicación está construida con **Node.js** y **Express**, y se encarga de gestionar usuarios, órdenes de trabajo (OTs), el seguimiento del tiempo de los operarios y la generación de reportes.
 
 Las versiones instaladas y probadas son:
-- Node.js v10.24.1
+- Node.js v16.16.1
 - npm v6.14.12
 ---
 
