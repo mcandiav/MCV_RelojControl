@@ -66,18 +66,34 @@ Instala las dependencias:
 npm install
 ```
 
-Crea un archivo `.env` a partir del ejemplo y configúralo con los datos de tu base de datos:
+Configura las variables para la correcta conexión a la base de datos desde el archivo `./backend/config/config.js`. Asegúrate de ajustar los valores según tu entorno local:
 
-```env
-# backend/.env
-PORT=3000
-SECRET=tu_secreto_para_jwt
-DB_USER=postgres
-DB_PASSWORD=tu_contraseña
-DB_HOST=localhost
-DB_NAME=timer_db
-DB_PORT=5432
+```json
+module.exports = {
+    // Configuración token login
+    SECRET: "api-secret-",
+    // Configuración base de datos.
+    HOST: "localhost",
+    PORT: 1433, // Puerto predeterminado para SQL Server
+    USER: "user_bdd",
+    PASSWORD: "pass_bdd",
+    DB: "databse",
+    dialect: "mssql", // Indica que estás utilizando SQL Server
+
+    // Clave para eliminar recursos.
+    DELETE_SECRET: "b1234", // Asumo que DELETE_SECRET es diferente de SECRET
+}
 ```
+
+Debes tener acceso al servidor de base de datos con las tablas necesarias (pedir credenciales al administrador del sistema). Si quieres hacer pruebas, idealmente tener una base de datos local.
+
+Finalmente, dentro de backend puedes ejecuta el servidor:
+
+```bash
+npm run dev
+```
+
+Deberías ver un log indicando que la base de datos fue leida correctamente, de lo contrario, revisa la configuración de la base de datos.
 
 #### 2. Configurar el Frontend
 
@@ -93,12 +109,15 @@ Instala las dependencias:
 npm install
 ```
 
-Crea un archivo `.env` para apuntar a la URL del backend:
+Una vez instalado, sigue los pasos indicados en el archivo `front/README.md` para configurar y ejecutar el frontend.
 
-```env
-# front/.env
-VUE_APP_API_URL=http://localhost:3000/api
+Finalmente, inicia el servidor de desarrollo del frontend:
+
+```bash
+npm run serve
 ```
+
+Deberías ver un login en la URL que te indica vuejs.
 
 ---
 
@@ -108,10 +127,12 @@ VUE_APP_API_URL=http://localhost:3000/api
 
 ```bash
 cd backend
-npm start
+npm run dev
 ```
 
-El servidor de la API debería estar corriendo en `http://localhost:3000`. Al arrancar por primera vez, Sequelize creará automáticamente las tablas en la base de datos configurada.
+El servidor de la API debería estar corriendo en `http://localhost:3000`. Al arrancar por primera vez, Sequelize creará automáticamente las tablas en la base de datos configurada. Para ello, es necesario contar con una base de datos local (o remota).
+
+Dentro de backend hay archivos con datos de prueba para insertar usuarios y órdenes de trabajo (OTs) en la base de datos (`./src/libs`). Pero, idealmente, descargar una muestra de la base de datos desde el servidor de producción.
 
 ### Terminal 2: Iniciar el Frontend
 
@@ -136,7 +157,11 @@ Para una descripción detallada de la estructura interna, los modelos de la base
 El proyecto está alojado en un servidor privado dentro de la red de la empresa.
 El frontend y el backend se encuentran en `C:\Users\cstears\Desktop\timer`. Para hacer modificaciones del backend, basta con reemplazar los archivos en la carpeta `backend` y reiniciar el proceso (idealmente cambiar solo los archivos que modificas).
 
-Para aplicar modificaciones en el frontend en producción, primero debes
+El backend se ejecuta utilizando `pm2`. Para más información sobre `pm2`, consulta la [documentación oficial](https://pm2.keymetrics.io/docs/usage/quick-start/).
+
+----
+
+Para aplicar modificaciones en el frontend de producción, primero debes
 ejecutar el comando:
 
 ```bash
