@@ -1,0 +1,84 @@
+---
+description: Contexto completo del proyecto RelojControl para Bignotti
+alwaysApply: true
+---
+
+# Proyecto: RelojControl — Bignotti
+
+## Rol
+Eres un experto en NetSuite, Node.js, Vue.js y despliegue con Docker/EasyPanel.
+
+## Protocolo de trabajo con Miguel
+1. Discutir el problema antes de actuar.
+2. Preguntar dudas ANTES de responder.
+3. Describir qué hará cada cambio antes de ejecutarlo.
+4. Jamás dar comandos sin que Miguel los pida explícitamente.
+5. Los pasos se dan de a uno, esperando confirmación de ejecución.
+6. Jamás hacer editar comandos — darlos completos para copiar y pegar.
+7. No alucinar. Si no estás seguro, preguntar.
+8. Para operaciones que modifiquen datos: verificar primero que los servicios estén detenidos.
+9. Nunca asumir que una herramienta está instalada — proponer solución con Docker si es necesario.
+
+## Descripción del sistema
+Sistema de gestión de tiempos de producción para operarios de Bignotti.
+- Los operarios registran **play / pause / stop** en Órdenes de Trabajo (OTs).
+- El tiempo real se compara contra el tiempo planificado que viene de NetSuite.
+- Los datos fluyen: **NetSuite (Excel) → RelojControl → CSV → NetSuite** (manual hoy, automático a futuro).
+
+## Stack tecnológico
+- **Backend:** Node.js 16, Express, Sequelize ORM
+- **Base de datos sandbox:** MariaDB (producción usa SQL Server/MSSQL)
+- **Frontend:** Vue.js 2, Vuetify 2, Vuex
+- **Servidor frontend:** nginx (Alpine)
+- **Despliegue:** EasyPanel (Docker Swarm) en servidor físico VMware/Linux
+- **Proxy:** Traefik (maneja SSL y dominios automáticamente)
+
+## Repositorios
+- **Producción (NO TOCAR):** `https://github.com/mcandiav/RelojControl` — remote `origin`
+- **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — remote `sandbox`
+
+### Push al sandbox
+```bash
+git add .
+git commit -m "descripción"
+git push sandbox main
+```
+
+## Infraestructura sandbox
+- **Servidor EasyPanel:** 177.136.6.181
+- **Proyecto EasyPanel:** `bignotti`
+- **Frontend:** `reloj.at-once.cl`
+- **Backend API:** `reloj-api.at-once.cl`
+
+## Variables de entorno del backend
+```
+DB_HOST=mariadb
+DB_PORT=3306
+DB_USER=reloj
+DB_PASSWORD=Reloj2024!
+DB_NAME=relojcontrol
+DB_DIALECT=mariadb
+JWT_SECRET=api-secret-od
+DELETE_SECRET=b1234
+```
+
+## Build argument del frontend
+```
+VUE_APP_API_URL=https://reloj-api.at-once.cl/
+```
+
+## Modelos principales de la base de datos
+| Modelo | Propósito |
+|--------|-----------|
+| `Data` | OTs importadas desde Excel de NetSuite |
+| `Record` | OT activa de un operario (tiempo real) |
+| `Finalized` | Copia inmutable al completar una OT |
+| `Registry` | Log de inicio/fin de cada OT por usuario |
+| `TaskIntervals` | Intervalos precisos de trabajo/pausa por etapa |
+| `Discharged` | Marca OTs ya exportadas (evita duplicados en CSV) |
+| `User` | Operarios y admins |
+| `Role` | admin / operario |
+| `Workplace` | Puestos de trabajo / centros de costo |
+
+## Bitácora completa
+Ver `SANDBOX_CONFIG.md` en la raíz del proyecto.
