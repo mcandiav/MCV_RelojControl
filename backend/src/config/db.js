@@ -1,13 +1,18 @@
 const { Sequelize } = require('sequelize');
 const config = require("./config");
 
-const path = `${config.dialect}://${config.USER}:${config.PASSWORD}@${config.HOST}:${config.PORT}/${config.DB}`;
 const sequelize = new Sequelize(config.DB, config.USER, config.PASSWORD, {
-    dialect: 'mssql',//'mssql',
+    dialect: config.dialect,
     host: config.HOST,
     port: config.PORT,
-    idle_in_transaction_session_timeout: 60000
-  });
+    logging: false,
+    pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+    }
+});
 
 sequelize.authenticate().then(() => {
     console.log('Connection has been established successfully.');
