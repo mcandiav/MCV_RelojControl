@@ -57,7 +57,26 @@ git push sandbox main
 | Host interno (para backend) | `mariadb` |
 | Puerto interno | `3306` |
 
-### 2. Backend (reloj-api)
+### 2. Adminer (Web UI para MariaDB)
+| Campo | Valor |
+|-------|-------|
+| Nombre del servicio | `adminer` |
+| Docker Image | `adminer:5.4.2` |
+| Puerto interno | `8080` |
+| Dominio | `badminer.at-once.cl` |
+| Tunnel | Cloudflare (configurado desde EasyPanel → Domains) |
+
+**Cómo conectarse:**
+- URL: https://badminer.at-once.cl
+- Sistema: MySQL
+- Servidor: `mariadb`
+- Usuario: `reloj`
+- Contraseña: `Reloj2024!`
+- Base de datos: `relojcontrol`
+
+---
+
+### 3. Backend (reloj-api)
 | Campo | Valor |
 |-------|-------|
 | Nombre del servicio | `reloj-api` |
