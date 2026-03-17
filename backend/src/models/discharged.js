@@ -22,18 +22,6 @@ const dischargedSchema = sequelize.define('Discharged', {
   tableName: 'Discharged',
   modelName: 'Discharged',
   timestamps: true,
-  indexes: [
-    { unique: true, fields: ['key'], name: 'uniq_discharged_key' }
-  ]
-})
-
-
-// Mantengo el sync como en tu archivo original. Si vas a recrear la tabla,
-// primero haz DROP TABLE y luego deja que esto la cree con el nuevo esquema.
-sequelize.sync().then(() => {
-  console.log('Tabla Discharged (STRING key) lista!')
-}).catch((error) => {
-  console.error('No se puede crear/validar la tabla Discharged: ', error)
 })
 
 module.exports = dischargedSchema

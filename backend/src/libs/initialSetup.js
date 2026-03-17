@@ -85,6 +85,4 @@ async function load_users(){
     }
 }
 
-load_data()
-load_data_workplaces()
-load_users()
+module.exports = { load_data, load_data_workplaces, load_users }
