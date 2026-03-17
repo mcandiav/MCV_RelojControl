@@ -139,6 +139,53 @@ VUE_APP_API_URL=https://reloj-api.at-once.cl/
 
 ---
 
+## Datos iniciales cargados
+
+### Roles
+| id | name |
+|----|------|
+| 1 | admin |
+| 2 | operario |
+
+### Workplaces
+| id | name |
+|----|------|
+| 1 | IN |
+| 2 | ES |
+| 3 | ME |
+| 4 | ALL |
+
+### Usuario admin
+| Campo | Valor |
+|-------|-------|
+| username | `admin` |
+| password | `Admin2024!` |
+| name | Admin Bignotti |
+| RoleId | 1 (admin) |
+| WorkplaceId | 4 (ALL) |
+
+---
+
+## Decisiones técnicas tomadas
+
+### URL del backend en el frontend
+EasyPanel no tiene sección de "Build Arguments" visible. En lugar de usar ARG en el Dockerfile, se creó el archivo `front/.env.production` con la URL del backend hardcodeada para el sandbox. Vue CLI toma este archivo automáticamente durante `npm run build`.
+
+```
+VUE_APP_API_URL=https://reloj-api.at-once.cl/
+```
+
+Si en el futuro se cambia el dominio del backend, hay que actualizar este archivo y hacer rebuild del frontend.
+
+---
+
+## Bugs conocidos de EasyPanel
+
+### Primer build no se dispara automáticamente
+Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found" y no ejecuta el primer build. **Solución:** ir a Settings → GitHub token → guardar el mismo token sin modificarlo. Esto refresca la conexión y dispara el build. Es un bug conocido de EasyPanel, no un problema del código ni del token.
+
+---
+
 ## Notas importantes
 
 - El repo de **producción NO se toca**. Todos los cambios van al repo sandbox.
