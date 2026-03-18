@@ -179,18 +179,19 @@ exports.updateUser = async function (req, res) {
 
         if (!userFound) return res.status(404).json({ message: "No user found." });
 
-        const updateData = { ...req.body };
+        const { password, id, ...fields } = req.body;
 
-        if (updateData.password) {
+        userFound.name        = fields.name        ?? userFound.name;
+        userFound.lastname    = fields.lastname    ?? userFound.lastname;
+        userFound.RoleId      = fields.RoleId      ?? userFound.RoleId;
+        userFound.WorkplaceId = fields.WorkplaceId ?? userFound.WorkplaceId;
+
+        if (password) {
             const salt = bcrypt.genSaltSync();
-            updateData.password = bcrypt.hashSync(updateData.password, salt);
-        } else {
-            delete updateData.password;
+            userFound.password = bcrypt.hashSync(password, salt);
         }
 
-        await User.update(updateData, {
-            where: { id: req.params.id }
-        });
+        await userFound.save();
 
         res.status(200).json({ message: "User updated." });
     } catch (error) {

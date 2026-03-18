@@ -30,15 +30,15 @@
                                     </v-col>
                                     <v-col cols="12" sm="4">
                                         <v-text-field v-model="sigin.username" label="Username" outlined
-                                            :rules="usernameRules"></v-text-field>
+                                            :rules="usernameRules" autocomplete="off"></v-text-field>
                                     </v-col>
                                     <v-col cols="12" sm="6">
                                         <v-text-field v-model="sigin.password" label="Contraseña" outlined
-                                            type="password" :rules="passwordRules"></v-text-field>
+                                            type="password" :rules="passwordRules" autocomplete="new-password"></v-text-field>
                                     </v-col>
                                     <v-col cols="12" sm="6">
                                         <v-text-field v-model="sigin.passwordConfirm" label="Confirmar contraseña" outlined
-                                            type="password" :rules="passwordConfirmRules"></v-text-field>
+                                            type="password" :rules="passwordConfirmRules" autocomplete="new-password"></v-text-field>
                                     </v-col>
                                     <v-col cols="12" sm="6">
                                         Roles
