@@ -33,6 +33,14 @@
                                             :rules="usernameRules"></v-text-field>
                                     </v-col>
                                     <v-col cols="12" sm="6">
+                                        <v-text-field v-model="sigin.password" label="Contraseña" outlined
+                                            type="password" :rules="passwordRules"></v-text-field>
+                                    </v-col>
+                                    <v-col cols="12" sm="6">
+                                        <v-text-field v-model="sigin.passwordConfirm" label="Confirmar contraseña" outlined
+                                            type="password" :rules="passwordConfirmRules"></v-text-field>
+                                    </v-col>
+                                    <v-col cols="12" sm="6">
                                         Roles
                                         <v-select v-model="formRoles" :items="roles" item-text="name" item-value="id"
                                             label="Seleccionar un rol." return-object single-line
@@ -101,7 +109,8 @@ export default {
                 name: '',
                 lastname: '',
                 username: '',
-                password: ''
+                password: '',
+                passwordConfirm: ''
             },
             tab: 1,
             passValidation: null,
@@ -124,6 +133,14 @@ export default {
             usernameRules: [
                 v => !!v || 'El Username es necesario.',
                 v => v.length <= 100 || 'El username debe contener menos de 100 caracteres.',
+            ],
+            passwordRules: [
+                v => !!v || 'La contraseña es necesaria.',
+                v => v.length >= 4 || 'La contraseña debe tener al menos 4 caracteres.',
+            ],
+            passwordConfirmRules: [
+                v => !!v || 'Confirme la contraseña.',
+                v => v === this.sigin.password || 'Las contraseñas no coinciden.',
             ],
             rolesRules: [
                 v => !!v || 'El rol es necesario.',
@@ -162,10 +179,6 @@ export default {
         async createUser() {
             if (this.valid) {
                 this.alert = false
-                this.sigin.name = this.sigin.name.toUpperCase();
-                this.sigin.lastname = this.sigin.lastname.toUpperCase();
-                this.sigin.username = this.sigin.username.toUpperCase();
-                this.sigin.password = this.sigin.username + "123"
 
                 await axios.get('/order/getUsername', {
                     params: {
@@ -201,6 +214,7 @@ export default {
             this.sigin.lastname = ''
             this.sigin.username = ''
             this.sigin.password = ''
+            this.sigin.passwordConfirm = ''
             this.formRoles = null
             this.formWorkplaces = null
         },

@@ -51,6 +51,18 @@
                             label="Seleccionar el lugar de trabajo." return-object single-line
                             :rules="workplaceRules"></v-select>
                     </v-col>
+                    <v-col cols="12">
+                        <v-divider class="my-2"></v-divider>
+                        <div class="text-caption grey--text mb-2">Cambio de contraseña (opcional — dejar vacío para no cambiar)</div>
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                        <v-text-field v-model="newPassword" label="Nueva contraseña" outlined
+                            type="password" :rules="newPasswordRules" clearable></v-text-field>
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                        <v-text-field v-model="newPasswordConfirm" label="Confirmar nueva contraseña" outlined
+                            type="password" :rules="newPasswordConfirmRules" clearable></v-text-field>
+                    </v-col>
                 </v-row>
             </v-container>
           </v-form>
@@ -104,6 +116,14 @@
           workplaceRules: [
               v => !!v || 'El lugar de trabajo es necesario.',
           ],
+          newPassword: '',
+          newPasswordConfirm: '',
+          newPasswordRules: [
+              v => !v || v.length >= 4 || 'La contraseña debe tener al menos 4 caracteres.',
+          ],
+          newPasswordConfirmRules: [
+              v => !this.newPassword || v === this.newPassword || 'Las contraseñas no coinciden.',
+          ],
           roles: [],
           workplaces: [],
           editedItem: {
@@ -156,15 +176,20 @@
           }),
           edit() {
               if (this.valid) {
-                console.log("Valores editados: ", this.editedItem)
-                axios.put('/auth/users/' + this.editedItem.id, {
+                const payload = {
                     id: this.editedItem.id,
                     name: this.editedItem.name,
                     lastname: this.editedItem.lastname,
                     RoleId: this.editedItem.Role.id,
                     WorkplaceId: this.editedItem.Workplace.id
-                }).then(res => {
+                }
+                if (this.newPassword && this.newPassword === this.newPasswordConfirm) {
+                    payload.password = this.newPassword
+                }
+                axios.put('/auth/users/' + this.editedItem.id, payload).then(res => {
                     if (res.status === 200) {
+                        this.newPassword = ''
+                        this.newPasswordConfirm = ''
                         this.dialog = false
                         this.$emit('update')
                     }

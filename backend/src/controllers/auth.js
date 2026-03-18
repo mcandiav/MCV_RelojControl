@@ -9,6 +9,7 @@
  */
 
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt-nodejs');
 const config = require('../config/config');
 
 // Modelos de la Base de Datos
@@ -178,7 +179,16 @@ exports.updateUser = async function (req, res) {
 
         if (!userFound) return res.status(404).json({ message: "No user found." });
 
-        await User.update(req.body, {
+        const updateData = { ...req.body };
+
+        if (updateData.password) {
+            const salt = bcrypt.genSaltSync();
+            updateData.password = bcrypt.hashSync(updateData.password, salt);
+        } else {
+            delete updateData.password;
+        }
+
+        await User.update(updateData, {
             where: { id: req.params.id }
         });
 
