@@ -1,7 +1,7 @@
 # MCV_RelojControl — Sandbox de Desarrollo
 
 > **Este repositorio es el ambiente sandbox/desarrollo.**
-> La arquitectura general del sistema está documentada en [`Arquitectura MCV_RelojContro.md`](./Arquitectura%20MCV_RelojContro.md) (documento del arquitecto).
+> La arquitectura general del sistema está documentada en [`Arquitectura MCV_RelojControl.md`](./Arquitectura%20MCV_RelojControl.md) (documento del arquitecto).
 > Este README describe las decisiones específicas del ambiente sandbox: base de datos, despliegue, variables de entorno y cambios aplicados respecto a producción.
 
 ---
@@ -165,7 +165,7 @@ El sistema agrupa OTs completadas por `ot + item`, suma tiempos reales de todos 
 
 ## Referencias
 
-- Arquitectura general del sistema: [`Arquitectura MCV_RelojContro.md`](./Arquitectura%20MCV_RelojContro.md)
+- Arquitectura general del sistema: [`Arquitectura MCV_RelojControl.md`](./Arquitectura%20MCV_RelojControl.md)
 - Bitácora de configuración del sandbox: [`SANDBOX_CONFIG.md`](./SANDBOX_CONFIG.md)
 - README del backend: [`backend/README.md`](./backend/README.md)
 - README del frontend: [`front/README.md`](./front/README.md)

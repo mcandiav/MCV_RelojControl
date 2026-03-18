@@ -1,8 +1,8 @@
-# Arquitectura MCV_RelojContro
+# Arquitectura MCV_RelojControl
 
 ## 1. Propósito
 
-Este documento describe la arquitectura funcional y técnica del proyecto **MCV_RelojControl** (referenciado en este documento con el nombre solicitado **MCV_RelojContro**), con el objetivo de que el repositorio tenga una guía clara para desarrollo, mantenimiento y evolución.
+Este documento describe la arquitectura funcional y técnica del proyecto **MCV_RelojControl** (referenciado en este documento con el nombre solicitado **MCV_RelojControl**), con el objetivo de que el repositorio tenga una guía clara para desarrollo, mantenimiento y evolución.
 
 El sistema está orientado a la **gestión de tiempos y órdenes de trabajo**, permitiendo:
 
@@ -417,7 +417,7 @@ Esto facilitaría:
 
 ## 12. Resumen ejecutivo
 
-**MCV_RelojContro** es un sistema de gestión de tiempos y órdenes de trabajo compuesto por un frontend SPA en Vue.js, un backend REST en Node.js/Express y una base de datos MSSQL.
+**MCV_RelojControl** es un sistema de gestión de tiempos y órdenes de trabajo compuesto por un frontend SPA en Vue.js, un backend REST en Node.js/Express y una base de datos MSSQL.
 
 Su fortaleza principal está en:
 - la separación frontend/backend
