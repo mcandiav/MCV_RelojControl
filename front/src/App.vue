@@ -31,7 +31,11 @@ export default {
   mounted(){
   },
   created(){
-    document.title = this.user.name + " " + this.user.lastname
+    if(this.user !== null){
+      document.title = this.user.name + " " + this.user.lastname
+    }else{
+      document.title = "Reloj Control"
+    }
   },
   methods: {
   },
