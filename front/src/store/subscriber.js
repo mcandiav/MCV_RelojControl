@@ -11,7 +11,7 @@ store.subscribe((mutation) => {
                 axios.defaults.headers.common['x-access-token'] = mutation.payload
                 localStorage.setItem(`token_${window.name}`, mutation.payload)
             } else {
-                axios.defaults.headers.common['x-access-token'] = null
+                delete axios.defaults.headers.common['x-access-token']
                 localStorage.removeItem(`token_${window.name}`)
             }
             break

@@ -29,54 +29,82 @@
             <!-- MODO OPERARIO            -->
             <!-- ======================== -->
             <v-tab-item>
-              <v-card-text class="pa-6">
-                <div class="mb-5">
-                  <v-select
-                    v-model="operarioSeleccionado"
-                    :items="operarios"
-                    item-text="nombreCompleto"
-                    item-value="username"
-                    label="¿Quién sos?"
-                    outlined
-                    rounded
-                    hide-details
-                    :loading="cargandoOperarios"
-                    no-data-text="No hay operarios disponibles"
-                    class="select-grande"
-                  ></v-select>
-                </div>
+              <v-card-text class="pa-4">
 
-                <!-- Display del PIN -->
-                <div class="pin-display mb-4">
-                  <span
-                    v-for="i in 6"
-                    :key="i"
-                    class="pin-punto"
-                    :class="{ 'pin-punto--activo': i <= pin.length }"
-                  >●</span>
-                </div>
-
-                <!-- Teclado numérico -->
-                <v-row no-gutters class="pin-teclado">
-                  <v-col cols="4" v-for="(num, idx) in teclado" :key="idx">
+                <!-- PASO 1: Seleccionar nombre -->
+                <div v-if="!operarioSeleccionado">
+                  <div class="text-subtitle-1 font-weight-bold text-center mb-3 grey--text text--darken-2">
+                    Tocá tu nombre
+                  </div>
+                  <div v-if="cargandoOperarios" class="text-center py-4">
+                    <v-progress-circular indeterminate color="primary"></v-progress-circular>
+                  </div>
+                  <div v-else-if="operarios.length === 0" class="text-center grey--text py-4">
+                    No hay operarios registrados
+                  </div>
+                  <div v-else class="lista-operarios">
                     <v-btn
-                      v-if="num !== null"
-                      @click="presionarTecla(num)"
-                      x-large
+                      v-for="op in operarios"
+                      :key="op.username"
+                      @click="seleccionarOperario(op)"
                       block
-                      class="tecla ma-1"
-                      :color="num === '⌫' ? 'error' : 'grey lighten-3'"
-                      :elevation="2"
+                      x-large
+                      class="nombre-btn mb-2"
+                      color="blue darken-4"
+                      dark
+                      elevation="2"
                     >
-                      <span class="tecla-texto">{{ num }}</span>
+                      <span class="nombre-texto">{{ op.name }} {{ op.lastname }}</span>
                     </v-btn>
-                    <div v-else class="ma-1" style="height: 60px;"></div>
-                  </v-col>
-                </v-row>
+                  </div>
+                </div>
 
-                <v-alert v-if="error.status && modo === 0" type="error" dense rounded class="mt-4">
-                  {{ error.message }}
-                </v-alert>
+                <!-- PASO 2: Ingresar PIN -->
+                <div v-else>
+                  <div class="d-flex align-center mb-4">
+                    <v-btn icon @click="operarioSeleccionado = null; pin = ''" color="grey">
+                      <v-icon>mdi-arrow-left</v-icon>
+                    </v-btn>
+                    <div class="ml-2">
+                      <div class="text-subtitle-2 grey--text">Operario</div>
+                      <div class="text-h6 font-weight-bold">{{ operarioSeleccionado.name }} {{ operarioSeleccionado.lastname }}</div>
+                    </div>
+                  </div>
+
+                  <!-- Display del PIN -->
+                  <div class="pin-display mb-4">
+                    <span
+                      v-for="i in 4"
+                      :key="i"
+                      class="pin-punto"
+                      :class="{ 'pin-punto--activo': i <= pin.length }"
+                    >●</span>
+                  </div>
+
+                  <!-- Teclado numérico -->
+                  <v-row no-gutters class="pin-teclado">
+                    <v-col cols="4" v-for="(num, idx) in teclado" :key="idx">
+                      <v-btn
+                        v-if="num !== null"
+                        @click="presionarTecla(num)"
+                        x-large
+                        block
+                        class="tecla ma-1"
+                        :color="num === '⌫' ? 'error' : 'grey lighten-3'"
+                        :elevation="2"
+                        :loading="cargando && num !== '⌫'"
+                      >
+                        <span class="tecla-texto">{{ num }}</span>
+                      </v-btn>
+                      <div v-else class="ma-1" style="height: 60px;"></div>
+                    </v-col>
+                  </v-row>
+
+                  <v-alert v-if="error.status" type="error" dense rounded class="mt-4">
+                    {{ error.message }}
+                  </v-alert>
+                </div>
+
               </v-card-text>
             </v-tab-item>
 
@@ -171,6 +199,7 @@ export default {
     modo() {
       this.error = { status: false, message: '' }
       this.pin = ''
+      this.operarioSeleccionado = null
     }
   },
 
@@ -181,10 +210,7 @@ export default {
       this.cargandoOperarios = true
       try {
         const res = await axios.get('/auth/operarios')
-        this.operarios = res.data.map(u => ({
-          ...u,
-          nombreCompleto: `${u.name} ${u.lastname}`
-        }))
+        this.operarios = res.data
       } catch (e) {
         console.error('Error cargando operarios', e)
       } finally {
@@ -192,29 +218,31 @@ export default {
       }
     },
 
+    seleccionarOperario(op) {
+      this.operarioSeleccionado = op
+      this.pin = ''
+      this.error = { status: false, message: '' }
+    },
+
     presionarTecla(tecla) {
+      if (this.cargando) return
       this.error = { status: false, message: '' }
       if (tecla === '⌫') {
         this.pin = this.pin.slice(0, -1)
         return
       }
-      if (this.pin.length >= 6) return
+      if (this.pin.length >= 4) return
       this.pin += String(tecla)
 
-      if (this.pin.length === 6) {
+      if (this.pin.length === 4) {
         this.ingresarOperario()
       }
     },
 
     async ingresarOperario() {
-      if (!this.operarioSeleccionado) {
-        this.error = { status: true, message: 'Seleccioná tu nombre primero.' }
-        this.pin = ''
-        return
-      }
       this.cargando = true
       try {
-        await this.signIn({ username: this.operarioSeleccionado, password: this.pin })
+        await this.signIn({ username: this.operarioSeleccionado.username, password: this.pin })
         this.$router.push('/')
       } catch {
         this.error = { status: true, message: 'PIN incorrecto. Intentá de nuevo.' }
@@ -255,19 +283,30 @@ export default {
   min-height: 56px;
 }
 
-.select-grande >>> .v-input__slot {
-  min-height: 64px !important;
+.lista-operarios {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.nombre-btn {
+  border-radius: 12px !important;
+  height: 60px !important;
+}
+
+.nombre-texto {
   font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .pin-display {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 20px;
 }
 
 .pin-punto {
-  font-size: 2rem;
+  font-size: 2.5rem;
   color: #e0e0e0;
   transition: color 0.15s;
 }
