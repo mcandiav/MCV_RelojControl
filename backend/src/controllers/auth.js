@@ -121,6 +121,15 @@ exports.logOut = async function (req, res) {
  * @param {object} req - Objeto de solicitud de Express (utiliza req.userId del token).
  * @param {object} res - Objeto de respuesta de Express.
  */
+exports.getOperarios = async function (req, res) {
+    const operarios = await User.findAll({
+        include: [{ model: Role, where: { name: 'operario' } }],
+        attributes: ['id', 'username', 'name', 'lastname'],
+        order: [['name', 'ASC']]
+    });
+    return res.status(200).json(operarios);
+};
+
 exports.me = async function (req, res) {
     console.log('me');
     const userFound = await User.findOne({

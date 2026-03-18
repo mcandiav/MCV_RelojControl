@@ -10,6 +10,9 @@ const security = require('../middlewares/authJwt')
 // Iniciar sesión
 router.post('/signin', auth.signIn);
 
+// Obtener lista de operarios (público, para pantalla de login)
+router.get('/operarios', auth.getOperarios);
+
 // Registrarse
 router.post('/signup', auth.signUp);
 
