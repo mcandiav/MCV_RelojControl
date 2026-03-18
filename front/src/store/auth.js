@@ -42,6 +42,8 @@ export default {
         async attempt({ commit } , token){
             if(token){
                 commit('SET_TOKEN', token)
+            } else {
+                return
             }
 
             try {
