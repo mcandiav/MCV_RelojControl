@@ -17,7 +17,7 @@ export default {
         },
 
         isAdmin(state){
-            return state.user.Role.name == 'admin'
+            return state.user && state.user.Role && state.user.Role.name == 'admin'
         }
     },
 

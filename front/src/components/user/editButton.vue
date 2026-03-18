@@ -95,7 +95,8 @@
   
   export default {
       props: ['items'],
-      data: () => ({
+      data() {
+        return {
           dialog: false,
           valid: false,
           nameRules: [
@@ -140,7 +141,8 @@
                   name: null
               }
           }
-      }),
+        }
+      },
       watch: {
         async dialog(val) {
             console.log("Dialog: ", val)
