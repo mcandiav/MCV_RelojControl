@@ -23,115 +23,115 @@
             </v-tab>
           </v-tabs>
 
-          <v-card-text class="pa-6">
+          <v-tabs-items v-model="modo">
 
             <!-- ======================== -->
             <!-- MODO OPERARIO            -->
             <!-- ======================== -->
             <v-tab-item>
-              <div class="mb-5">
-                <v-select
-                  v-model="operarioSeleccionado"
-                  :items="operarios"
-                  item-text="nombreCompleto"
-                  item-value="username"
-                  label="¿Quién sos?"
-                  outlined
-                  rounded
-                  hide-details
-                  :loading="cargandoOperarios"
-                  no-data-text="No hay operarios disponibles"
-                  class="select-grande"
-                ></v-select>
-              </div>
+              <v-card-text class="pa-6">
+                <div class="mb-5">
+                  <v-select
+                    v-model="operarioSeleccionado"
+                    :items="operarios"
+                    item-text="nombreCompleto"
+                    item-value="username"
+                    label="¿Quién sos?"
+                    outlined
+                    rounded
+                    hide-details
+                    :loading="cargandoOperarios"
+                    no-data-text="No hay operarios disponibles"
+                    class="select-grande"
+                  ></v-select>
+                </div>
 
-              <!-- Display del PIN -->
-              <div class="pin-display mb-4">
-                <span
-                  v-for="(digito, i) in 6"
-                  :key="i"
-                  class="pin-punto"
-                  :class="{ 'pin-punto--activo': i < pin.length }"
-                >●</span>
-              </div>
+                <!-- Display del PIN -->
+                <div class="pin-display mb-4">
+                  <span
+                    v-for="i in 6"
+                    :key="i"
+                    class="pin-punto"
+                    :class="{ 'pin-punto--activo': i <= pin.length }"
+                  >●</span>
+                </div>
 
-              <!-- Teclado numérico -->
-              <v-row no-gutters class="pin-teclado">
-                <v-col cols="4" v-for="num in [1,2,3,4,5,6,7,8,9,'',0,'⌫']" :key="num">
-                  <v-btn
-                    v-if="num !== ''"
-                    @click="presionarTecla(num)"
-                    x-large
-                    block
-                    class="tecla ma-1"
-                    :color="num === '⌫' ? 'error' : 'grey lighten-3'"
-                    :elevation="2"
-                  >
-                    <span class="tecla-texto">{{ num }}</span>
-                  </v-btn>
-                  <div v-else class="ma-1" style="height: 60px;"></div>
-                </v-col>
-              </v-row>
+                <!-- Teclado numérico -->
+                <v-row no-gutters class="pin-teclado">
+                  <v-col cols="4" v-for="(num, idx) in teclado" :key="idx">
+                    <v-btn
+                      v-if="num !== null"
+                      @click="presionarTecla(num)"
+                      x-large
+                      block
+                      class="tecla ma-1"
+                      :color="num === '⌫' ? 'error' : 'grey lighten-3'"
+                      :elevation="2"
+                    >
+                      <span class="tecla-texto">{{ num }}</span>
+                    </v-btn>
+                    <div v-else class="ma-1" style="height: 60px;"></div>
+                  </v-col>
+                </v-row>
 
-              <!-- Error -->
-              <v-alert v-if="error.status && modo === 0" type="error" dense rounded class="mt-4">
-                {{ error.message }}
-              </v-alert>
+                <v-alert v-if="error.status && modo === 0" type="error" dense rounded class="mt-4">
+                  {{ error.message }}
+                </v-alert>
+              </v-card-text>
             </v-tab-item>
 
             <!-- ======================== -->
             <!-- MODO ADMINISTRADOR       -->
             <!-- ======================== -->
             <v-tab-item>
-              <v-text-field
-                v-model="username"
-                label="Usuario"
-                outlined
-                rounded
-                prepend-inner-icon="mdi-account"
-                class="mb-3"
-                hide-details
-                autofocus
-                @keyup.enter="$refs.passwordField.focus()"
-              ></v-text-field>
+              <v-card-text class="pa-6">
+                <v-text-field
+                  v-model="username"
+                  label="Usuario"
+                  outlined
+                  rounded
+                  prepend-inner-icon="mdi-account"
+                  class="mb-3"
+                  hide-details
+                  @keyup.enter="$refs.passwordField.focus()"
+                ></v-text-field>
 
-              <v-text-field
-                v-model="password"
-                label="Contraseña"
-                :type="mostrarPassword ? 'text' : 'password'"
-                outlined
-                rounded
-                prepend-inner-icon="mdi-lock"
-                :append-icon="mostrarPassword ? 'mdi-eye-off' : 'mdi-eye'"
-                @click:append="mostrarPassword = !mostrarPassword"
-                hide-details
-                ref="passwordField"
-                @keyup.enter="ingresar"
-              ></v-text-field>
+                <v-text-field
+                  v-model="password"
+                  label="Contraseña"
+                  :type="mostrarPassword ? 'text' : 'password'"
+                  outlined
+                  rounded
+                  prepend-inner-icon="mdi-lock"
+                  :append-icon="mostrarPassword ? 'mdi-eye-off' : 'mdi-eye'"
+                  @click:append="mostrarPassword = !mostrarPassword"
+                  hide-details
+                  ref="passwordField"
+                  @keyup.enter="ingresar"
+                ></v-text-field>
 
-              <!-- Error -->
-              <v-alert v-if="error.status && modo === 1" type="error" dense rounded class="mt-4">
-                {{ error.message }}
-              </v-alert>
+                <v-alert v-if="error.status && modo === 1" type="error" dense rounded class="mt-4">
+                  {{ error.message }}
+                </v-alert>
+              </v-card-text>
+
+              <v-card-actions class="px-6 pb-6">
+                <v-btn
+                  @click="ingresar"
+                  color="primary"
+                  x-large
+                  block
+                  rounded
+                  :loading="cargando"
+                  elevation="2"
+                >
+                  <v-icon left>mdi-login</v-icon>
+                  Ingresar
+                </v-btn>
+              </v-card-actions>
             </v-tab-item>
 
-          </v-card-text>
-
-          <!-- Botón ingresar (solo admin) -->
-          <v-card-actions v-if="modo === 1" class="px-6 pb-6">
-            <v-btn
-              @click="ingresar"
-              color="primary"
-              x-large
-              block
-              rounded
-              :loading="cargando"
-              elevation="2"
-            >
-              <v-icon left>mdi-login</v-icon>
-              Ingresar
-            </v-btn>
-          </v-card-actions>
+          </v-tabs-items>
 
         </v-card>
       </v-flex>
@@ -151,6 +151,7 @@ export default {
       operarios: [],
       operarioSeleccionado: null,
       pin: '',
+      teclado: [1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, '⌫'],
       cargandoOperarios: false,
       // Admin
       username: '',
