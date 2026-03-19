@@ -31,11 +31,9 @@
                   label="Numero de OT"
                   outlined
                   dense
-                  @keyup.enter="buscarOperaciones"
+              hide-details
                 />
-                <v-btn color="primary" :loading="loadingOps" @click="buscarOperaciones">
-                  Buscar operaciones
-                </v-btn>
+            <div class="grey--text text-caption mt-2">Busqueda automatica al escribir el numero.</div>
               </v-card>
             </v-col>
 
@@ -67,7 +65,7 @@
               <v-card outlined class="pa-4">
                 <div class="text-subtitle-1 font-weight-bold mb-3">Operaciones por OT</div>
                 <v-alert v-if="errorOps" type="error" dense class="mb-3">{{ errorOps }}</v-alert>
-                <v-simple-table v-if="operations.length > 0">
+            <v-simple-table v-if="operations.length > 0" class="compact-table">
                   <thead>
                     <tr>
                       <th>Operacion</th>
@@ -99,13 +97,15 @@
                   <td>{{ op.planned_quantity != null ? op.planned_quantity : '-' }}</td>
                   <td>{{ op.completed_quantity != null ? op.completed_quantity : '-' }}</td>
                   <td>{{ op.area }}</td>
-                      <td>
-                    <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
-                    <v-btn x-small class="ml-1" color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
-                    <v-btn x-small class="ml-1" color="error" @click="timerAction('stop', op.id)">Stop</v-btn>
+                  <td class="actions-cell">
+                    <div class="action-buttons">
+                      <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
+                      <v-btn x-small color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
+                      <v-btn x-small color="error" @click="timerAction('stop', op.id)">Stop</v-btn>
                     <template v-if="isAdmin">
                       <v-btn x-small color="error" @click="borrarOperacion(op.id)">Borrar</v-btn>
                     </template>
+                    </div>
                       </td>
                     </tr>
                   </tbody>
@@ -120,7 +120,7 @@
               <v-card outlined class="pa-4">
                 <div class="text-subtitle-1 font-weight-bold mb-3">Tablero de cronometros activos</div>
                 <v-alert v-if="errorBoard" type="error" dense class="mb-3">{{ errorBoard }}</v-alert>
-                <v-simple-table v-if="activeBoard.length > 0">
+            <v-simple-table v-if="activeBoard.length > 0" class="compact-table">
                   <thead>
                     <tr>
                       <th>OT</th>
@@ -229,6 +229,7 @@ export default {
       nowTick: Date.now(),
       clockInterval: null,
       uploadFilename: 'ResultadosZIMDataRelojControlDefaultView285.xls',
+      searchTimeout: null,
       newUser: {
         name: '',
         lastname: '',
@@ -246,6 +247,21 @@ export default {
   },
   beforeDestroy() {
     if (this.clockInterval) clearInterval(this.clockInterval)
+    if (this.searchTimeout) clearTimeout(this.searchTimeout)
+  },
+  watch: {
+    otNumber(value) {
+      if (this.searchTimeout) clearTimeout(this.searchTimeout)
+      const digits = String(value || '').replace(/[^0-9]/g, '')
+      if (!digits) {
+        this.operations = []
+        this.errorOps = ''
+        return
+      }
+      this.searchTimeout = setTimeout(() => {
+        this.buscarOperaciones()
+      }, 300)
+    }
   },
   methods: {
     formatElapsed(row) {
@@ -326,13 +342,14 @@ export default {
     async buscarOperaciones() {
       this.errorOps = ''
       this.operations = []
-      if (!this.otNumber) {
+      const normalized = String(this.otNumber || '').replace(/[^0-9]/g, '')
+      if (!normalized) {
         this.errorOps = 'Ingresa un numero de OT.'
         return
       }
       this.loadingOps = true
       try {
-        const res = await axios.get(`/chronometer/operations/${encodeURIComponent(this.otNumber)}`)
+        const res = await axios.get(`/chronometer/operations/${encodeURIComponent(normalized)}`)
         this.operations = res.data.operations || []
       } catch (error) {
         this.errorOps = (error.response && error.response.data && error.response.data.message) || 'No fue posible buscar operaciones.'
@@ -408,3 +425,23 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.compact-table table th,
+.compact-table table td {
+  font-size: 12px !important;
+  white-space: nowrap;
+  padding: 6px 8px !important;
+}
+
+.actions-cell {
+  white-space: nowrap;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: center;
+}
+</style>
