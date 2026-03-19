@@ -193,3 +193,86 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 - El flujo con NetSuite es **manual**: Excel entra → operarios trabajan → CSV sale → se sube a NetSuite.
 - A futuro se puede automatizar usando la **NetSuite REST API** (OAuth 2.0).
 - Las credenciales de NetSuite (sandbox y productivo) las administra Miguel.
+
+---
+
+## Configuración específica de Cronómetro / Integración NetSuite (v2)
+
+### 1) Polling de búsqueda de OTs en WIP
+
+- La búsqueda de OTs en proceso (WIP) se realizará automáticamente desde NetSuite.
+- El intervalo por defecto del polling es cada **3 horas**.
+- El intervalo es configurable a un valor menor, respetando un mínimo operativo.
+
+**Parámetros de control**
+
+| Variable | Descripción | Valor sugerido |
+|----------|-------------|----------------|
+| `NS_WIP_POLL_ENABLED` | Habilita/deshabilita polling de WIP desde NetSuite | `true` |
+| `NS_WIP_POLL_INTERVAL_MINUTES` | Intervalo de ejecución del polling | `180` |
+| `NS_WIP_POLL_MIN_INTERVAL_MINUTES` | Límite mínimo permitido para el intervalo | `10` |
+
+### 2) Batch de cierre de turno
+
+- El envío de tiempos a NetSuite se hace en **batch al cierre de turno**.
+- Se envía el **total acumulado de tiempo real por operación** del turno.
+- La ejecución del cierre de turno se programa a las **17:00** en zona horaria `America/Santiago`.
+- Al cierre de turno se ejecuta **detención automática de todos los cronómetros activos**.
+
+**Parámetros de control**
+
+| Variable | Descripción | Valor sugerido |
+|----------|-------------|----------------|
+| `NS_SHIFT_BATCH_ENABLED` | Habilita/deshabilita batch de cierre de turno | `true` |
+| `NS_AUTO_STOP_AT_SHIFT_END` | Detiene automáticamente cronómetros al cierre | `true` |
+| `NS_TIMEZONE` | Zona horaria oficial de ejecución | `America/Santiago` |
+| `NS_RETRY_ENABLED` | Habilita reintentos si falla el envío del batch | `true` |
+
+> Nota: la política exacta de reintentos (cantidad e intervalo) queda pendiente de definición funcional.
+
+### 3) Variables nuevas de entorno del backend
+
+| Variable | Descripción |
+|----------|-------------|
+| `NS_SYNC_ENABLED` | Habilita/deshabilita integración NetSuite en backend |
+| `NS_WIP_POLL_ENABLED` | Activa polling de OTs WIP |
+| `NS_WIP_POLL_INTERVAL_MINUTES` | Frecuencia del polling en minutos |
+| `NS_WIP_POLL_MIN_INTERVAL_MINUTES` | Mínimo permitido para el polling |
+| `NS_SHIFT_BATCH_ENABLED` | Activa batch de cierre de turno |
+| `NS_AUTO_STOP_AT_SHIFT_END` | Auto stop de cronómetros al fin de turno |
+| `NS_TIMEZONE` | Zona horaria operativa |
+| `NS_RETRY_ENABLED` | Activa reintentos de envío |
+
+### 4) Reglas funcionales que afectan sandbox
+
+- Login por lista de operarios + PIN de 4 dígitos.
+- Atributo de operario por área: `ME`, `ES`, `Both`.
+- Búsqueda manual por número de OT.
+- Filtrado de operaciones por área habilitada del operario.
+- Una sola operación activa por máquina (máquina = recurso).
+- Tablero adaptativo de cronómetros activos como pantalla principal.
+
+### 5) Datos y persistencia (Cronómetro v2)
+
+**Se reutiliza del modelo actual**
+
+- `User`
+- `Role`
+- `Workplace`
+
+`Workplace` ya contiene opciones de área (`ME` / `ES`) para la visibilidad operativa.
+
+**Se define nueva persistencia orientada a Cronómetro**
+
+- Modelo de operación en proceso (unidad principal de trabajo por operación de OT).
+- Modelo de eventos de cronometraje (`start`, `pause`, `resume`, `stop`, `auto_stop_shift_end`).
+- Modelo de consolidación por operación y turno para integración.
+- Staging de envío a NetSuite para trazabilidad de lotes de cierre.
+
+### 6) Integración NetSuite (regla funcional v2)
+
+- **Se busca desde NetSuite**: OTs en WIP y sus operaciones/ruteo con recurso asociado.
+- **Se mantiene en NetSuite**: tiempos planificados de montaje y operación.
+- **Se envía a NetSuite**: tiempo real consolidado por operación.
+- **Modo de envío vigente**: batch al cierre de turno (no envío online por evento).
+- **Identificación de la operación destino**: por OT + operación del ruteo + recurso asociado.
