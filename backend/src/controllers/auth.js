@@ -222,3 +222,23 @@ exports.deleteUser = async function (req, res) {
         res.status(500).send('Error deleting user.');
     }
 };
+
+exports.getRoles = async function (req, res) {
+    try {
+        const roles = await Role.findAll({ order: [['id', 'ASC']] });
+        res.status(200).json(roles);
+    } catch (error) {
+        console.log(error);
+        res.status(500).send('Error retrieving roles.');
+    }
+};
+
+exports.getWorkplaces = async function (req, res) {
+    try {
+        const workplaces = await Workplace.findAll({ order: [['id', 'ASC']] });
+        res.status(200).json(workplaces);
+    } catch (error) {
+        console.log(error);
+        res.status(500).send('Error retrieving workplaces.');
+    }
+};

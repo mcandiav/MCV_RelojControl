@@ -1,4 +1,6 @@
 const { Op } = require('sequelize');
+const path = require('path');
+const XLSX = require('xlsx');
 
 const User = require('../models/user');
 const Role = require('../models/role');
@@ -401,38 +403,74 @@ exports.upsertWipOperations = async function upsertWipOperations(req, res) {
 exports.seedWipSample = async function seedWipSample(req, res) {
   const sample = [
     {
-      ot_number: 'OT-1001',
+      ot_number: 'OT3289',
       operation_sequence: 10,
-      operation_code: 'ME-10',
-      operation_name: 'Mecanizado base',
-      resource_code: 'ME-CNC-01',
-      area: 'ME',
-      planned_setup_minutes: 30,
-      planned_operation_minutes: 120,
+      operation_code: 'ES-10',
+      operation_name: 'ARMADO',
+      resource_code: 'ES414 ARMADO',
+      area: 'ES',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 25,
       source_status: 'WIP',
       last_synced_at: new Date()
     },
     {
-      ot_number: 'OT-1001',
+      ot_number: 'OT3289',
       operation_sequence: 20,
       operation_code: 'ES-20',
-      operation_name: 'Estructura ensamble',
-      resource_code: 'ES-ARM-01',
+      operation_name: 'SOLDAR',
+      resource_code: 'ES512 SOLDADURA',
       area: 'ES',
-      planned_setup_minutes: 20,
-      planned_operation_minutes: 90,
+      planned_setup_minutes: null,
+      planned_operation_minutes: 25,
       source_status: 'WIP',
       last_synced_at: new Date()
     },
     {
-      ot_number: 'OT-1002',
+      ot_number: 'OT3491',
       operation_sequence: 10,
       operation_code: 'ME-10',
-      operation_name: 'Mecanizado eje',
-      resource_code: 'ME-CNC-02',
+      operation_name: 'PERFORAR A DIA 56',
+      resource_code: 'ME230 TORNO REVOLVER MINGANTI',
       area: 'ME',
-      planned_setup_minutes: 25,
-      planned_operation_minutes: 110,
+      planned_setup_minutes: null,
+      planned_operation_minutes: 60,
+      source_status: 'WIP',
+      last_synced_at: new Date()
+    },
+    {
+      ot_number: 'OT3491',
+      operation_sequence: 20,
+      operation_code: 'ME-20',
+      operation_name: 'TORNEADO',
+      resource_code: 'ME210 TORNO V.D.F. 2000',
+      area: 'ME',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 105,
+      source_status: 'WIP',
+      last_synced_at: new Date()
+    },
+    {
+      ot_number: 'OT2316',
+      operation_sequence: 10,
+      operation_code: 'ME-10',
+      operation_name: 'BANCO',
+      resource_code: 'ME121 BANCO MECANICO',
+      area: 'ME',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 270,
+      source_status: 'WIP',
+      last_synced_at: new Date()
+    },
+    {
+      ot_number: 'OT2316',
+      operation_sequence: 20,
+      operation_code: 'ME-20',
+      operation_name: 'ARMADO',
+      resource_code: 'ME123 BANCO MECANICO',
+      area: 'ME',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 540,
       source_status: 'WIP',
       last_synced_at: new Date()
     }
@@ -454,6 +492,86 @@ exports.seedWipSample = async function seedWipSample(req, res) {
   return res.status(200).json({
     message: 'Sample WIP seeded.',
     total: sample.length
+  });
+};
+
+exports.importWipFromUpload = async function importWipFromUpload(req, res) {
+  const filename = String((req.body && req.body.filename) || '').trim();
+  if (!filename) return res.status(400).json({ message: 'filename is required.' });
+
+  const uploadPath = path.resolve(__dirname, '../uploads', filename);
+  let workbook;
+  try {
+    workbook = XLSX.readFile(uploadPath, { cellDates: true });
+  } catch (error) {
+    return res.status(400).json({ message: 'Unable to read upload file.' });
+  }
+
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ message: 'Upload has no rows.' });
+  }
+
+  const byKey = new Map();
+  for (const row of rows) {
+    const otRaw = String(row['ZIM - Reloj OT'] || row['ZIM - Reloj OT Texto'] || '').trim();
+    const otMatch = otRaw.match(/#?(OT\d+)/i);
+    const ot_number = otMatch ? otMatch[1].toUpperCase() : null;
+
+    const resource_code = String(row['ZIM - Reloj Tarea'] || '').trim().toUpperCase();
+    const operation_sequence = Number(row['ZIM - Reloj Numero Secuencia']);
+    const operation_name = String(row['ZIM - Reloj Operación'] || row['ZIM - Reloj Tarea Texto'] || resource_code || '').trim();
+    const area = resolveAreaFromResource(resource_code);
+
+    if (!ot_number || !resource_code || !Number.isFinite(operation_sequence) || !area) continue;
+
+    const key = `${ot_number}__${operation_sequence}__${resource_code}`;
+    const candidate = {
+      ot_number,
+      operation_sequence,
+      operation_code: row['ZIM - Reloj Tarea Texto'] || null,
+      operation_name,
+      resource_code,
+      area,
+      planned_setup_minutes: null,
+      planned_operation_minutes: row['ZIM - Reloj Tiempo Planificado'] != null ? Number(row['ZIM - Reloj Tiempo Planificado']) : null,
+      netsuite_work_order_id: row['ZIM - Reloj OT ID'] != null ? String(row['ZIM - Reloj OT ID']) : null,
+      netsuite_operation_id: row['ID'] != null ? String(row['ID']) : null,
+      source_status: 'WIP',
+      last_synced_at: new Date()
+    };
+
+    // Keep last row for the same business key.
+    byKey.set(key, candidate);
+  }
+
+  const operations = Array.from(byKey.values());
+  if (operations.length === 0) {
+    return res.status(400).json({ message: 'No valid ME/ES operations found in upload.' });
+  }
+
+  await WorkOrderOperation.bulkCreate(operations, {
+    updateOnDuplicate: [
+      'operation_code',
+      'operation_name',
+      'area',
+      'planned_setup_minutes',
+      'planned_operation_minutes',
+      'netsuite_work_order_id',
+      'netsuite_operation_id',
+      'source_status',
+      'last_synced_at',
+      'updatedAt'
+    ]
+  });
+
+  return res.status(200).json({
+    message: 'WIP operations imported from upload.',
+    file: filename,
+    total_rows: rows.length,
+    imported_operations: operations.length
   });
 };
 

@@ -31,6 +31,10 @@ router.put('/users/:id', security.verifyToken, security.isAdmin, auth.updateUser
 // Eliminar usuario (solo admin)
 router.delete('/users/:id', security.verifyToken, security.isAdmin, auth.deleteUser);
 
+// Catálogos para administración de usuarios (solo admin)
+router.get('/roles', security.verifyToken, security.isAdmin, auth.getRoles);
+router.get('/workplaces', security.verifyToken, security.isAdmin, auth.getWorkplaces);
+
 
 module.exports = router;
 

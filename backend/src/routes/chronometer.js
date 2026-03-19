@@ -9,6 +9,7 @@ router.get('/board/active', security.verifyToken, chronometer.getActiveBoard);
 
 router.post('/wip/upsert', [security.verifyToken, security.isAdmin], chronometer.upsertWipOperations);
 router.post('/wip/seed-sample', [security.verifyToken, security.isAdmin], chronometer.seedWipSample);
+router.post('/wip/import-upload', [security.verifyToken, security.isAdmin], chronometer.importWipFromUpload);
 router.post('/shift/close', [security.verifyToken, security.isAdmin], chronometer.closeShiftBatch);
 
 router.post('/timers/start', security.verifyToken, chronometer.startTimer);
