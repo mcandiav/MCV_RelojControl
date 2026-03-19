@@ -1,437 +1,503 @@
-# Arquitectura MCV_RelojControl
+﻿# Arquitectura MCV_RelojControl
+## Version 1.1
 
-## 1. Propósito
+## Bitacora de cambios
 
-Este documento describe la arquitectura funcional y técnica del proyecto **MCV_RelojControl** (referenciado en este documento con el nombre solicitado **MCV_RelojControl**), con el objetivo de que el repositorio tenga una guía clara para desarrollo, mantenimiento y evolución.
-
-El sistema está orientado a la **gestión de tiempos y órdenes de trabajo**, permitiendo:
-
-- autenticación de usuarios
-- administración de órdenes de trabajo
-- control de ejecución por operarios
-- registro de pausas e intervalos
-- generación de reportes
-- carga masiva de datos desde Excel
+| Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
+|------|-------------------|--------|---------|------------------|
+| 2026-03-18 | Se agrega identificador de version del documento y se fija la version vigente en 1.1 | Faltaba control explicito de version debajo del titulo principal del documento | Mejora trazabilidad documental y control de cambios de arquitectura | Encabezado del documento |
+| 2026-03-18 | Reemplazo completo del documento de arquitectura para alinearlo con el estado real vigente del sandbox y con la estrategia actual de integracion con NetSuite | El documento anterior describia una arquitectura desalineada respecto del repositorio sandbox, su bitacora tecnica y su despliegue real | Se establece una unica base arquitectonica vigente, se separa estado actual de objetivo futuro y se formalizan criterios de estandar/configuracion/desarrollo | Documento completo |
+| 2026-03-18 | Formalizacion del flujo actual NetSuite - Excel - RelojControl - CSV - NetSuite como integracion vigente | Era necesario diferenciar claramente la integracion actual manual de la futura automatizacion | Se evita asumir integraciones no implementadas y se ordena el alcance del proyecto | Integracion con NetSuite, Alcance, Flujos |
+| 2026-03-18 | Declaracion explicita de sandbox tecnico sobre MariaDB + Docker + EasyPanel y aclaracion de diferencia con produccion MSSQL | El sandbox vigente ya no coincide con la arquitectura tecnica historica | Se reduce riesgo de decisiones basadas en infraestructura obsoleta | Arquitectura tecnica, Despliegue, Ambientes |
 
 ---
 
-## 2. Visión general de la arquitectura
+# 1. Proposito del documento
 
-La solución sigue una arquitectura **cliente-servidor** separada en dos grandes módulos:
+Este documento define la **arquitectura vigente oficial** del proyecto **MCV_RelojControl** en su repositorio sandbox de GitHub.
 
-- **Frontend (`front/`)**
-  - Aplicación SPA construida con **Vue.js** y **Vuetify**.
-  - Responsable de la experiencia de usuario, navegación, visualización de datos y ejecución de acciones del negocio desde la interfaz.
+Su objetivo es dejar trazabilidad sobre:
 
-- **Backend (`backend/`)**
-  - API REST construida con **Node.js + Express**.
-  - Responsable de autenticación, reglas de negocio, acceso a datos, reportes, carga de archivos y trazabilidad del trabajo.
+- el problema de negocio que resuelve la solucion,
+- el alcance arquitectonico real actual,
+- los componentes principales,
+- los flujos de datos,
+- la relacion con NetSuite,
+- los criterios de seguridad e implementacion,
+- y la frontera entre lo que debe resolverse con **NetSuite estandar**, **configuracion declarativa** o **desarrollo**.
 
-- **Base de datos MSSQL**
-  - Persistencia central del sistema.
-  - Almacena usuarios, roles, órdenes, registros de ejecución, intervalos de tiempo, logs y datos históricos.
+Este documento es la **unica fuente oficial de arquitectura vigente** del proyecto.
+No debe utilizarse como documento historico desordenado ni como bitacora operativa detallada.
+La bitacora operativa y de infraestructura del sandbox se mantiene en SANDBOX_CONFIG.md.
 
-### Diagrama lógico simplificado
+---
 
-```text
-[Usuario/Operario/Admin]
-        |
-        v
-[Frontend Vue.js SPA]
-        |
-   HTTP + JSON
-        |
-        v
-[Backend API Express]
-        |
-   Sequelize ORM
-        |
-        v
-[Base de datos MSSQL]
+# 2. Objetivo de la solucion
+
+RelojControl es una solucion orientada a registrar y consolidar el tiempo real de ejecucion de operarios sobre Ordenes de Trabajo (OTs), comparando la ejecucion real contra la planificacion proveniente de NetSuite.
+
+La solucion busca cubrir estas necesidades:
+
+- recibir informacion operativa originada en NetSuite,
+- permitir que operarios registren el trabajo real sobre OTs,
+- consolidar tiempos, pausas e hitos de ejecucion,
+- generar una salida estructurada para retorno a NetSuite,
+- y preparar la base para futura automatizacion de integracion.
+
+---
+
+# 3. Alcance arquitectonico vigente
+
+## 3.1 Incluido en la arquitectura vigente
+
+La arquitectura vigente cubre:
+
+- repositorio sandbox mcandiav/MCV_RelojControl,
+- frontend web de operacion,
+- backend API,
+- base de datos del sandbox,
+- flujo manual de entrada/salida con NetSuite,
+- criterios de evolucion futura hacia integracion automatizada.
+
+## 3.2 Fuera de alcance de este documento
+
+Quedan fuera del alcance de este documento:
+
+- pasos detallados de configuracion en NetSuite,
+- instrucciones de despliegue operativas paso a paso,
+- detalle de codigo fuente,
+- implementacion de scripts, endpoints o automatizaciones especificas,
+- procedimientos funcionales de usuarios finales.
+
+Eso corresponde a otros hilos y roles:
+
+- **Configurador NetSuite**
+- **Programador**
+- **Operacion / Infraestructura**
+
+---
+
+# 4. Principios arquitectonicos
+
+La solucion se gobierna con los siguientes principios:
+
+1. **Claridad y trazabilidad primero**
+   Toda decision debe quedar reflejada en este documento cuando modifique la solucion vigente.
+
+2. **NetSuite estandar primero**
+   Si una necesidad puede resolverse con capacidades estandar de NetSuite sin aumentar complejidad ni costo de mantenimiento, esa es la opcion preferida.
+
+3. **Configuracion declarativa antes que desarrollo**
+   Si el estandar no alcanza, se prioriza configuracion declarativa antes de construir codigo.
+
+4. **Desarrollo solo cuando el estandar no alcance**
+   El desarrollo se reserva para integraciones, logica especializada o restricciones no cubiertas de forma razonable por NetSuite.
+
+5. **Separacion entre estado actual y estado objetivo**
+   Este documento debe distinguir siempre entre arquitectura vigente real y evolucion futura deseada.
+
+6. **No confundir sandbox con produccion**
+   Las diferencias tecnicas entre ambos ambientes deben quedar explicitas.
+
+---
+
+# 5. Vision general de la solucion
+
+## 5.1 Resumen funcional
+
+La solucion opera hoy de la siguiente forma:
+
+1. NetSuite entrega datos de trabajo mediante un archivo Excel.
+2. RelojControl importa y procesa esa informacion.
+3. Los operarios trabajan sobre las OTs dentro del sistema.
+4. El sistema registra tiempos reales, pausas, estados e intervalos.
+5. El sistema genera una salida CSV.
+6. Ese CSV se carga manualmente nuevamente en NetSuite.
+
+## 5.2 Resultado arquitectonico
+
+Actualmente, **NetSuite es el sistema de origen y destino administrativo de datos**, mientras que **RelojControl es el sistema operativo intermedio de ejecucion y captura de tiempos reales**.
+
+---
+
+# 6. Arquitectura logica vigente
+
+## 6.1 Componentes principales
+
+La arquitectura logica vigente esta compuesta por:
+
+- **Frontend Web**: interfaz de operacion para administradores y operarios, carga de datos, gestion de trabajo activo, visualizacion de OTs y acciones de trabajo.
+- **Backend API**: logica de negocio, autenticacion, persistencia, consolidacion de registros, exportacion de resultados.
+- **Base de datos relacional**: persistencia de OTs importadas, sesiones de trabajo, registros historicos, trazabilidad de intervalos y exportaciones.
+- **NetSuite**: sistema fuente de planificacion, sistema destino para retorno de resultados operativos.
+
+## 6.2 Diagrama logico textual
+
+```
+NetSuite
+   |
+Exportacion Excel
+   |
+RelojControl Frontend
+   |
+RelojControl Backend API
+   |
+Base de Datos
+   |
+Exportacion CSV
+   |
+Carga manual en NetSuite
 ```
 
 ---
 
-## 3. Principios arquitectónicos
+# 7. Arquitectura tecnica vigente del sandbox
 
-La arquitectura actual responde a los siguientes principios:
+## 7.1 Stack tecnologico vigente
 
-### 3.1 Separación de responsabilidades
-- El frontend gestiona interacción, vistas, formularios y estado de UI.
-- El backend concentra reglas de negocio, seguridad y persistencia.
-- La base de datos mantiene el estado transaccional e histórico.
+**Frontend**
+- Vue.js 2
+- Vuetify 2
+- Vuex
+- nginx (Alpine) como servidor del frontend compilado
 
-### 3.2 Centralización del negocio
-Las operaciones críticas como iniciar, pausar, detener trabajo, consolidar registros, generar reportes o validar permisos deben residir en el backend.
+**Backend**
+- Node.js 16
+- Express
+- Sequelize ORM
+- JWT para autenticacion
 
-### 3.3 Trazabilidad operativa
-El sistema prioriza el registro histórico de eventos de trabajo mediante entidades como `Registry`, `TaskIntervals`, `Record`, `Finalized` y `Log`.
+**Base de datos sandbox**
+- MariaDB
 
-### 3.4 Evolución incremental
-La estructura actual permite seguir extendiendo módulos sin reescribir la solución completa, aunque a futuro conviene fortalecer capas internas del backend.
+**Despliegue sandbox**
+- Docker
+- EasyPanel
+- Proxy administrado por la plataforma
 
----
+## 7.2 Ambientes
 
-## 4. Componentes principales
+**Sandbox vigente**
+- Repositorio: mcandiav/MCV_RelojControl
+- Base de datos: MariaDB
+- Despliegue: Docker + EasyPanel
+- Uso: desarrollo, pruebas, validacion y alineacion funcional
 
-## 4.1 Frontend
+**Produccion referencial**
+- La produccion historica utiliza SQL Server / MSSQL
+- Este documento no define aqui el detalle operativo productivo
+- Toda decision tecnica debe aclarar si aplica a sandbox, produccion o ambos
 
-### Responsabilidades
-- login y navegación
-- visualización de órdenes de trabajo
-- acciones operativas: play, pause, stop
-- administración de usuarios
-- carga de archivos
-- generación y descarga de reportes
-- notificaciones globales
+## 7.3 Regla arquitectonica de ambientes
 
-### Estructura relevante
+Ninguna decision debe asumir automaticamente que:
 
-```text
-front/
-  src/
-    main.js
-    App.vue
-    components/
-      alert/
-      navegation/
-      upload_file/
-      user/
-      work_order/
-    router/
-    store/
-    views/
-```
+- lo implementado en sandbox esta listo para produccion,
+- ni que la arquitectura historica de produccion representa el estado actual del sandbox.
 
-### Submódulos importantes
-
-#### `src/store/`
-Gestiona el estado global con Vuex.
-
-- `auth.js`: sesión, token y datos del usuario.
-- `order.js`: listado, búsqueda y estado de órdenes.
-- `alert.js`: mensajes globales al usuario.
-
-#### `src/router/`
-Controla navegación y vistas principales.
-
-#### `src/components/work_order/`
-Es el núcleo funcional de la UI. Aquí viven los componentes que manipulan el ciclo de vida de la orden de trabajo.
-
-### Patrón aplicado en frontend
-Se observa una arquitectura típica SPA basada en:
-- componentes reutilizables
-- estado centralizado
-- navegación desacoplada
-- consumo de API mediante Axios
+Ambos ambientes deben evaluarse explicitamente cuando una decision tenga impacto tecnico o funcional.
 
 ---
 
-## 4.2 Backend
+# 8. Integracion con NetSuite
 
-### Responsabilidades
-- autenticación y autorización
-- exposición de endpoints REST
-- validaciones de negocio
-- acceso a datos mediante ORM
-- procesamiento de carga Excel
-- generación de reportes
-- auditoría básica de eventos
+## 8.1 Estado vigente actual
 
-### Capas lógicas actuales
-Aunque el proyecto está implementado como una API Node/Express tradicional, conceptualmente puede entenderse en estas capas:
+La integracion vigente con NetSuite es manual.
 
-```text
-[Routes / Endpoints]
-        |
-[Controllers / lógica HTTP]
-        |
-[Servicios / reglas de negocio]
-        |
-[Modelos Sequelize]
-        |
-[SQL Server]
-```
+**Flujo actual**
+- Entrada a RelojControl: archivo Excel exportado desde NetSuite
+- Salida desde RelojControl: archivo CSV generado por el sistema
+- Retorno a NetSuite: carga manual del CSV
 
-### Endpoints funcionales principales
+## 8.2 Naturaleza de la integracion vigente
 
-#### Autenticación
-- `POST /api/auth/signin`
-- `POST /api/auth/signup`
-- `POST /api/auth/signout`
-- `GET /api/auth/me`
-- gestión de usuarios
+La integracion actual:
 
-#### Órdenes
-- CRUD de órdenes
-- acciones de ejecución (`play`, `pause`, `stop`)
-- consultas de operarios
-- reportes
-- detección y corrección de inconsistencias
+- no depende de sincronizacion online,
+- no depende de APIs activas,
+- no depende de credenciales de integracion en tiempo real,
+- y no debe documentarse como integracion automatica.
 
-#### Archivos
-- `POST /api/files/upload`
+## 8.3 Estado objetivo futuro
 
-### Tecnologías del backend
-- Node.js
-- Express.js
-- Sequelize
-- MSSQL
-- JWT
-- Bcrypt
-- Multer
-- XLSX
+La automatizacion futura podra evaluarse mediante:
+
+- NetSuite REST API
+- autenticacion basada en OAuth 2.0
+- intercambio estructurado de datos entre ambas plataformas
+
+## 8.4 Regla arquitectonica para decisiones de integracion
+
+Hasta que exista una implementacion aprobada y operativa, toda referencia a integracion automatica con NetSuite debe tratarse como objetivo futuro, no como capacidad vigente.
 
 ---
 
-## 4.3 Base de datos
+# 9. Criterio de particion de responsabilidades entre NetSuite y RelojControl
 
-La base de datos es el núcleo de persistencia y trazabilidad. Las entidades más importantes son:
+## 9.1 Responsabilidad de NetSuite
 
-### `User`
-Representa usuarios del sistema.
-Relaciones con roles, puestos de trabajo y registros operativos.
+NetSuite debe considerarse responsable de:
 
-### `Role`
-Define perfil y permisos.
+- planeacion administrativa,
+- estructura formal de ordenes,
+- origen corporativo de datos maestros y operativos a importar,
+- recepcion final de resultados consolidados.
 
-### `Workplace`
-Representa el puesto de trabajo o centro operativo.
+## 9.2 Responsabilidad de RelojControl
 
-### `Data`
-Contiene la información base o planificada de las órdenes de trabajo importadas.
+RelojControl debe considerarse responsable de:
 
-### `Record`
-Representa la orden activa en ejecución.
+- operacion diaria de captura de ejecucion,
+- play / pause / stop sobre OTs,
+- registro real de trabajo,
+- intervalos de actividad,
+- consolidacion operativa,
+- salida estructurada para retorno a NetSuite.
 
-### `Finalized`
-Conserva el histórico consolidado de órdenes terminadas.
+## 9.3 Decision arquitectonica vigente
 
-### `Registry`
-Log funcional de inicio y fin de una orden.
+La arquitectura vigente separa claramente:
 
-### `TaskIntervals`
-Entidad clave para el control de tiempos reales, pausas y actividad del operario.
+- verdad administrativa / de planificacion: NetSuite
+- verdad operativa / de ejecucion: RelojControl
 
-### `Log`
-Registro de sesiones o actividad general del usuario.
-
-### Tablas auxiliares
-- `Count`
-- `Discharged`
+Esta separacion es parte del diseno actual y debe preservarse salvo nueva decision arquitectonica explicita.
 
 ---
 
-## 5. Flujos principales del sistema
+# 10. Modelo de datos logico de alto nivel
 
-## 5.1 Inicio de sesión
+Los modelos principales identificados en el sandbox son:
 
-```text
-Usuario -> Frontend -> API /api/auth/signin -> JWT -> Frontend
-```
+| Modelo | Descripcion |
+|--------|-------------|
+| Data | OTs importadas desde la fuente externa |
+| Record | OT activa trabajada por un operario |
+| Finalized | Registro consolidado e inmutable al completar una OT |
+| Registry | Log de inicio y fin por usuario |
+| TaskIntervals | Intervalos precisos de trabajo y pausa |
+| Discharged | Marca de registros ya exportados para evitar duplicidad |
+| User | Usuarios del sistema |
+| Role | Perfiles de acceso |
+| Workplace | Puestos de trabajo o centros operativos |
 
-Resultado:
-- el frontend almacena el token
-- se habilitan vistas según rol
-- se consume la API autenticada
+## 10.1 Regla arquitectonica sobre el modelo de datos
 
-## 5.2 Ejecución de una orden
+El modelo de datos debe seguir estas reglas:
 
-```text
-Operario -> Play/Pause/Stop en UI -> API /api/orders/... ->
-actualización de Record / Registry / TaskIntervals -> persistencia en BD
-```
-
-Resultado:
-- trazabilidad del trabajo
-- control temporal real
-- posibilidad de reportería posterior
-
-## 5.3 Carga masiva desde Excel
-
-```text
-Admin -> Frontend -> upload archivo -> API /api/files/upload ->
-parseo XLSX -> validación -> persistencia en Data/órdenes
-```
-
-## 5.4 Generación de reportes
-
-```text
-Usuario/Admin -> UI reportes -> API report -> consulta BD ->
-consolidación -> descarga/exportación
-```
+- separar estados temporales de estados consolidados,
+- mantener trazabilidad de intervalos,
+- evitar duplicidad de exportaciones,
+- permitir auditoria operativa,
+- y no depender de NetSuite para conservar la historia operativa interna.
 
 ---
 
-## 6. Estilo arquitectónico
+# 11. Flujos principales
 
-El sistema implementa un estilo **monolito distribuido por frontend + backend**, donde:
+## 11.1 Flujo de carga inicial
 
-- el frontend es un cliente independiente
-- el backend es un monolito de negocio con API REST
-- la persistencia se centraliza en una sola base de datos
+1. NetSuite genera archivo Excel
+2. El archivo se incorpora a RelojControl
+3. El sistema registra y disponibiliza OTs para operacion
 
-Este enfoque es correcto para el tamaño actual del sistema porque:
-- simplifica despliegue
-- reduce complejidad operativa
-- facilita desarrollo por un equipo pequeño o mediano
-- mantiene bajo costo de mantenimiento inicial
+## 11.2 Flujo de ejecucion operativa
 
----
+1. El operario inicia una OT
+2. El sistema registra inicio
+3. El operario pausa o reanuda segun corresponda
+4. El sistema registra intervalos
+5. El operario finaliza la OT
+6. El sistema consolida el resultado
 
-## 7. Despliegue actual
+## 11.3 Flujo de salida
 
-Según la documentación del repositorio:
-
-### Frontend
-- se compila con `npm run build`
-- los artefactos generados en `dist/` se publican en:
-
-```text
-C:\inetpub\wwwroot
-```
-
-### Backend
-- se ejecuta en un servidor Windows dentro de la red privada
-- se administra con `pm2`
-- el código backend se despliega reemplazando archivos en la carpeta correspondiente y reiniciando el proceso
-
-### Base de datos
-- alojada de forma separada y accesible por configuración en `backend/config/config.js`
-- usa puerto típico de SQL Server (`1433`)
+1. Se seleccionan registros listos para exportar
+2. El sistema genera CSV
+3. Se marca lo exportado para evitar reprocesamiento
+4. El CSV se carga manualmente en NetSuite
 
 ---
 
-## 8. Riesgos y deuda técnica observable
+# 12. Seguridad y control de acceso
 
-A nivel arquitectónico, existen algunos puntos a vigilar:
+## 12.1 Autenticacion
 
-### 8.1 Configuración sensible en archivo fuente
-La configuración actual del backend se describe en `config.js`. Esto puede dificultar segregación de ambientes y manejo seguro de secretos.
+La autenticacion vigente se basa en JWT administrado por el backend.
 
-**Recomendación:** migrar a variables de entorno por ambiente.
+## 12.2 Autorizacion
 
-### 8.2 Diferencias de versiones Node frontend/backend
-La documentación menciona versiones distintas de Node entre frontend y backend.
+La autorizacion depende de perfiles y relaciones operativas del sistema. Como minimo, existen perfiles de:
 
-**Recomendación:** formalizar una matriz de compatibilidad o usar archivos `.nvmrc` por módulo.
+- administrador
+- operario
 
-### 8.3 Posible acoplamiento fuerte entre UI y endpoints
-Si la lógica de pantallas depende de contratos no versionados, los cambios pueden romper operación.
+## 12.3 Principios de seguridad
 
-**Recomendación:** documentar contrato API y estandarizar DTOs/respuestas.
+La arquitectura debe asegurar:
 
-### 8.4 Monolito backend sin capas explícitas fuertes
-Aunque funcional, con el crecimiento del proyecto puede dificultar pruebas, mantenibilidad y evolución.
+- separacion de roles,
+- acceso autenticado a la operacion,
+- proteccion de credenciales fuera del codigo,
+- trazabilidad de actividad,
+- no exposicion innecesaria de secretos de integracion.
 
-**Recomendación:** reforzar organización por dominios o módulos de aplicación.
+## 12.4 Secretos e integracion
 
-### 8.5 Despliegue manual
-El reemplazo manual de archivos en servidor puede introducir errores operativos.
-
-**Recomendación:** avanzar hacia un pipeline de build y release controlado.
+Las credenciales de integracion con NetSuite no forman parte del diseno vigente operativo de intercambio online. Cuando exista integracion automatica, deberan administrarse como secretos externos y no embebidos en codigo ni documentacion publica del repositorio.
 
 ---
 
-## 9. Recomendaciones de evolución
+# 13. Criterio arquitectonico: estandar NetSuite vs configuracion vs desarrollo
 
-## 9.1 Corto plazo
-- agregar este documento al índice del `README.md`
-- documentar estructura real del backend por carpetas
-- documentar contratos de endpoints
-- centralizar variables de entorno
-- definir convención de logs y manejo de errores
+## 13.1 Se resuelve con estandar NetSuite cuando
 
-## 9.2 Mediano plazo
-- separar servicios de negocio del código HTTP
-- incorporar validaciones consistentes de entrada
-- agregar pruebas unitarias y de integración
-- normalizar respuestas API
-- documentar modelo entidad-relación
+Aplica cuando la necesidad corresponde a:
 
-## 9.3 Largo plazo
-- evaluar modularización por dominios
-- incorporar observabilidad básica
-- automatizar despliegue
-- incorporar versionado de API
-- estudiar desacople de reportería pesada si crece el volumen
+- registros nativos,
+- importaciones/exportaciones estandar,
+- reportes basicos,
+- controles administrativos cubiertos por la plataforma,
+- estructuras existentes sin logica especializada.
 
----
+## 13.2 Se resuelve con configuracion declarativa cuando
 
-## 10. Propuesta de organización objetivo
+Aplica cuando la necesidad requiere:
 
-Sin romper la solución actual, una evolución recomendable para backend sería:
+- personalizacion sin codigo,
+- ajustes de formularios,
+- validaciones simples,
+- parametrizacion funcional,
+- mejoras de usabilidad o trazabilidad sin logica compleja.
 
-```text
-backend/
-  src/
-    modules/
-      auth/
-      orders/
-      users/
-      reports/
-      files/
-    shared/
-      middleware/
-      utils/
-      config/
-      errors/
-    models/
-```
+## 13.3 Se resuelve con desarrollo cuando
 
-Y para frontend:
+Aplica cuando la necesidad requiere:
 
-```text
-front/
-  src/
-    modules/
-      auth/
-      orders/
-      reports/
-      users/
-    shared/
-      components/
-      services/
-      store/
-      utils/
-```
+- integracion automatizada con sistemas externos,
+- transformacion compleja de datos,
+- logica operativa no soportada razonablemente por estandar,
+- orquestacion de procesos entre plataformas,
+- automatizacion robusta de sincronizacion,
+- reglas no declarativas.
 
-Esto facilitaría:
-- mantenibilidad
-- reuso
-- escalabilidad funcional
-- trazabilidad del dominio
+## 13.4 Regla de decision
+
+Toda decision funcional o tecnica debera clasificar explicitamente el requerimiento en una de estas tres categorias:
+
+1. Estandar NetSuite
+2. Configuracion declarativa
+3. Desarrollo
+
+Si un cambio requiere desarrollo, debe quedar documentado el motivo por el cual el estandar o la configuracion no alcanzan.
 
 ---
 
-## 11. Decisiones arquitectónicas vigentes
+# 14. Restricciones y consideraciones vigentes
 
-1. **SPA en Vue.js** para productividad de interfaz y experiencia de uso fluida.
-2. **API REST en Express** para exponer la lógica del negocio.
-3. **Sequelize + MSSQL** como capa de persistencia relacional.
-4. **JWT** para autenticación stateless.
-5. **Carga Excel** como mecanismo de integración operacional.
-6. **Modelo histórico con entidades activas y finalizadas** para trazabilidad del trabajo.
+## 14.1 Restricciones actuales
 
----
+- La integracion con NetSuite es manual
+- El sandbox usa MariaDB, no MSSQL
+- El repositorio activo de trabajo es el sandbox
+- La produccion no debe asumirse equivalente al sandbox
+- No existe aun automatizacion aprobada de integracion online
 
-## 12. Resumen ejecutivo
+## 14.2 Riesgos arquitectonicos actuales
 
-**MCV_RelojControl** es un sistema de gestión de tiempos y órdenes de trabajo compuesto por un frontend SPA en Vue.js, un backend REST en Node.js/Express y una base de datos MSSQL.
-
-Su fortaleza principal está en:
-- la separación frontend/backend
-- la trazabilidad operativa
-- la capacidad de control temporal
-- la reportería y carga masiva
-
-Su principal oportunidad de mejora está en:
-- fortalecer capas internas del backend
-- profesionalizar configuración y despliegue
-- documentar mejor contratos, modelos y decisiones técnicas
+- documentar como vigente una integracion futura no implementada,
+- mezclar decisiones del sandbox con supuestos de produccion,
+- tomar decisiones sobre base de datos o despliegue usando una arquitectura obsoleta,
+- implementar desarrollo donde NetSuite estandar seria suficiente,
+- o intentar forzar configuracion donde ya se requiere integracion especializada.
 
 ---
 
-## 13. Ubicación recomendada del documento
+# 15. Decisiones arquitectonicas vigentes
 
-Este archivo fue creado en la **raíz del repositorio** para que herramientas como **Cursor** lo detecten fácilmente junto al `README.md` principal.
+1. El repositorio sandbox MCV_RelojControl es la referencia tecnica vigente de trabajo.
+2. La integracion actual con NetSuite es manual, no automatica.
+3. RelojControl es el sistema operativo de ejecucion y captura de tiempos.
+4. NetSuite es el sistema administrativo de origen y destino.
+5. El sandbox vigente utiliza MariaDB, Docker y EasyPanel.
+6. Las diferencias entre sandbox y produccion deben declararse explicitamente en toda decision relevante.
+7. La automatizacion futura con NetSuite REST API + OAuth 2.0 es una linea de evolucion, no una capacidad vigente.
+8. Toda iniciativa debe clasificarse en estandar, configuracion o desarrollo antes de ejecutarse.
+
+---
+
+# 16. Arquitectura objetivo futura
+
+La arquitectura objetivo futura, sujeta a validacion posterior, considera:
+
+- reduccion de pasos manuales de intercambio,
+- integracion controlada con NetSuite mediante API,
+- trazabilidad extremo a extremo,
+- minimizacion de reprocesos,
+- y mayor consistencia entre planificacion y ejecucion operativa.
+
+## 16.1 Condiciones para avanzar a esa arquitectura objetivo
+
+Antes de aprobar automatizacion futura, debe validarse:
+
+- disponibilidad real de objetos y endpoints de NetSuite requeridos,
+- estrategia de autenticacion,
+- identificadores consistentes entre ambos sistemas,
+- reglas de negocio de sincronizacion,
+- control de errores,
+- reintentos,
+- auditoria,
+- y criterio de operacion ante fallos.
+
+---
+
+# 17. Gobierno documental
+
+## 17.1 Regla de actualizacion
+
+Cada vez que una decision cambie la solucion, este documento debe actualizarse.
+
+## 17.2 Reglas minimas de mantenimiento
+
+Toda actualizacion debe:
+
+- reflejar el estado real actual,
+- evitar mezclar historia con vigencia,
+- agregar entrada en la bitacora inicial,
+- indicar motivo, impacto y seccion afectada,
+- y mantener consistencia con el repositorio y la solucion real.
+
+## 17.3 Regla ante desalineacion
+
+Si la conversacion arquitectonica, el codigo, la infraestructura o la operacion real se desalinean con este documento, debe senalarse explicitamente y proponerse correccion.
+
+---
+
+# 18. Relacion con otros documentos
+
+## 18.1 SANDBOX_CONFIG.md
+
+Contiene la bitacora tecnica y operativa del sandbox, incluyendo:
+
+- infraestructura,
+- dominios,
+- servicios,
+- variables,
+- decisiones tecnicas aplicadas,
+- y observaciones operativas.
+
+## 18.2 README.md
+
+Debe servir como entrada general al repositorio, pero no reemplaza este documento como fuente oficial de arquitectura.
+
+---
+
+# 19. Estado arquitectonico oficial al momento de esta version
+
+A la fecha de esta version:
+
+- la arquitectura vigente oficial del sandbox esta alineada con MCV_RelojControl,
+- el stack vigente del sandbox es Vue 2 + Vuetify + Node.js + Express + Sequelize + MariaDB + Docker + EasyPanel,
+- la integracion vigente con NetSuite es manual por archivos,
+- y la automatizacion futura con API permanece como evolucion planificada, no como estado actual.
