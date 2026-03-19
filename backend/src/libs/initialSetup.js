@@ -30,7 +30,12 @@ async function load_users(){
         const count = await User.findAll()
 
         if (count.length <= 10 ){
-            var data = fs.readFileSync(path.resolve(__dirname, "./usuarios.txt"), 'utf8')
+            const filepath = path.resolve(__dirname, "./usuarios.txt");
+            if (!fs.existsSync(filepath)) {
+                console.log('Seed usuarios.txt no encontrado, se omite carga inicial de usuarios.');
+                return;
+            }
+            var data = fs.readFileSync(filepath, 'utf8')
             var data_split = data.split("\n")
             // console.log(data_split)
 
@@ -43,6 +48,7 @@ async function load_users(){
             const promises = [];
             for (data of data_split){
                 info = data.split(":")
+                if (!info[0] || !info[3] || !info[4]) continue;
                 var name = info[0]
                 var lastname = info[1]
                 var role = info[2] == 'user' ? 1:0
