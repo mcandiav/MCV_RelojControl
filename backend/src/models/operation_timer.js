@@ -37,6 +37,11 @@ const OperationTimer = sequelize.define('OperationTimer', {
     type: DataTypes.DATE,
     allowNull: true
   },
+  total_elapsed_seconds: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
   shift_date: {
     type: DataTypes.DATEONLY,
     allowNull: true

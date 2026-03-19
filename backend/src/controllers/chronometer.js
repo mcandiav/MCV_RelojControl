@@ -37,6 +37,14 @@ async function appendEvent({ timerId, operationId, userId, eventType, details })
   });
 }
 
+function accumulateElapsedSeconds(timer) {
+  if (!timer || !timer.active_since) return timer ? (timer.total_elapsed_seconds || 0) : 0;
+  const startMs = new Date(timer.active_since).getTime();
+  const nowMs = Date.now();
+  const deltaSeconds = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+  return Math.max(0, (timer.total_elapsed_seconds || 0) + deltaSeconds);
+}
+
 function getShiftDateString(date = new Date(), timeZone = config.NS_TIMEZONE) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -124,6 +132,9 @@ async function runShiftClose(trigger = 'manual') {
   const affectedOperationIds = new Set();
   for (const timer of activeOrPausedTimers) {
     affectedOperationIds.add(timer.work_order_operation_id);
+    if (timer.status === 'ACTIVE') {
+      timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
+    }
     await appendEvent({
       timerId: timer.id,
       operationId: timer.work_order_operation_id,
@@ -235,6 +246,7 @@ exports.startTimer = async function startTimer(req, res) {
       status: 'ACTIVE',
       active_since: new Date(),
       last_event_at: new Date(),
+      total_elapsed_seconds: 0,
       shift_date: new Date()
     });
   } else {
@@ -268,6 +280,8 @@ exports.pauseTimer = async function pauseTimer(req, res) {
   if (timer.status !== 'ACTIVE') return res.status(400).json({ message: 'Only active timers can be paused.' });
 
   timer.status = 'PAUSED';
+  timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
+  timer.active_since = null;
   timer.last_event_at = new Date();
   await timer.save();
 
@@ -307,6 +321,7 @@ exports.resumeTimer = async function resumeTimer(req, res) {
   timer.active_since = new Date();
   timer.last_event_at = new Date();
   timer.current_user_id = req.userId;
+  if (!Number.isFinite(timer.total_elapsed_seconds)) timer.total_elapsed_seconds = 0;
   await timer.save();
 
   await appendEvent({
@@ -327,6 +342,9 @@ exports.stopTimer = async function stopTimer(req, res) {
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
   if (timer.status === 'STOPPED') return res.status(400).json({ message: 'Timer is already stopped.' });
 
+  if (timer.status === 'ACTIVE') {
+    timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
+  }
   timer.status = 'STOPPED';
   timer.active_since = null;
   timer.last_event_at = new Date();

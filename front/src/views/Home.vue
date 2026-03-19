@@ -75,6 +75,7 @@
                       <th>Operacion</th>
                       <th>Recurso</th>
                       <th>Area</th>
+                  <th>Planificado (min)</th>
                       <th>Accion</th>
                     </tr>
                   </thead>
@@ -85,6 +86,7 @@
                       <td>{{ op.operation_name }}</td>
                       <td>{{ op.resource_code }}</td>
                       <td>{{ op.area }}</td>
+                  <td>{{ op.planned_operation_minutes != null ? op.planned_operation_minutes : '-' }}</td>
                       <td>
                         <v-btn x-small color="success" @click="timerAction('start', op.id)">Start</v-btn>
                         <v-btn x-small class="ml-1" color="warning" @click="timerAction('pause', op.id)">Pause</v-btn>
@@ -111,6 +113,8 @@
                       <th>Operacion</th>
                       <th>Recurso</th>
                       <th>Area</th>
+                      <th>Planificado (min)</th>
+                      <th>Transcurrido</th>
                       <th>Estado</th>
                       <th>Operario</th>
                     </tr>
@@ -121,6 +125,8 @@
                       <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.operation_name }}</td>
                       <td>{{ row.resource_code }}</td>
                       <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.area }}</td>
+                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes != null ? row.WorkOrderOperation.planned_operation_minutes : '-' }}</td>
+                      <td>{{ formatElapsed(row) }}</td>
                       <td>{{ row.status }}</td>
                       <td>{{ row.User ? (row.User.name + ' ' + row.User.lastname) : '-' }}</td>
                     </tr>
@@ -206,6 +212,8 @@ export default {
       users: [],
       roles: [],
       workplaces: [],
+      nowTick: Date.now(),
+      clockInterval: null,
       uploadFilename: 'ResultadosZIMDataRelojControlDefaultView285.xls',
       newUser: {
         name: '',
@@ -220,8 +228,28 @@ export default {
   created() {
     this.refreshBoard()
     if (this.isAdmin) this.loadAdminCatalogs()
+    this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
+  },
+  beforeDestroy() {
+    if (this.clockInterval) clearInterval(this.clockInterval)
   },
   methods: {
+    formatElapsed(row) {
+      const persisted = Number(row.total_elapsed_seconds || 0)
+      let extra = 0
+      if (row.status === 'ACTIVE' && row.active_since) {
+        const since = new Date(row.active_since).getTime()
+        if (Number.isFinite(since)) extra = Math.max(0, Math.floor((this.nowTick - since) / 1000))
+      }
+      const total = Math.max(0, persisted + extra)
+      const hrs = Math.floor(total / 3600)
+      const mins = Math.floor((total % 3600) / 60)
+      const secs = total % 60
+      const hh = String(hrs).padStart(2, '0')
+      const mm = String(mins).padStart(2, '0')
+      const ss = String(secs).padStart(2, '0')
+      return `${hh}:${mm}:${ss}`
+    },
     async loadAdminCatalogs() {
       try {
         const [users, roles, workplaces] = await Promise.all([
