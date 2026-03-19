@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
 
@@ -499,7 +500,23 @@ exports.importWipFromUpload = async function importWipFromUpload(req, res) {
   const filename = String((req.body && req.body.filename) || '').trim();
   if (!filename) return res.status(400).json({ message: 'filename is required.' });
 
-  const uploadPath = path.resolve(__dirname, '../uploads', filename);
+  const candidatePaths = [
+    path.resolve(__dirname, '../uploads', filename),
+    path.resolve(__dirname, '../../src/uploads', filename)
+  ];
+  const uploadPath = candidatePaths.find((filePath) => {
+    try {
+      return fs.existsSync(filePath);
+    } catch (error) {
+      return false;
+    }
+  });
+  if (!uploadPath) {
+    return res.status(400).json({
+      message: 'Upload file not found in container.',
+      file: filename
+    });
+  }
   let workbook;
   try {
     workbook = XLSX.readFile(uploadPath, { cellDates: true });
