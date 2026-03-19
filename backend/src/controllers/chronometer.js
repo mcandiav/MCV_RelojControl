@@ -172,7 +172,9 @@ function resolveAreaFromResource(resourceCode) {
 }
 
 exports.getOperationsByOt = async function getOperationsByOt(req, res) {
-  const { otNumber } = req.params;
+  const rawOt = String(req.params.otNumber || '').trim();
+  const normalizedDigits = rawOt.replace(/[^0-9]/g, '');
+  const otNumber = normalizedDigits ? `OT${normalizedDigits}` : rawOt.toUpperCase();
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
 
@@ -189,10 +191,27 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
     order: [['operation_sequence', 'ASC']]
   });
 
+  const timers = await OperationTimer.findAll({
+    where: {
+      work_order_operation_id: { [Op.in]: operations.map((op) => op.id) }
+    }
+  });
+  const timerByOperationId = new Map(timers.map((timer) => [timer.work_order_operation_id, timer]));
+  const operationsWithState = operations.map((operation) => {
+    const op = operation.toJSON();
+    const timer = timerByOperationId.get(operation.id);
+    const elapsed = timer ? accumulateElapsedSeconds(timer) : 0;
+    return {
+      ...op,
+      status: timer ? timer.status : 'STOPPED',
+      elapsed_seconds: elapsed
+    };
+  });
+
   return res.status(200).json({
     otNumber,
     userArea,
-    operations
+    operations: operationsWithState
   });
 };
 
@@ -391,6 +410,8 @@ exports.upsertWipOperations = async function upsertWipOperations(req, res) {
       area,
       planned_setup_minutes: op.planned_setup_minutes ?? null,
       planned_operation_minutes: op.planned_operation_minutes ?? null,
+      planned_quantity: op.planned_quantity ?? null,
+      completed_quantity: op.completed_quantity ?? null,
       netsuite_work_order_id: op.netsuite_work_order_id || null,
       netsuite_operation_id: op.netsuite_operation_id || null,
       source_status: op.source_status || 'WIP',
@@ -405,6 +426,8 @@ exports.upsertWipOperations = async function upsertWipOperations(req, res) {
       'area',
       'planned_setup_minutes',
       'planned_operation_minutes',
+      'planned_quantity',
+      'completed_quantity',
       'netsuite_work_order_id',
       'netsuite_operation_id',
       'source_status',
@@ -430,6 +453,8 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       area: 'ES',
       planned_setup_minutes: null,
       planned_operation_minutes: 25,
+      planned_quantity: 7,
+      completed_quantity: 0,
       source_status: 'WIP',
       last_synced_at: new Date()
     },
@@ -442,6 +467,8 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       area: 'ES',
       planned_setup_minutes: null,
       planned_operation_minutes: 25,
+      planned_quantity: 7,
+      completed_quantity: 7,
       source_status: 'WIP',
       last_synced_at: new Date()
     },
@@ -454,6 +481,8 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       area: 'ME',
       planned_setup_minutes: null,
       planned_operation_minutes: 60,
+      planned_quantity: 5,
+      completed_quantity: 5,
       source_status: 'WIP',
       last_synced_at: new Date()
     },
@@ -466,6 +495,8 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       area: 'ME',
       planned_setup_minutes: null,
       planned_operation_minutes: 105,
+      planned_quantity: 5,
+      completed_quantity: 5,
       source_status: 'WIP',
       last_synced_at: new Date()
     },
@@ -478,6 +509,8 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       area: 'ME',
       planned_setup_minutes: null,
       planned_operation_minutes: 270,
+      planned_quantity: 1,
+      completed_quantity: 0,
       source_status: 'WIP',
       last_synced_at: new Date()
     },
@@ -490,6 +523,8 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       area: 'ME',
       planned_setup_minutes: null,
       planned_operation_minutes: 540,
+      planned_quantity: 1,
+      completed_quantity: 0,
       source_status: 'WIP',
       last_synced_at: new Date()
     }
@@ -502,6 +537,8 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       'area',
       'planned_setup_minutes',
       'planned_operation_minutes',
+      'planned_quantity',
+      'completed_quantity',
       'source_status',
       'last_synced_at',
       'updatedAt'
@@ -572,6 +609,8 @@ exports.importWipFromUpload = async function importWipFromUpload(req, res) {
       area,
       planned_setup_minutes: null,
       planned_operation_minutes: row['ZIM - Reloj Tiempo Planificado'] != null ? Number(row['ZIM - Reloj Tiempo Planificado']) : null,
+      planned_quantity: row['ZIM - Reloj Cantidad Producir'] != null ? Number(row['ZIM - Reloj Cantidad Producir']) : null,
+      completed_quantity: row['ZIM - Reloj Cantidad Terminada'] != null ? Number(row['ZIM - Reloj Cantidad Terminada']) : null,
       netsuite_work_order_id: row['ZIM - Reloj OT ID'] != null ? String(row['ZIM - Reloj OT ID']) : null,
       netsuite_operation_id: row['ID'] != null ? String(row['ID']) : null,
       source_status: 'WIP',
@@ -594,6 +633,8 @@ exports.importWipFromUpload = async function importWipFromUpload(req, res) {
       'area',
       'planned_setup_minutes',
       'planned_operation_minutes',
+      'planned_quantity',
+      'completed_quantity',
       'netsuite_work_order_id',
       'netsuite_operation_id',
       'source_status',
@@ -619,3 +660,17 @@ exports.closeShiftBatch = async function closeShiftBatch(req, res) {
 };
 
 exports.runShiftClose = runShiftClose;
+
+exports.deleteOperation = async function deleteOperation(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ message: 'Invalid operation id.' });
+
+  await OperationTimer.destroy({ where: { work_order_operation_id: id } });
+  await TimerEvent.destroy({ where: { work_order_operation_id: id } });
+  await OperationTimeTotal.destroy({ where: { work_order_operation_id: id } });
+
+  const deleted = await WorkOrderOperation.destroy({ where: { id } });
+  if (!deleted) return res.status(404).json({ message: 'Operation not found.' });
+
+  return res.status(200).json({ message: 'Operation deleted.' });
+};

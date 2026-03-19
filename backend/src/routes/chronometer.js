@@ -6,6 +6,7 @@ const security = require('../middlewares/authJwt');
 
 router.get('/operations/:otNumber', security.verifyToken, chronometer.getOperationsByOt);
 router.get('/board/active', security.verifyToken, chronometer.getActiveBoard);
+router.delete('/operations/:id', [security.verifyToken, security.isAdmin], chronometer.deleteOperation);
 
 router.post('/wip/upsert', [security.verifyToken, security.isAdmin], chronometer.upsertWipOperations);
 router.post('/wip/seed-sample', [security.verifyToken, security.isAdmin], chronometer.seedWipSample);

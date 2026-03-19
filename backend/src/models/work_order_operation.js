@@ -42,6 +42,14 @@ const WorkOrderOperation = sequelize.define('WorkOrderOperation', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
+  planned_quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  completed_quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   netsuite_work_order_id: {
     type: DataTypes.STRING(64),
     allowNull: true

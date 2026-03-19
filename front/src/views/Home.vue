@@ -70,28 +70,44 @@
                 <v-simple-table v-if="operations.length > 0">
                   <thead>
                     <tr>
-                      <th>OT</th>
-                      <th>Secuencia</th>
                       <th>Operacion</th>
                       <th>Recurso</th>
+                  <th>OT</th>
+                  <th>Secuencia</th>
+                  <th>Estado</th>
+                  <th>Tiempo planificado montaje (min)</th>
+                  <th>Tiempo en uso</th>
+                  <th>Tiempo planificado ejecucion (min)</th>
+                  <th>Tiempo en uso</th>
+                  <th>Cantidad planificada</th>
+                  <th>Cantidad</th>
                       <th>Area</th>
-                  <th>Planificado (min)</th>
                       <th>Accion</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="op in operations" :key="op.id">
-                      <td>{{ op.ot_number }}</td>
-                      <td>{{ op.operation_sequence }}</td>
                       <td>{{ op.operation_name }}</td>
                       <td>{{ op.resource_code }}</td>
-                      <td>{{ op.area }}</td>
+                  <td>{{ op.ot_number }}</td>
+                  <td>{{ op.operation_sequence }}</td>
+                  <td>{{ op.status || 'STOPPED' }}</td>
+                  <td>{{ op.planned_setup_minutes != null ? op.planned_setup_minutes : '-' }}</td>
+                  <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
                   <td>{{ op.planned_operation_minutes != null ? op.planned_operation_minutes : '-' }}</td>
+                  <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
+                  <td>{{ op.planned_quantity != null ? op.planned_quantity : '-' }}</td>
+                  <td>{{ op.completed_quantity != null ? op.completed_quantity : '-' }}</td>
+                  <td>{{ op.area }}</td>
                       <td>
-                        <v-btn x-small color="success" @click="timerAction('start', op.id)">Start</v-btn>
-                        <v-btn x-small class="ml-1" color="warning" @click="timerAction('pause', op.id)">Pause</v-btn>
-                        <v-btn x-small class="ml-1" color="info" @click="timerAction('resume', op.id)">Resume</v-btn>
-                        <v-btn x-small class="ml-1" color="error" @click="timerAction('stop', op.id)">Stop</v-btn>
+                    <template v-if="!isAdmin">
+                      <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
+                      <v-btn x-small class="ml-1" color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
+                      <v-btn x-small class="ml-1" color="error" @click="timerAction('stop', op.id)">Stop</v-btn>
+                    </template>
+                    <template v-else>
+                      <v-btn x-small color="error" @click="borrarOperacion(op.id)">Borrar</v-btn>
+                    </template>
                       </td>
                     </tr>
                   </tbody>
@@ -249,6 +265,23 @@ export default {
       const mm = String(mins).padStart(2, '0')
       const ss = String(secs).padStart(2, '0')
       return `${hh}:${mm}:${ss}`
+    },
+    formatElapsedFromSeconds(totalSeconds) {
+      const total = Math.max(0, Number(totalSeconds || 0))
+      const hrs = Math.floor(total / 3600)
+      const mins = Math.floor((total % 3600) / 60)
+      const secs = total % 60
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    },
+    async borrarOperacion(id) {
+      if (!confirm('¿Borrar operación?')) return
+      try {
+        await axios.delete(`/chronometer/operations/${id}`)
+        this.operations = this.operations.filter((item) => item.id !== id)
+        this.refreshBoard()
+      } catch (error) {
+        alert('No fue posible borrar la operación.')
+      }
     },
     async loadAdminCatalogs() {
       try {
