@@ -18,12 +18,10 @@ export default {
   watch: {
     '$route.path': {
       handler(){
-        console.log(this.$route)
-        console.log(this.user)
         if(this.user !== null){
-          document.title = this.user.name + " " + this.user.lastname
+          document.title = "Cronometro v2 - " + this.user.name + " " + this.user.lastname
         }else{
-          document.title = "Reloj Control"
+          document.title = "Cronometro v2"
         }
       }
     },
@@ -32,9 +30,9 @@ export default {
   },
   created(){
     if(this.user !== null){
-      document.title = this.user.name + " " + this.user.lastname
+      document.title = "Cronometro v2 - " + this.user.name + " " + this.user.lastname
     }else{
-      document.title = "Reloj Control"
+      document.title = "Cronometro v2"
     }
   },
   methods: {

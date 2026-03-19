@@ -17,8 +17,6 @@ const User = require('../models/user');
 const Role = require('../models/role');
 const Workplace = require('../models/workplace');
 const Log = require('../models/log');
-const Regestry = require('../models/registry');
-const Record = require('../models/record');
 
 // =========================================
 // FLUJO DE AUTENTICACIÓN
@@ -201,7 +199,7 @@ exports.updateUser = async function (req, res) {
 };
 
 /**
- * Elimina un usuario y todos sus registros asociados (logs, records, registries).
+ * Elimina un usuario y sus logs de autenticación.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
  */
@@ -209,10 +207,8 @@ exports.deleteUser = async function (req, res) {
     try {
         const userId = req.params.id;
 
-        // Eliminar registros dependientes
+        // Eliminar registros dependientes vigentes
         await Log.destroy({ where: { user_id: userId } });
-        await Record.destroy({ where: { id_user: userId } });
-        await Regestry.destroy({ where: { id_user: userId } });
 
         // Encontrar y eliminar el usuario
         const userFound = await User.findOne({ where: { id: userId } });

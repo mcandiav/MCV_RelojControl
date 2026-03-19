@@ -1,7 +1,6 @@
 import Vue from "vue";
 import Vuex from "vuex";
 
-import order from './order'
 import auth from "./auth"
 import alert from "./alert";
 
@@ -19,7 +18,6 @@ export default new Vuex.Store({
 		//
 	},
 	modules: {
-		order, 
 		auth,
 		alert
 	}

@@ -1,27 +1,7 @@
 var fs = require('fs');
 const path = require("path");
-const Resource = require('../models/resource')
 const User = require('../models/user')
-const Role = require('../models/role')
 const Workplace = require('../models/workplace')
-
-async function load_data(){
-    try {
-        const count = await Resource.findAll()
-        
-        const promises = [];
-        if (count.length == 0 ){
-            var data = fs.readFileSync(path.resolve(__dirname, "./ots.txt"), 'utf8')
-            var data_split = data.split("\n")
-            for(ot of data_split) {
-                promises.push(new Resource({ot: ot}).save());
-            }
-            Promise.all(promises)
-        }
-    } catch (error) {
-        console.log(error)
-    }
-}
 
 async function load_data_workplaces(){
     try {
@@ -29,9 +9,12 @@ async function load_data_workplaces(){
         
         const promises = [];
         if (count.length == 0 ){
-            var data = fs.readFileSync(path.resolve(__dirname, "./tareas.txt"), 'utf8')
-            var data_split = data.split("\n")
-            console.log(data_split)
+            let data_split = ['ME', 'ES', 'ALL'];
+            const filepath = path.resolve(__dirname, "./tareas.txt");
+            if (fs.existsSync(filepath)) {
+                const data = fs.readFileSync(filepath, 'utf8');
+                data_split = data.split("\n").filter(Boolean);
+            }
             for(ot of data_split) {
                 promises.push(new Workplace({name: ot}).save());
             }
@@ -85,4 +68,4 @@ async function load_users(){
     }
 }
 
-module.exports = { load_data, load_data_workplaces, load_users }
+module.exports = { load_data_workplaces, load_users }

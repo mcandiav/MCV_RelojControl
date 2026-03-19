@@ -6,7 +6,7 @@
         <!-- Logo / Título -->
         <div class="text-center mb-6">
           <div class="display-1 font-weight-bold white--text">BIGNOTTI</div>
-          <div class="subtitle-1 white--text opacity-70">Sistema de Control de Tiempos</div>
+          <div class="subtitle-1 white--text opacity-70">Cronometro v2</div>
         </div>
 
         <v-card class="rounded-xl elevation-10">

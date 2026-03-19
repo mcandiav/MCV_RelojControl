@@ -9,14 +9,12 @@ const compression = require('compression');
 const cron = require('node-cron');
 
 
-const { load_data, load_data_workplaces, load_users } = require('./libs/initialSetup');
+const { load_data_workplaces, load_users } = require('./libs/initialSetup');
 require('./models/work_order_operation');
 require('./models/operation_timer');
 require('./models/timer_event');
 require('./models/operation_time_total');
 
-const index = require('./routes/index')
-const order = require('./routes/order')
 const authRoutes = require('./routes/auth');
 const chronometerRoutes = require('./routes/chronometer');
 const chronometerController = require('./controllers/chronometer');
@@ -34,8 +32,6 @@ app.use(express.static(path.join(__dirname, 'files')));
 app.use(cors());
 app.use(compression());
 
-app.use(index)
-app.use('/order', order);
 app.use('/auth', authRoutes);
 app.use('/chronometer', chronometerRoutes);
 
@@ -61,7 +57,6 @@ if (config.NS_SHIFT_BATCH_ENABLED && config.NS_AUTO_STOP_AT_SHIFT_END) {
 
 db.sync({ alter: true }).then(() => {
     console.log('Base de datos sincronizada.');
-    load_data();
     load_data_workplaces();
     load_users();
 }).catch((error) => {
