@@ -100,12 +100,10 @@
                   <td>{{ op.completed_quantity != null ? op.completed_quantity : '-' }}</td>
                   <td>{{ op.area }}</td>
                       <td>
-                    <template v-if="!isAdmin">
-                      <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
-                      <v-btn x-small class="ml-1" color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
-                      <v-btn x-small class="ml-1" color="error" @click="timerAction('stop', op.id)">Stop</v-btn>
-                    </template>
-                    <template v-else>
+                    <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
+                    <v-btn x-small class="ml-1" color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
+                    <v-btn x-small class="ml-1" color="error" @click="timerAction('stop', op.id)">Stop</v-btn>
+                    <template v-if="isAdmin">
                       <v-btn x-small color="error" @click="borrarOperacion(op.id)">Borrar</v-btn>
                     </template>
                       </td>
