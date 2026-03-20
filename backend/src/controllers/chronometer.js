@@ -15,8 +15,19 @@ const config = require('../config/config');
 function normalizeWorkplaceArea(workplaceName) {
   const area = String(workplaceName || '').trim().toUpperCase();
   if (area === 'ME' || area === 'ES') return area;
-  if (area === 'ALL' || area === 'BOTH') return 'BOTH';
+  // Sandbox legacy: IN / ALL = full plant visibility (ME + ES)
+  if (area === 'ALL' || area === 'BOTH' || area === 'IN') return 'BOTH';
   return 'UNKNOWN';
+}
+
+/** Area used for OT search and start permission: admins always see both areas. */
+function resolveEffectiveUserArea(currentUser) {
+  const roleName =
+    currentUser && currentUser.Role && currentUser.Role.name
+      ? String(currentUser.Role.name).trim().toLowerCase()
+      : '';
+  if (roleName === 'admin') return 'BOTH';
+  return normalizeWorkplaceArea(currentUser.Workplace && currentUser.Workplace.name);
 }
 
 async function getCurrentUser(req) {
@@ -178,7 +189,7 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
 
-  const userArea = normalizeWorkplaceArea(currentUser.Workplace && currentUser.Workplace.name);
+  const userArea = resolveEffectiveUserArea(currentUser);
   if (userArea === 'UNKNOWN') return res.status(400).json({ message: 'User area is not configured.' });
 
   const areaFilter = userArea === 'BOTH' ? ['ME', 'ES'] : [userArea];
@@ -237,7 +248,8 @@ exports.startTimer = async function startTimer(req, res) {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
 
-  const userArea = normalizeWorkplaceArea(currentUser.Workplace && currentUser.Workplace.name);
+  const userArea = resolveEffectiveUserArea(currentUser);
+  if (userArea === 'UNKNOWN') return res.status(400).json({ message: 'User area is not configured.' });
   if (userArea !== 'BOTH' && userArea !== operation.area) {
     return res.status(403).json({ message: 'Operation is outside your area.' });
   }
@@ -527,6 +539,63 @@ exports.seedWipSample = async function seedWipSample(req, res) {
       completed_quantity: 0,
       source_status: 'WIP',
       last_synced_at: new Date()
+    },
+    // Demo rejilla 4 cuadrantes: una OT con 4 recursos distintos (4 timers a la vez).
+    {
+      ot_number: 'OT4444',
+      operation_sequence: 10,
+      operation_code: 'DEMO-10',
+      operation_name: 'CUADRANTE A',
+      resource_code: 'ES901 LINEA A',
+      area: 'ES',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 120,
+      planned_quantity: 10,
+      completed_quantity: 0,
+      source_status: 'WIP',
+      last_synced_at: new Date()
+    },
+    {
+      ot_number: 'OT4444',
+      operation_sequence: 20,
+      operation_code: 'DEMO-20',
+      operation_name: 'CUADRANTE B',
+      resource_code: 'ES902 LINEA B',
+      area: 'ES',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 120,
+      planned_quantity: 10,
+      completed_quantity: 0,
+      source_status: 'WIP',
+      last_synced_at: new Date()
+    },
+    {
+      ot_number: 'OT4444',
+      operation_sequence: 30,
+      operation_code: 'DEMO-30',
+      operation_name: 'CUADRANTE C',
+      resource_code: 'ME903 CELDA C',
+      area: 'ME',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 120,
+      planned_quantity: 10,
+      completed_quantity: 0,
+      source_status: 'WIP',
+      last_synced_at: new Date()
+    },
+    {
+      ot_number: 'OT4444',
+      operation_sequence: 40,
+      operation_code: 'DEMO-40',
+      operation_name: 'CUADRANTE D',
+      resource_code: 'ME904 CELDA D',
+      area: 'ME',
+      planned_setup_minutes: null,
+      planned_operation_minutes: 120,
+      planned_quantity: 10,
+      completed_quantity: 0,
+      source_status: 'WIP',
+      last_synced_at: new Date()
     }
   ];
 
@@ -545,9 +614,12 @@ exports.seedWipSample = async function seedWipSample(req, res) {
     ]
   });
 
+  const otNumbers = [...new Set(sample.map((s) => s.ot_number))].sort();
+
   return res.status(200).json({
     message: 'Sample WIP seeded.',
-    total: sample.length
+    total: sample.length,
+    ot_numbers: otNumbers
   });
 };
 
