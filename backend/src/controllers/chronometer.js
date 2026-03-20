@@ -182,6 +182,64 @@ function resolveAreaFromResource(resourceCode) {
   return null;
 }
 
+async function enrichOperationsWithTimerState(operations) {
+  if (!operations.length) return [];
+  const ids = operations.map((op) => op.id);
+  const timers = await OperationTimer.findAll({
+    where: { work_order_operation_id: { [Op.in]: ids } }
+  });
+  const timerByOperationId = new Map(timers.map((timer) => [timer.work_order_operation_id, timer]));
+  return operations.map((operation) => {
+    const op = operation.toJSON ? operation.toJSON() : operation;
+    const timer = timerByOperationId.get(operation.id);
+    const elapsed = timer ? accumulateElapsedSeconds(timer) : 0;
+    return {
+      ...op,
+      status: timer ? timer.status : 'STOPPED',
+      elapsed_seconds: elapsed
+    };
+  });
+}
+
+/** Lista operaciones del área del usuario con estado de cronómetro (filtro opcional). */
+exports.listOperations = async function listOperations(req, res) {
+  const statusFilter = String(req.query.status || 'ALL').toUpperCase();
+  const allowed = ['ALL', 'ACTIVE', 'PAUSED', 'STOPPED'];
+  if (!allowed.includes(statusFilter)) {
+    return res.status(400).json({ message: 'status debe ser ALL, ACTIVE, PAUSED o STOPPED.' });
+  }
+
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
+
+  const userArea = resolveEffectiveUserArea(currentUser);
+  if (userArea === 'UNKNOWN') return res.status(400).json({ message: 'User area is not configured.' });
+
+  const areaFilter = userArea === 'BOTH' ? ['ME', 'ES'] : [userArea];
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || '200'), 10) || 200));
+
+  const operations = await WorkOrderOperation.findAll({
+    where: { area: { [Op.in]: areaFilter } },
+    order: [
+      ['ot_number', 'ASC'],
+      ['operation_sequence', 'ASC']
+    ],
+    limit
+  });
+
+  let rows = await enrichOperationsWithTimerState(operations);
+  if (statusFilter !== 'ALL') {
+    rows = rows.filter((r) => r.status === statusFilter);
+  }
+
+  return res.status(200).json({
+    userArea,
+    status: statusFilter,
+    count: rows.length,
+    operations: rows
+  });
+};
+
 exports.getOperationsByOt = async function getOperationsByOt(req, res) {
   const rawOt = String(req.params.otNumber || '').trim();
   const normalizedDigits = rawOt.replace(/[^0-9]/g, '');
@@ -202,22 +260,7 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
     order: [['operation_sequence', 'ASC']]
   });
 
-  const timers = await OperationTimer.findAll({
-    where: {
-      work_order_operation_id: { [Op.in]: operations.map((op) => op.id) }
-    }
-  });
-  const timerByOperationId = new Map(timers.map((timer) => [timer.work_order_operation_id, timer]));
-  const operationsWithState = operations.map((operation) => {
-    const op = operation.toJSON();
-    const timer = timerByOperationId.get(operation.id);
-    const elapsed = timer ? accumulateElapsedSeconds(timer) : 0;
-    return {
-      ...op,
-      status: timer ? timer.status : 'STOPPED',
-      elapsed_seconds: elapsed
-    };
-  });
+  const operationsWithState = await enrichOperationsWithTimerState(operations);
 
   return res.status(200).json({
     otNumber,

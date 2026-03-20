@@ -22,32 +22,57 @@ const Log = require('../models/log');
 // FLUJO DE AUTENTICACIÓN
 // =========================================
 
+/** PIN numérico de exactamente 4 dígitos (operarios). */
+function passwordPinErrorMessage(password) {
+  if (password == null || password === undefined) return 'La contraseña es obligatoria.';
+  const s = String(password).trim();
+  if (!/^\d{4}$/.test(s)) {
+    return 'La contraseña debe ser exactamente 4 dígitos numéricos.';
+  }
+  return null;
+}
+
+/** Si viene vacío (no cambiar), no valida; si viene con valor, debe ser 4 dígitos. */
+function passwordPinErrorMessageIfProvided(password) {
+  if (password == null || password === undefined || String(password).trim() === '') return null;
+  return passwordPinErrorMessage(password);
+}
+
 /**
  * Registra un nuevo usuario en el sistema.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
  */
 exports.signUp = async function (req, res) {
+  try {
     const { username, name, lastname, password, RoleId, WorkplaceId } = req.body;
 
+    const pinErr = passwordPinErrorMessage(password);
+    if (pinErr) return res.status(400).json({ message: pinErr });
+
+    const existing = await User.findOne({ where: { username: String(username || '').trim() } });
+    if (existing) return res.status(400).json({ message: 'El usuario ya existe.' });
+
     const newUser = new User({
-        username: username,
-        name: name,
-        lastname: lastname,
-        password: password,
-        RoleId: RoleId,
-        WorkplaceId: WorkplaceId
+      username: username,
+      name: name,
+      lastname: lastname,
+      password: password,
+      RoleId: RoleId,
+      WorkplaceId: WorkplaceId
     });
 
     const savedUser = await newUser.save();
 
-    // Por defecto, el token expira en 1 año una vez iniciada la sesión. En su momento se habló
-    // de hacer que expirara antes, pero se decidió dejarlo así para no complicar el flujo de trabajo.
-    const token = jwt.sign({ id: savedUser._id }, config.SECRET, {
-        expiresIn: 86400 * 365 // 1 año
+    const token = jwt.sign({ id: savedUser.id }, config.SECRET, {
+      expiresIn: 86400 * 365 // 1 año
     });
-    
+
     res.status(200).json({ token });
+  } catch (error) {
+    console.log('signUp error:', error);
+    res.status(400).json({ message: error.message || 'No se pudo crear el usuario.' });
+  }
 };
 
 /**
@@ -172,30 +197,42 @@ exports.getUsers = async function (req, res) {
  * @param {object} res - Objeto de respuesta de Express.
  */
 exports.updateUser = async function (req, res) {
-    try {
-        const userFound = await User.findOne({ where: { id: req.params.id } });
+  try {
+    const userFound = await User.findOne({ where: { id: req.params.id } });
 
-        if (!userFound) return res.status(404).json({ message: "No user found." });
+    if (!userFound) return res.status(404).json({ message: 'No user found.' });
 
-        const { password, id, ...fields } = req.body;
+    const { password, id, ...fields } = req.body;
 
-        userFound.name        = fields.name        ?? userFound.name;
-        userFound.lastname    = fields.lastname    ?? userFound.lastname;
-        userFound.RoleId      = fields.RoleId      ?? userFound.RoleId;
-        userFound.WorkplaceId = fields.WorkplaceId ?? userFound.WorkplaceId;
+    const pinErr = passwordPinErrorMessageIfProvided(password);
+    if (pinErr) return res.status(400).json({ message: pinErr });
 
-        if (password) {
-            const salt = bcrypt.genSaltSync();
-            userFound.password = bcrypt.hashSync(password, salt);
-        }
-
-        await userFound.save();
-
-        res.status(200).json({ message: "User updated." });
-    } catch (error) {
-        console.log(error);
-        res.status(500).send('Error updating user.');
+    if (fields.username != null && String(fields.username).trim() !== '') {
+      const nextName = String(fields.username).trim();
+      if (nextName !== userFound.username) {
+        const taken = await User.findOne({ where: { username: nextName } });
+        if (taken) return res.status(400).json({ message: 'El usuario ya existe.' });
+        userFound.username = nextName;
+      }
     }
+
+    if (fields.name != null) userFound.name = fields.name;
+    if (fields.lastname != null) userFound.lastname = fields.lastname;
+    if (fields.RoleId != null) userFound.RoleId = fields.RoleId;
+    if (fields.WorkplaceId != null) userFound.WorkplaceId = fields.WorkplaceId;
+
+    if (password != null && String(password).trim() !== '') {
+      const salt = bcrypt.genSaltSync();
+      userFound.password = bcrypt.hashSync(String(password).trim(), salt);
+    }
+
+    await userFound.save();
+
+    res.status(200).json({ message: 'User updated.' });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: 'Error updating user.' });
+  }
 };
 
 /**

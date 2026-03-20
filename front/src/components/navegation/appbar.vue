@@ -1,47 +1,55 @@
 <template>
   <div>
     <v-app-bar
-      color="blue"
+      color="blue darken-2"
       dense
       dark
+      class="appbar-main"
     >
-      <v-app-bar-nav-icon></v-app-bar-nav-icon>
+      <v-app-bar-nav-icon disabled class="d-none d-sm-flex" />
 
-      <v-toolbar-title>BIGNOTTI Cronometro v2</v-toolbar-title>
+      <v-toolbar-title class="font-weight-bold">BIGNOTTI Cronometro v2</v-toolbar-title>
 
-      <v-spacer></v-spacer>
+      <v-spacer />
 
-      <v-menu
-        left
-        bottom
+      <v-btn
+        color="white"
+        outlined
+        class="btn-salir font-weight-bold"
+        elevation="2"
+        @click.prevent="signOut"
       >
-      </v-menu>
-
-      <v-btn @click.prevent="signOut" icon>
-        <v-icon>mdi-logout</v-icon>
+        <v-icon left class="mr-1">mdi-logout</v-icon>
+        Salir del programa
       </v-btn>
     </v-app-bar>
   </div>
 </template>
-
 
 <script>
 import { mapActions } from 'vuex'
 export default {
   methods: {
     ...mapActions({
-        signOutAction: 'auth/signOut',
+      signOutAction: 'auth/signOut'
     }),
-    signOut(){
+    signOut() {
       this.signOutAction().then(() => {
         this.$router.replace({
           name: 'Login'
         })
       })
-    },
-    },
+    }
+  }
 }
 </script>
 
-<style>
+<style scoped>
+.btn-salir {
+  border-width: 2px !important;
+  letter-spacing: 0.02em;
+}
+.appbar-main {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+}
 </style>

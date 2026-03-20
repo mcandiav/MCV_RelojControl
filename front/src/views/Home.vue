@@ -114,10 +114,26 @@
           <v-row>
             <v-col cols="12">
               <v-card outlined class="pa-4">
+                <div class="text-subtitle-1 font-weight-bold mb-2">Filtrar por estado del cronometro</div>
+                <p class="grey--text text-caption mb-2">
+                  Aplica a la busqueda por OT y al listado de procesos del area.
+                </p>
+                <v-btn-toggle
+                  v-model="statusFilter"
+                  mandatory
+                  dense
+                  class="mb-3 flex-wrap status-toggle"
+                >
+                  <v-btn small value="ALL">Todos</v-btn>
+                  <v-btn small value="ACTIVE">Ejecucion</v-btn>
+                  <v-btn small value="PAUSED">Pausa</v-btn>
+                  <v-btn small value="STOPPED">No iniciado / detenido</v-btn>
+                </v-btn-toggle>
+
                 <div class="text-subtitle-1 font-weight-bold mb-3">Operaciones por OT</div>
                 <v-alert v-if="errorOps" type="error" dense class="mb-3">{{ errorOps }}</v-alert>
                 <v-alert v-if="!errorOps && emptyOpsHint" type="info" dense class="mb-3">{{ emptyOpsHint }}</v-alert>
-            <v-simple-table v-if="operations.length > 0" class="compact-table">
+            <v-simple-table v-if="filteredOperations.length > 0" class="compact-table">
                   <thead>
                     <tr>
                       <th>Operacion</th>
@@ -136,7 +152,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="op in operations" :key="op.id">
+                    <tr v-for="op in filteredOperations" :key="op.id">
                       <td>{{ op.operation_name }}</td>
                       <td>{{ op.resource_code }}</td>
                   <td>{{ op.ot_number }}</td>
@@ -162,7 +178,43 @@
                     </tr>
                   </tbody>
                 </v-simple-table>
+                <div v-else-if="operations.length > 0" class="grey--text">Ninguna operacion coincide con el filtro de estado.</div>
                 <div v-else class="grey--text">Sin operaciones cargadas.</div>
+              </v-card>
+            </v-col>
+          </v-row>
+
+          <v-row>
+            <v-col cols="12">
+              <v-card outlined class="pa-4">
+                <div class="d-flex flex-wrap align-center justify-space-between mb-2">
+                  <div class="text-subtitle-1 font-weight-bold">Listado de procesos (tu area)</div>
+                  <v-btn small color="secondary" :loading="loadingProcessList" @click="loadProcessList">Actualizar listado</v-btn>
+                </div>
+                <v-alert v-if="errorProcessList" type="error" dense class="mb-2">{{ errorProcessList }}</v-alert>
+                <v-simple-table v-if="processList.length > 0" class="compact-table">
+                  <thead>
+                    <tr>
+                      <th>OT</th>
+                      <th>Operacion</th>
+                      <th>Recurso</th>
+                      <th>Area</th>
+                      <th>Estado</th>
+                      <th>Tiempo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="op in processList" :key="'pl-' + op.id">
+                      <td>{{ op.ot_number }}</td>
+                      <td>{{ op.operation_name }}</td>
+                      <td>{{ op.resource_code }}</td>
+                      <td>{{ op.area }}</td>
+                      <td>{{ statusLabel(op.status) }}</td>
+                      <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
+                    </tr>
+                  </tbody>
+                </v-simple-table>
+                <div v-else class="grey--text">No hay procesos para mostrar con este filtro.</div>
               </v-card>
             </v-col>
           </v-row>
@@ -218,7 +270,17 @@
                 <v-text-field v-model.trim="newUser.name" label="Nombre" dense outlined />
                 <v-text-field v-model.trim="newUser.lastname" label="Apellido" dense outlined />
                 <v-text-field v-model.trim="newUser.username" label="Usuario" dense outlined />
-                <v-text-field v-model="newUser.password" label="Password / PIN" dense outlined type="password" />
+                <v-text-field
+                  v-model="newUser.password"
+                  label="PIN (4 digitos)"
+                  dense
+                  outlined
+                  type="password"
+                  maxlength="4"
+                  hint="Exactamente 4 digitos numericos."
+                  persistent-hint
+                  @input="newUser.password = sanitizePinInput(newUser.password)"
+                />
                 <v-select v-model="newUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
                 <v-select v-model="newUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Area" dense outlined />
                 <v-btn color="primary" :loading="loadingCreateUser" @click="crearUsuario">Crear usuario</v-btn>
@@ -246,7 +308,10 @@
                       <td>{{ u.username }}</td>
                       <td>{{ u.Role && u.Role.name }}</td>
                       <td>{{ u.Workplace && u.Workplace.name }}</td>
-                      <td><v-btn x-small color="error" @click="eliminarUsuario(u.id)">Eliminar</v-btn></td>
+                      <td>
+                        <v-btn x-small class="mr-1" color="primary" @click="abrirEditarUsuario(u)">Editar</v-btn>
+                        <v-btn x-small color="error" @click="eliminarUsuario(u.id)">Eliminar</v-btn>
+                      </td>
                     </tr>
                   </tbody>
                 </v-simple-table>
@@ -256,6 +321,35 @@
         </v-tab-item>
       </v-tabs-items>
     </v-container>
+
+    <v-dialog v-model="editDialog" max-width="520" persistent>
+      <v-card>
+        <v-card-title class="text-h6">Editar usuario</v-card-title>
+        <v-card-text>
+          <v-text-field v-model.trim="editUser.name" label="Nombre" dense outlined />
+          <v-text-field v-model.trim="editUser.lastname" label="Apellido" dense outlined />
+          <v-text-field v-model.trim="editUser.username" label="Usuario" dense outlined />
+          <v-text-field
+            v-model="editUser.password"
+            label="Nuevo PIN (opcional)"
+            dense
+            outlined
+            type="password"
+            maxlength="4"
+            hint="Solo si quieres cambiarlo: exactamente 4 digitos."
+            persistent-hint
+            @input="editUser.password = sanitizePinInput(editUser.password)"
+          />
+          <v-select v-model="editUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
+          <v-select v-model="editUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Area" dense outlined />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text @click="closeEditDialog">Cancelar</v-btn>
+          <v-btn color="primary" :loading="loadingEditUser" @click="guardarUsuarioEditado">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
@@ -303,11 +397,19 @@ export default {
       idleOpenTimerHandle: null,
       boardPollIntervalHandle: null,
       lastIdleMouseMoveAt: 0,
-      lastSeedResponse: ''
+      lastSeedResponse: '',
+      statusFilter: 'ALL',
+      processList: [],
+      loadingProcessList: false,
+      errorProcessList: '',
+      editDialog: false,
+      editUser: {},
+      loadingEditUser: false
     }
   },
   created() {
     this.refreshBoard()
+    this.loadProcessList()
     if (this.isAdmin) this.loadAdminCatalogs()
     this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
   },
@@ -341,6 +443,9 @@ export default {
       this.searchTimeout = setTimeout(() => {
         this.buscarOperaciones()
       }, 300)
+    },
+    statusFilter() {
+      this.loadProcessList()
     }
   },
   computed: {
@@ -360,9 +465,88 @@ export default {
       const q = sorted.slice(0, 4)
       while (q.length < 4) q.push(null)
       return q
+    },
+    filteredOperations() {
+      const list = this.operations || []
+      if (this.statusFilter === 'ALL') return list
+      return list.filter((o) => (o.status || 'STOPPED') === this.statusFilter)
     }
   },
   methods: {
+    sanitizePinInput(val) {
+      return String(val || '').replace(/\D/g, '').slice(0, 4)
+    },
+    isValidPin(p) {
+      return /^\d{4}$/.test(String(p || '').trim())
+    },
+    statusLabel(s) {
+      const m = {
+        ACTIVE: 'Ejecucion',
+        PAUSED: 'Pausa',
+        STOPPED: 'No iniciado / detenido'
+      }
+      return m[s] || s || '-'
+    },
+    abrirEditarUsuario(u) {
+      this.editUser = {
+        id: u.id,
+        name: u.name,
+        lastname: u.lastname,
+        username: u.username,
+        password: '',
+        RoleId: u.RoleId,
+        WorkplaceId: u.WorkplaceId
+      }
+      this.editDialog = true
+    },
+    closeEditDialog() {
+      this.editDialog = false
+      this.editUser = {}
+    },
+    async guardarUsuarioEditado() {
+      if (!this.editUser.id) return
+      if (this.editUser.password && !this.isValidPin(this.editUser.password)) {
+        alert('El PIN debe ser exactamente 4 digitos numericos.')
+        return
+      }
+      this.loadingEditUser = true
+      try {
+        const body = {
+          name: this.editUser.name,
+          lastname: this.editUser.lastname,
+          username: this.editUser.username,
+          RoleId: this.editUser.RoleId,
+          WorkplaceId: this.editUser.WorkplaceId
+        }
+        if (this.editUser.password) body.password = this.editUser.password
+        await axios.put(`/auth/users/${this.editUser.id}`, body)
+        await this.loadAdminCatalogs()
+        this.closeEditDialog()
+        alert('Usuario actualizado.')
+      } catch (error) {
+        const d = error.response && error.response.data
+        const msg = (d && d.message) || 'No fue posible actualizar el usuario.'
+        alert(msg)
+      } finally {
+        this.loadingEditUser = false
+      }
+    },
+    async loadProcessList() {
+      this.loadingProcessList = true
+      this.errorProcessList = ''
+      try {
+        const res = await axios.get('/chronometer/operations', {
+          params: { status: this.statusFilter }
+        })
+        this.processList = res.data.operations || []
+      } catch (error) {
+        const d = error.response && error.response.data
+        this.errorProcessList = (d && d.message) || 'No fue posible cargar el listado de procesos.'
+        this.processList = []
+      } finally {
+        this.loadingProcessList = false
+      }
+    },
     onMouseMoveForIdle() {
       if (!this.idleBoardEnabled || this.showIdleBoard) return
       const now = Date.now()
@@ -433,7 +617,8 @@ export default {
       try {
         await axios.delete(`/chronometer/operations/${id}`)
         this.operations = this.operations.filter((item) => item.id !== id)
-        this.refreshBoard()
+        await this.refreshBoard()
+        await this.loadProcessList()
       } catch (error) {
         alert('No fue posible borrar la operación.')
       }
@@ -459,6 +644,10 @@ export default {
         alert('Completa todos los campos del usuario.')
         return
       }
+      if (!this.isValidPin(this.newUser.password)) {
+        alert('El PIN debe ser exactamente 4 digitos numericos.')
+        return
+      }
       this.loadingCreateUser = true
       try {
         await axios.post('/auth/signup', this.newUser)
@@ -466,7 +655,8 @@ export default {
         await this.loadAdminCatalogs()
         alert('Usuario creado.')
       } catch (error) {
-        alert('No fue posible crear el usuario.')
+        const d = error.response && error.response.data
+        alert((d && d.message) || 'No fue posible crear el usuario.')
       } finally {
         this.loadingCreateUser = false
       }
@@ -493,6 +683,7 @@ export default {
       try {
         const res = await axios.get(`/chronometer/operations/${encodeURIComponent(normalized)}`)
         this.operations = res.data.operations || []
+        await this.loadProcessList()
         if (this.operations.length === 0) {
           this.emptyOpsHint =
             'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP y prueba 4444 (4 maquinas), 3289, 3491 o 2316.'
@@ -520,6 +711,7 @@ export default {
       try {
         await axios.post(`/chronometer/timers/${action}`, { work_order_operation_id: operationId })
         await this.refreshBoard()
+        await this.loadProcessList()
       } catch (error) {
         const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
         alert(msg)
@@ -539,6 +731,7 @@ export default {
         alert(msg)
       } finally {
         this.loadingSeed = false
+        this.loadProcessList()
       }
     },
     async importarDesdeUpload() {
@@ -549,6 +742,7 @@ export default {
       this.loadingImportUpload = true
       try {
         const res = await axios.post('/chronometer/wip/import-upload', { filename: this.uploadFilename })
+        await this.loadProcessList()
         alert(`Importacion OK. Filas: ${res.data.total_rows}, Operaciones: ${res.data.imported_operations}`)
       } catch (error) {
         const msg = (error.response && error.response.data && error.response.data.message) || 'No fue posible importar upload.'
@@ -562,6 +756,7 @@ export default {
       try {
         await axios.post('/chronometer/shift/close')
         await this.refreshBoard()
+        await this.loadProcessList()
         alert('Cierre de turno ejecutado.')
       } catch (error) {
         const msg = (error.response && error.response.data && error.response.data.message) || 'Error al cerrar turno.'
@@ -714,6 +909,10 @@ export default {
   font-size: 0.85rem;
   color: #6e7681;
   background: #010409;
+}
+
+.status-toggle .v-btn {
+  margin-bottom: 6px;
 }
 
 .seed-json {
