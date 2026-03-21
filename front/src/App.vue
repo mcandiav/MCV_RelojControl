@@ -16,26 +16,31 @@ export default {
     }
   },
   watch: {
-    '$route.path': {
-      handler(){
-        if(this.user !== null){
-          document.title = "Cronometro v2 - " + this.user.name + " " + this.user.lastname
-        }else{
-          document.title = "Cronometro v2"
-        }
-      }
+    '$route.path'() {
+      this.syncDocumentTitle()
     },
-  },
-  mounted(){
-  },
-  created(){
-    if(this.user !== null){
-      document.title = "Cronometro v2 - " + this.user.name + " " + this.user.lastname
-    }else{
-      document.title = "Cronometro v2"
+    user: {
+      handler() {
+        this.syncDocumentTitle()
+      },
+      deep: true
     }
   },
+  mounted() {
+  },
+  created() {
+    this.syncDocumentTitle()
+  },
   methods: {
+    syncDocumentTitle() {
+      const base = 'Bignotti · Cronometro v2'
+      if (this.user != null) {
+        const who = [this.user.name, this.user.lastname].filter(Boolean).join(' ').trim()
+        document.title = who ? `${base} – ${who}` : base
+      } else {
+        document.title = base
+      }
+    }
   },
   computed: {
     ...mapGetters({
