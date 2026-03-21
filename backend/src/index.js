@@ -10,6 +10,7 @@ const cron = require('node-cron');
 
 
 const { load_data_workplaces, load_users } = require('./libs/initialSetup');
+require('./models/role');
 require('./models/work_order_operation');
 require('./models/operation_timer');
 require('./models/timer_event');
@@ -29,7 +30,11 @@ app.use(function setCommonHeaders(req, res, next) {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'files')));
-app.use(cors());
+app.use(
+  cors({
+    allowedHeaders: ['Content-Type', 'x-access-token', 'x-station-id']
+  })
+);
 app.use(compression());
 
 app.use('/auth', authRoutes);

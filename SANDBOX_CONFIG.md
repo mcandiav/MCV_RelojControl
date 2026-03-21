@@ -95,7 +95,18 @@ DB_NAME=relojcontrol
 DB_DIALECT=mariadb
 JWT_SECRET=api-secret-od
 DELETE_SECRET=b1234
+DEFAULT_STATION_ID=default-station
+REQUIRE_PIN_FOR_TIMER_ACTIONS=true
+STATION_LEGACY_NULL_MATCH_DEFAULT=true
 ```
+
+**Multi-estación (Cronómetro V3):**
+
+| Variable | Uso |
+|----------|-----|
+| `DEFAULT_STATION_ID` | Valor por defecto si el cliente no envía `x-station-id` (una sola pantalla). |
+| `REQUIRE_PIN_FOR_TIMER_ACTIONS` | `false` desactiva PIN en play/pausa/stop (solo pruebas). Los **admin** quedan exentos de PIN. |
+| `STATION_LEGACY_NULL_MATCH_DEFAULT` | `true`: timers con `station_id` NULL solo se ven/actúan desde la estación `DEFAULT_STATION_ID`. `false`: más estricto. |
 
 ### 3. Frontend (reloj-front)
 | Campo | Valor |
@@ -109,7 +120,10 @@ DELETE_SECRET=b1234
 **Build argument del frontend:**
 ```
 VUE_APP_API_URL=https://reloj-api.at-once.cl/
+VUE_APP_STATION_ID=default-station
 ```
+
+**Multi-estación:** cada PC físico debe tener un **`VUE_APP_STATION_ID` distinto** (ej. `puesto-linea-1`, `sala-es-2`). El cliente envía `x-station-id` en cada request; el tablero y los cronómetros activos se filtran por esa estación.
 
 ---
 

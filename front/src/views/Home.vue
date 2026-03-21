@@ -52,7 +52,8 @@
             <div v-if="user" class="subtitle-2">
               Usuario: {{ user.name }} {{ user.lastname }} |
               Rol: {{ user.Role && user.Role.name }} |
-              Area: {{ user.Workplace && user.Workplace.name }}
+              Area: {{ user.Workplace && user.Workplace.name }} |
+              Estacion: <strong>{{ stationDisplayLabel }}</strong>
             </div>
           </v-card>
         </v-col>
@@ -77,6 +78,7 @@
               hide-details
                 />
             <div class="grey--text text-caption mt-2">Busqueda automatica al escribir el numero.</div>
+            <div class="grey--text text-caption mt-1">Play / Pausa / Stop piden PIN (pantalla compartida).</div>
               </v-card>
             </v-col>
 
@@ -350,6 +352,34 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="showTimerPinDialog" max-width="400" persistent>
+      <v-card>
+        <v-card-title class="text-h6">Confirmar con PIN</v-card-title>
+        <v-card-text>
+          <p class="body-2 mb-2">
+            Ingresa tu PIN para <strong v-if="pendingTimerAction">{{ timerActionLabel(pendingTimerAction.action) }}</strong>
+            (estacion {{ stationDisplayLabel }}).
+          </p>
+          <v-text-field
+            v-model="pinForTimer"
+            label="PIN (4 digitos)"
+            type="password"
+            maxlength="4"
+            outlined
+            dense
+            hide-details
+            @input="pinForTimer = sanitizePinInput(pinForTimer)"
+            @keyup.enter="confirmTimerPinAction"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text @click="closeTimerPinDialog">Cancelar</v-btn>
+          <v-btn color="primary" :loading="loadingTimerPin" @click="confirmTimerPinAction">Confirmar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
@@ -368,6 +398,10 @@ export default {
       activeTab: 0,
       operations: [],
       activeBoard: [],
+      showTimerPinDialog: false,
+      pinForTimer: '',
+      pendingTimerAction: null,
+      loadingTimerPin: false,
       loadingOps: false,
       loadingSeed: false,
       loadingImportUpload: false,
@@ -470,9 +504,16 @@ export default {
       const list = this.operations || []
       if (this.statusFilter === 'ALL') return list
       return list.filter((o) => (o.status || 'STOPPED') === this.statusFilter)
+    },
+    stationDisplayLabel() {
+      return String(process.env.VUE_APP_STATION_ID || 'default-station').trim()
     }
   },
   methods: {
+    timerActionLabel(action) {
+      const m = { start: 'Play / iniciar', pause: 'Pausa', resume: 'Reanudar', stop: 'Stop / detener' }
+      return m[action] || action
+    },
     sanitizePinInput(val) {
       return String(val || '').replace(/\D/g, '').slice(0, 4)
     },
@@ -702,19 +743,61 @@ export default {
       this.errorBoard = ''
       try {
         const res = await axios.get('/chronometer/board/active')
-        this.activeBoard = Array.isArray(res.data) ? res.data : []
+        const data = res.data
+        if (Array.isArray(data)) {
+          this.activeBoard = data
+        } else {
+          this.activeBoard = data.timers || []
+        }
       } catch (error) {
         this.errorBoard = (error.response && error.response.data && error.response.data.message) || 'No fue posible cargar el tablero.'
       }
     },
-    async timerAction(action, operationId) {
+    timerAction(action, operationId) {
+      if (this.isAdmin) {
+        void this.runTimerRequest(action, operationId, null)
+        return
+      }
+      this.pendingTimerAction = { action, operationId }
+      this.pinForTimer = ''
+      this.showTimerPinDialog = true
+    },
+    closeTimerPinDialog() {
+      this.showTimerPinDialog = false
+      this.pendingTimerAction = null
+      this.pinForTimer = ''
+    },
+    async confirmTimerPinAction() {
+      if (!this.pendingTimerAction) return
+      if (!/^\d{4}$/.test(String(this.pinForTimer || '').trim())) {
+        alert('Ingresa tu PIN de 4 digitos.')
+        return
+      }
+      const { action, operationId } = this.pendingTimerAction
+      const pin = String(this.pinForTimer).trim()
+      this.loadingTimerPin = true
       try {
-        await axios.post(`/chronometer/timers/${action}`, { work_order_operation_id: operationId })
+        await this.runTimerRequest(action, operationId, pin)
+        this.closeTimerPinDialog()
+      } finally {
+        this.loadingTimerPin = false
+      }
+    },
+    async runTimerRequest(action, operationId, pin) {
+      const body = { work_order_operation_id: operationId }
+      if (pin != null && String(pin).trim() !== '') body.pin = String(pin).trim()
+      try {
+        await axios.post(`/chronometer/timers/${action}`, body)
         await this.refreshBoard()
         await this.loadProcessList()
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
       } catch (error) {
-        const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
+        const msg =
+          (error.response && error.response.data && (error.response.data.message || error.response.data.text)) ||
+          `No fue posible ejecutar ${action}.`
         alert(msg)
+        throw error
       }
     },
     async seedWip() {

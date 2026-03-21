@@ -11,7 +11,10 @@ require('@/store/subscriber')
 
 Vue.config.productionTip = false
 axios.defaults.baseURL = process.env.VUE_APP_API_URL || 'http://localhost:8000/'
-axios.defaults.headers.common['Access-Control-Allow-Origin'] = '*';
+axios.defaults.headers.common['Access-Control-Allow-Origin'] = '*'
+
+const stationId = String(process.env.VUE_APP_STATION_ID || 'default-station').trim().slice(0, 64)
+axios.defaults.headers.common['x-station-id'] = stationId
 
 store.dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`)).then(() => {
   Vue.use(VueSession)

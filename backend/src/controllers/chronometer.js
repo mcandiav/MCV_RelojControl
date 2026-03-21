@@ -11,6 +11,13 @@ const OperationTimer = require('../models/operation_timer');
 const TimerEvent = require('../models/timer_event');
 const OperationTimeTotal = require('../models/operation_time_total');
 const config = require('../config/config');
+const {
+  resolveStationId,
+  timerBelongsToViewerStation,
+  assertTimerStationMatch,
+  getBoardTimerWhere
+} = require('../libs/stationContext');
+const { assertOperatorPinForTimer } = require('../libs/timerPinAuth');
 
 function normalizeWorkplaceArea(workplaceName) {
   const area = String(workplaceName || '').trim().toUpperCase();
@@ -182,21 +189,31 @@ function resolveAreaFromResource(resourceCode) {
   return null;
 }
 
-async function enrichOperationsWithTimerState(operations) {
+async function enrichOperationsWithTimerState(operations, viewerStationId) {
   if (!operations.length) return [];
   const ids = operations.map((op) => op.id);
   const timers = await OperationTimer.findAll({
     where: { work_order_operation_id: { [Op.in]: ids } }
   });
   const timerByOperationId = new Map(timers.map((timer) => [timer.work_order_operation_id, timer]));
+  const sid = String(viewerStationId || '').trim();
   return operations.map((operation) => {
     const op = operation.toJSON ? operation.toJSON() : operation;
     const timer = timerByOperationId.get(operation.id);
+    if (timer && !timerBelongsToViewerStation(timer, sid)) {
+      return {
+        ...op,
+        status: 'STOPPED',
+        elapsed_seconds: 0,
+        foreign_station_timer: true
+      };
+    }
     const elapsed = timer ? accumulateElapsedSeconds(timer) : 0;
     return {
       ...op,
       status: timer ? timer.status : 'STOPPED',
-      elapsed_seconds: elapsed
+      elapsed_seconds: elapsed,
+      timer_station_id: timer ? timer.station_id : null
     };
   });
 }
@@ -227,13 +244,15 @@ exports.listOperations = async function listOperations(req, res) {
     limit
   });
 
-  let rows = await enrichOperationsWithTimerState(operations);
+  const stationId = resolveStationId(req);
+  let rows = await enrichOperationsWithTimerState(operations, stationId);
   if (statusFilter !== 'ALL') {
     rows = rows.filter((r) => r.status === statusFilter);
   }
 
   return res.status(200).json({
     userArea,
+    station_id: stationId,
     status: statusFilter,
     count: rows.length,
     operations: rows
@@ -260,31 +279,38 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
     order: [['operation_sequence', 'ASC']]
   });
 
-  const operationsWithState = await enrichOperationsWithTimerState(operations);
+  const stationId = resolveStationId(req);
+  const operationsWithState = await enrichOperationsWithTimerState(operations, stationId);
 
   return res.status(200).json({
     otNumber,
     userArea,
+    station_id: stationId,
     operations: operationsWithState
   });
 };
 
 exports.getActiveBoard = async function getActiveBoard(req, res) {
+  const stationId = resolveStationId(req);
   const timers = await OperationTimer.findAll({
-    where: {
-      status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
-    },
+    where: getBoardTimerWhere(stationId),
     include: [WorkOrderOperation, User],
     order: [['updatedAt', 'DESC']]
   });
 
-  return res.status(200).json(timers);
+  return res.status(200).json({
+    station_id: stationId,
+    timers
+  });
 };
 
 exports.startTimer = async function startTimer(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
 
+  if (!(await assertOperatorPinForTimer(req, res))) return;
+
+  const stationId = resolveStationId(req);
   const operation = await WorkOrderOperation.findByPk(work_order_operation_id);
   if (!operation) return res.status(404).json({ message: 'Operation not found.' });
 
@@ -321,9 +347,13 @@ exports.startTimer = async function startTimer(req, res) {
       active_since: new Date(),
       last_event_at: new Date(),
       total_elapsed_seconds: 0,
-      shift_date: new Date()
+      shift_date: new Date(),
+      station_id: stationId
     });
   } else {
+    if (timer.station_id && timer.station_id !== stationId) {
+      return res.status(403).json({ message: 'Operacion cronometrada en otra estacion.' });
+    }
     if (timer.status === 'ACTIVE') {
       return res.status(400).json({ message: 'Timer is already active.' });
     }
@@ -331,6 +361,7 @@ exports.startTimer = async function startTimer(req, res) {
     timer.status = 'ACTIVE';
     timer.active_since = new Date();
     timer.last_event_at = new Date();
+    timer.station_id = stationId;
     await timer.save();
   }
 
@@ -349,8 +380,12 @@ exports.pauseTimer = async function pauseTimer(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
 
+  if (!(await assertOperatorPinForTimer(req, res))) return;
+
+  const stationId = resolveStationId(req);
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
+  if (!assertTimerStationMatch(timer, stationId, res)) return;
   if (timer.status !== 'ACTIVE') return res.status(400).json({ message: 'Only active timers can be paused.' });
 
   timer.status = 'PAUSED';
@@ -373,8 +408,12 @@ exports.resumeTimer = async function resumeTimer(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
 
+  if (!(await assertOperatorPinForTimer(req, res))) return;
+
+  const stationId = resolveStationId(req);
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
+  if (!assertTimerStationMatch(timer, stationId, res)) return;
   if (timer.status !== 'PAUSED') return res.status(400).json({ message: 'Only paused timers can be resumed.' });
 
   const operation = await WorkOrderOperation.findByPk(work_order_operation_id);
@@ -412,8 +451,12 @@ exports.stopTimer = async function stopTimer(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
 
+  if (!(await assertOperatorPinForTimer(req, res))) return;
+
+  const stationId = resolveStationId(req);
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
+  if (!assertTimerStationMatch(timer, stationId, res)) return;
   if (timer.status === 'STOPPED') return res.status(400).json({ message: 'Timer is already stopped.' });
 
   if (timer.status === 'ACTIVE') {

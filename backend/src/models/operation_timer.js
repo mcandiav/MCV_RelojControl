@@ -45,6 +45,11 @@ const OperationTimer = sequelize.define('OperationTimer', {
   shift_date: {
     type: DataTypes.DATEONLY,
     allowNull: true
+  },
+  station_id: {
+    type: DataTypes.STRING(64),
+    allowNull: true,
+    comment: 'Pantalla/PC donde se opera el cronometro (multi-estacion)'
   }
 }, {
   tableName: 'operation_timers',
@@ -59,6 +64,9 @@ const OperationTimer = sequelize.define('OperationTimer', {
     {
       unique: true,
       fields: ['work_order_operation_id']
+    },
+    {
+      fields: ['station_id']
     }
   ]
 });
