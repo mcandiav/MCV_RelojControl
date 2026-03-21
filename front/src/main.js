@@ -16,7 +16,7 @@ axios.defaults.headers.common['Access-Control-Allow-Origin'] = '*'
 const stationId = String(process.env.VUE_APP_STATION_ID || 'default-station').trim().slice(0, 64)
 axios.defaults.headers.common['x-station-id'] = stationId
 
-store.dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`)).then(() => {
+function bootstrapVue() {
   Vue.use(VueSession)
   Vue.use(VueCookies)
   Vue.$cookies.config('1d')
@@ -24,6 +24,11 @@ store.dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`)).the
     router,
     store,
     vuetify,
-    render: h => h(App)
+    render: (h) => h(App)
   }).$mount('#app')
-})
+}
+
+store
+  .dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`))
+  .then(() => bootstrapVue())
+  .catch(() => bootstrapVue())
