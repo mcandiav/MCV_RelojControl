@@ -9,7 +9,7 @@ const compression = require('compression');
 const cron = require('node-cron');
 
 
-const { load_data_workplaces, load_users } = require('./libs/initialSetup');
+const { load_data_workplaces, load_users, ensureDefaultRoles } = require('./libs/initialSetup');
 require('./models/role');
 require('./models/work_order_operation');
 require('./models/operation_timer');
@@ -60,10 +60,15 @@ if (config.NS_SHIFT_BATCH_ENABLED && config.NS_AUTO_STOP_AT_SHIFT_END) {
     }
 }
 
-db.sync({ alter: true }).then(() => {
+db.sync({ alter: true }).then(async () => {
     console.log('Base de datos sincronizada.');
-    load_data_workplaces();
-    load_users();
+    try {
+        await ensureDefaultRoles();
+        await load_data_workplaces();
+        await load_users();
+    } catch (e) {
+        console.error('Error en carga inicial (roles/workplaces/usuarios):', e);
+    }
 }).catch((error) => {
     console.error('Error al sincronizar la base de datos:', error);
 });

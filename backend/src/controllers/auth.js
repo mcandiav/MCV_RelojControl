@@ -11,6 +11,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt-nodejs');
 const config = require('../config/config');
+const sequelize = require('../config/db');
 
 // Modelos de la Base de Datos
 const User = require('../models/user');
@@ -158,12 +159,26 @@ exports.logOut = async function (req, res) {
  * @param {object} res - Objeto de respuesta de Express.
  */
 exports.getOperarios = async function (req, res) {
-    const operarios = await User.findAll({
-        include: [{ model: Role, where: { name: 'operario' } }],
-        attributes: ['id', 'username', 'name', 'lastname'],
-        order: [['name', 'ASC']]
-    });
-    return res.status(200).json(operarios);
+    try {
+        const operarioRole = await Role.findOne({
+            where: sequelize.where(
+                sequelize.fn('LOWER', sequelize.col('name')),
+                'operario'
+            )
+        });
+        if (!operarioRole) {
+            return res.status(200).json([]);
+        }
+        const operarios = await User.findAll({
+            where: { RoleId: operarioRole.id },
+            attributes: ['id', 'username', 'name', 'lastname'],
+            order: [['name', 'ASC']]
+        });
+        return res.status(200).json(operarios);
+    } catch (err) {
+        console.error('getOperarios:', err);
+        return res.status(500).json({ message: 'Error al listar operarios.' });
+    }
 };
 
 exports.me = async function (req, res) {

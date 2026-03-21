@@ -290,3 +290,13 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 - **Se envía a NetSuite**: tiempo real consolidado por operación.
 - **Modo de envío vigente**: batch al cierre de turno (no envío online por evento).
 - **Identificación de la operación destino**: por OT + operación del ruteo + recurso asociado.
+
+### 7) Lista de operarios vacía / login admin (roles)
+
+**Causa corregida en código (sandbox):** la semilla `usuarios.txt` asignaba `RoleId` fijo (`1` para `user`, `0` para `admin`). Si en la tabla `Roles` el id `1` es `admin` y `operario` es otro id, todos los operarios quedaban con rol **admin** y `GET /auth/operarios` (solo rol `operario`) devolvía lista vacía.
+
+**Al arrancar el backend ahora:** se crean roles `admin` y `operario` si faltan, y la semilla enlaza por nombre de rol (`user` → operario, `admin` → admin).
+
+**Si ya tenés usuarios viejos en MariaDB** con `RoleId` mal asignado, hay que corregir datos (con servicios detenidos y backup). Ejemplo de verificación en Adminer: tabla `Roles` (nombres e ids) y `Users` (`RoleId`). Los operarios deben tener `RoleId` = id del rol `operario`.
+
+**Credenciales:** en `usuarios.txt` el usuario administrador es `LISBETHRI` (no existe `admin` / `admin` por defecto). La contraseña incorrecta con `admin`/`admin` es esperable salvo que hayas creado ese usuario a mano.
