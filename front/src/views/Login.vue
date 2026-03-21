@@ -239,13 +239,23 @@ export default {
       }
     },
 
+    loginErrorMessage(err, fallback) {
+      const d = err && err.response && err.response.data
+      if (d && typeof d.message === 'string') return d.message
+      if (typeof d === 'string') return d
+      return fallback
+    },
+
     async ingresarOperario() {
       this.cargando = true
       try {
         await this.signIn({ username: this.operarioSeleccionado.username, password: this.pin })
         this.$router.push('/')
-      } catch {
-        this.error = { status: true, message: 'PIN incorrecto. Intentá de nuevo.' }
+      } catch (e) {
+        this.error = {
+          status: true,
+          message: this.loginErrorMessage(e, 'PIN o usuario incorrecto. Intenta de nuevo.')
+        }
         this.pin = ''
       } finally {
         this.cargando = false
@@ -253,16 +263,21 @@ export default {
     },
 
     async ingresar() {
-      if (!this.username || !this.password) {
+      const u = String(this.username || '').trim()
+      const p = this.password != null ? String(this.password) : ''
+      if (!u || !p) {
         this.error = { status: true, message: 'Completá usuario y contraseña.' }
         return
       }
       this.cargando = true
       try {
-        await this.signIn({ username: this.username, password: this.password })
+        await this.signIn({ username: u, password: p })
         this.$router.push('/')
-      } catch {
-        this.error = { status: true, message: 'Usuario o contraseña incorrectos.' }
+      } catch (e) {
+        this.error = {
+          status: true,
+          message: this.loginErrorMessage(e, 'Usuario o contraseña incorrectos.')
+        }
       } finally {
         this.cargando = false
       }

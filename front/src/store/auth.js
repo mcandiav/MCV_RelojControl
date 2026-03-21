@@ -34,24 +34,28 @@ export default {
 
     actions: {
         async signIn ({ dispatch } , credentials) {
-            let response = await axios.post('/auth/signin', credentials)
-
-            return dispatch('attempt', response.data.token)
+            const payload = {
+                username: String(credentials.username || '').trim(),
+                password: credentials.password != null ? String(credentials.password) : ''
+            }
+            const response = await axios.post('/auth/signin', payload)
+            await dispatch('attempt', response.data.token)
         },
 
         async attempt({ commit } , token){
             if(token){
                 commit('SET_TOKEN', token)
             } else {
-                return
+                throw new Error('Sin token')
             }
 
             try {
-                let response = await axios.get('auth/me')
+                const response = await axios.get('/auth/me')
                 commit('SET_USER', response.data)
             } catch (error) {
                 commit('SET_TOKEN', null)
                 commit('SET_USER', null)
+                throw error
             }
         },
         signOut({ commit }){

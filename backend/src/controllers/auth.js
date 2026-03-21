@@ -54,7 +54,7 @@ exports.signUp = async function (req, res) {
     if (existing) return res.status(400).json({ message: 'El usuario ya existe.' });
 
     const newUser = new User({
-      username: username,
+      username: String(username || '').trim(),
       name: name,
       lastname: lastname,
       password: password,
@@ -82,18 +82,30 @@ exports.signUp = async function (req, res) {
  */
 exports.signIn = async function (req, res) {
     try {
+        const username = String(req.body.username || '').trim();
+        const password = req.body.password != null ? String(req.body.password) : '';
+
+        if (!username) {
+            return res.status(400).json({ message: 'Usuario requerido.' });
+        }
+
         const userFound = await User.findOne({
-            where: {
-                username: req.body.username
-            },
-            include: [Role, Workplace],
+            where: { username },
+            include: [
+                { model: Role, required: false },
+                { model: Workplace, required: false }
+            ]
         });
 
-        if (!userFound) return res.status(400).json({ message: "User not found." });
-    
-        const matchPassword = await userFound.validPassword(req.body.password, userFound.password);
+        if (!userFound) {
+            return res.status(400).json({ message: 'Usuario no encontrado.' });
+        }
 
-        if (!matchPassword) return res.status(401).json({ token: null, message: "Invalid password." });
+        const matchPassword = userFound.validPassword(password, userFound.password);
+
+        if (!matchPassword) {
+            return res.status(401).json({ token: null, message: 'Contrasena incorrecta.' });
+        }
     
         const token = jwt.sign({
             id: userFound.id,
@@ -111,7 +123,7 @@ exports.signIn = async function (req, res) {
         res.status(200).json({ token });   
     } catch (error) {
         console.log('signIn error:', error);
-        res.status(400).send('An error occurred during sign in.');
+        res.status(500).json({ message: 'Error al iniciar sesion. Intenta de nuevo.' });
     }
 };
 
@@ -155,15 +167,15 @@ exports.getOperarios = async function (req, res) {
 };
 
 exports.me = async function (req, res) {
-    console.log('me');
     const userFound = await User.findOne({
-        where:{
-            id: req.userId
-        },
-        include: [Role, Workplace],
+        where: { id: req.userId },
+        include: [
+            { model: Role, required: false },
+            { model: Workplace, required: false }
+        ]
     });
 
-    if (!userFound) return res.status(401).json({ message: "Invalid user." });
+    if (!userFound) return res.status(401).json({ message: 'Sesion invalida.' });
 
     return res.status(200).json(userFound);
 };
@@ -181,7 +193,10 @@ exports.me = async function (req, res) {
 exports.getUsers = async function (req, res) {
     try {
         const users = await User.findAll({
-            include: [Role, Workplace],
+            include: [
+                { model: Role, required: false },
+                { model: Workplace, required: false }
+            ],
             attributes: { exclude: ['password'] }
         });
         res.status(200).json(users);

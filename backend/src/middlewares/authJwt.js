@@ -19,10 +19,11 @@ exports.verifyToken = async (req, res, next) => {
         req.userId = decoded.id
         
         const userFound = await User.findOne({
-            where:{
-                id: decoded.id
-            },
-            include: [Role, Workplace],
+            where: { id: decoded.id },
+            include: [
+                { model: Role, required: false },
+                { model: Workplace, required: false }
+            ]
         })
     
         if(!userFound) return res.status(404).json({message: "No user found."})
@@ -43,10 +44,11 @@ exports.isAdmin = async (req, res, next) => {
         req.userId = decoded.id
         
         const userFound = await User.findOne({
-            where:{
-                id: req.userId
-            },
-            include: [Role, Workplace],
+            where: { id: req.userId },
+            include: [
+                { model: Role, required: false },
+                { model: Workplace, required: false }
+            ]
         })
 
         if(!userFound) return res.status(404).json({message: "No user found."})
