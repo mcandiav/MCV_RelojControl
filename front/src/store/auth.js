@@ -47,7 +47,7 @@ export default {
             }
 
             try {
-                let response = await axios.get('auth/me')
+                let response = await axios.get('/auth/me')
                 commit('SET_USER', response.data)
             } catch (error) {
                 commit('SET_TOKEN', null)

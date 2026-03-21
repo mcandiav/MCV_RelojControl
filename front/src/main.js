@@ -11,9 +11,11 @@ require('@/store/subscriber')
 
 Vue.config.productionTip = false
 axios.defaults.baseURL = process.env.VUE_APP_API_URL || 'http://localhost:8000/'
-axios.defaults.headers.common['Access-Control-Allow-Origin'] = '*';
+axios.defaults.headers.common['Access-Control-Allow-Origin'] = '*'
+// Evita pantalla en blanco indefinida si la API no responde (attempt espera auth/me).
+axios.defaults.timeout = 20000
 
-store.dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`)).then(() => {
+function mountApp() {
   Vue.use(VueSession)
   Vue.use(VueCookies)
   Vue.$cookies.config('1d')
@@ -23,4 +25,13 @@ store.dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`)).the
     vuetify,
     render: h => h(App)
   }).$mount('#app')
-})
+}
+
+store
+  .dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`))
+  .catch((err) => {
+    console.error('[bootstrap] auth/attempt falló, se monta la app igual:', err)
+  })
+  .finally(() => {
+    mountApp()
+  })
