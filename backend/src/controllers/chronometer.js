@@ -292,10 +292,25 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
 };
 
 exports.getActiveBoard = async function getActiveBoard(req, res) {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
+
+  const roleName =
+    currentUser.Role && currentUser.Role.name
+      ? String(currentUser.Role.name).trim().toLowerCase()
+      : '';
+  const isAdmin = roleName === 'admin';
+
+  const where = {
+    status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
+  };
+  // Operario: solo sus cronómetros (evita ver OTs de otros PCs / otros operarios).
+  if (!isAdmin) {
+    where.current_user_id = req.userId;
+  }
+
   const timers = await OperationTimer.findAll({
-    where: {
-      status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
-    },
+    where,
     include: [WorkOrderOperation, User],
     order: [['updatedAt', 'DESC']]
   });

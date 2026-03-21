@@ -24,12 +24,11 @@
             <div class="status-pill" :class="cell.status === 'ACTIVE' ? 'pill-run' : 'pill-pause'">
               {{ cell.status === 'ACTIVE' ? 'EN CURSO' : 'PAUSA' }}
             </div>
-            <div class="timer-big">{{ formatElapsed(cell) }}</div>
-            <div class="ot-big">{{ cell.WorkOrderOperation && cell.WorkOrderOperation.ot_number }}</div>
-            <div class="meta">
-              {{ cell.User ? (cell.User.name + ' ' + cell.User.lastname) : '—' }}
-            </div>
-            <div class="meta resource-line">{{ cell.resource_code }}</div>
+            <div class="q-time">{{ formatElapsed(cell) }}</div>
+            <div class="q-ot">{{ cell.WorkOrderOperation && cell.WorkOrderOperation.ot_number }}</div>
+            <div class="q-op">{{ cell.WorkOrderOperation && cell.WorkOrderOperation.operation_name }}</div>
+            <div class="q-res">{{ cell.resource_code }}</div>
+            <div class="q-user">{{ cell.User ? (cell.User.name + ' ' + cell.User.lastname) : '—' }}</div>
           </template>
           <template v-else>
             <div class="empty-label">Sin cronómetro</div>
@@ -511,7 +510,10 @@ export default {
       this.errorBoard = ''
       try {
         const res = await axios.get('/chronometer/board/active')
-        this.activeBoard = Array.isArray(res.data) ? res.data : []
+        const data = res.data
+        if (Array.isArray(data)) this.activeBoard = data
+        else if (data && Array.isArray(data.timers)) this.activeBoard = data.timers
+        else this.activeBoard = []
       } catch (error) {
         this.errorBoard = (error.response && error.response.data && error.response.data.message) || 'No fue posible cargar el tablero.'
       }
@@ -671,20 +673,61 @@ export default {
   color: #0d1117;
 }
 
-.timer-big {
-  font-size: clamp(2.8rem, 11vw, 7.5rem);
+/* Cuadrantes: tiempo muy grande → OT → operación → recurso → operario (más chico) */
+.q-time {
+  font-size: clamp(3.2rem, 14vw, 8.5rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  margin: 8px 0;
+  margin: 6px 0 4px;
+  color: #e6edf3;
 }
 
-.ot-big {
-  font-size: clamp(1.6rem, 5.5vw, 3.8rem);
+.q-ot {
+  font-size: clamp(1rem, 3.8vw, 1.75rem);
   font-weight: 700;
   color: #58a6ff;
-  line-height: 1.1;
-  margin-bottom: 6px;
+  line-height: 1.15;
+  margin-bottom: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.q-op {
+  font-size: clamp(0.85rem, 2.8vw, 1.25rem);
+  font-weight: 600;
+  color: #c9d1d9;
+  line-height: 1.2;
+  margin-bottom: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.q-res {
+  font-size: clamp(0.72rem, 2.2vw, 1rem);
+  font-weight: 500;
+  color: #8b949e;
+  line-height: 1.2;
+  margin-bottom: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.q-user {
+  font-size: clamp(0.65rem, 1.8vw, 0.88rem);
+  font-weight: 500;
+  color: #6e7681;
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta {
