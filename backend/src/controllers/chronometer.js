@@ -202,11 +202,15 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
     order: [['operation_sequence', 'ASC']]
   });
 
-  const timers = await OperationTimer.findAll({
-    where: {
-      work_order_operation_id: { [Op.in]: operations.map((op) => op.id) }
-    }
-  });
+  // Evitar WHERE id IN () en SQL (MariaDB/MySQL falla) cuando no hay operaciones en el área del usuario.
+  let timers = [];
+  if (operations.length > 0) {
+    timers = await OperationTimer.findAll({
+      where: {
+        work_order_operation_id: { [Op.in]: operations.map((op) => op.id) }
+      }
+    });
+  }
   const timerByOperationId = new Map(timers.map((timer) => [timer.work_order_operation_id, timer]));
   const operationsWithState = operations.map((operation) => {
     const op = operation.toJSON();
