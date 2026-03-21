@@ -4,6 +4,7 @@ const router = express.Router();
 const chronometer = require('../controllers/chronometer');
 const security = require('../middlewares/authJwt');
 
+router.get('/operations', security.verifyToken, chronometer.listOperations);
 router.get('/operations/:otNumber', security.verifyToken, chronometer.getOperationsByOt);
 router.get('/board/active', security.verifyToken, chronometer.getActiveBoard);
 router.delete('/operations/:id', [security.verifyToken, security.isAdmin], chronometer.deleteOperation);
