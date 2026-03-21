@@ -299,9 +299,9 @@ export default {
       showIdleBoard: false,
       idleBoardMinutes: Number(process.env.VUE_APP_IDLE_BOARD_MINUTES || 2),
       boardPollSeconds: Number(process.env.VUE_APP_IDLE_BOARD_POLL_SEC || 15),
-      _idleOpenTimer: null,
-      _boardPollTimer: null,
-      _lastMoveTs: 0,
+      idleBoardOpenTimeout: null,
+      boardPollIntervalId: null,
+      lastPointerMoveTs: 0,
       lastSeedResponse: ''
     }
   },
@@ -324,7 +324,7 @@ export default {
     window.removeEventListener('keydown', this.scheduleIdleOpen)
     window.removeEventListener('touchstart', this.scheduleIdleOpen)
     window.removeEventListener('mousemove', this.onMouseMoveForIdle)
-    clearTimeout(this._idleOpenTimer)
+    clearTimeout(this.idleBoardOpenTimeout)
     this.stopBoardPollWhileOpen()
   },
   watch: {
@@ -365,15 +365,15 @@ export default {
     onMouseMoveForIdle() {
       if (!this.idleBoardEnabled || this.showIdleBoard) return
       const now = Date.now()
-      if (now - this._lastMoveTs < 800) return
-      this._lastMoveTs = now
+      if (now - this.lastPointerMoveTs < 800) return
+      this.lastPointerMoveTs = now
       this.scheduleIdleOpen()
     },
     scheduleIdleOpen() {
       if (!this.idleBoardEnabled) return
-      clearTimeout(this._idleOpenTimer)
+      clearTimeout(this.idleBoardOpenTimeout)
       if (this.showIdleBoard) return
-      this._idleOpenTimer = setTimeout(() => {
+      this.idleBoardOpenTimeout = setTimeout(() => {
         const has = this.activeBoard.some((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
         if (has) {
           this.showIdleBoard = true
@@ -384,14 +384,14 @@ export default {
     startBoardPollWhileOpen() {
       this.stopBoardPollWhileOpen()
       const ms = Math.max(5, this.boardPollSeconds) * 1000
-      this._boardPollTimer = setInterval(() => {
+      this.boardPollIntervalId = setInterval(() => {
         this.refreshBoard()
       }, ms)
     },
     stopBoardPollWhileOpen() {
-      if (this._boardPollTimer) {
-        clearInterval(this._boardPollTimer)
-        this._boardPollTimer = null
+      if (this.boardPollIntervalId) {
+        clearInterval(this.boardPollIntervalId)
+        this.boardPollIntervalId = null
       }
     },
     closeIdleBoard() {
