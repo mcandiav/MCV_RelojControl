@@ -21,12 +21,12 @@
           }"
         >
           <template v-if="cell">
-            <div class="status-pill" :class="cell.status === 'ACTIVE' ? 'pill-run' : 'pill-pause'">
-              {{ cell.status === 'ACTIVE' ? 'EN CURSO' : 'PAUSA' }}
-            </div>
             <div class="q-time">{{ formatElapsed(cell) }}</div>
-            <div class="q-ot">{{ cell.WorkOrderOperation && cell.WorkOrderOperation.ot_number }}</div>
-            <div class="q-op">{{ cell.WorkOrderOperation && cell.WorkOrderOperation.operation_name }}</div>
+            <div class="q-ot">{{ quadrantOtNumber(cell) }}</div>
+            <div class="q-op-block">
+              <span class="q-field-label">Operación</span>
+              <span class="q-op-text">{{ quadrantOperationText(cell) }}</span>
+            </div>
             <div class="q-res">{{ cell.resource_code }}</div>
             <div class="q-user">{{ cell.User ? (cell.User.name + ' ' + cell.User.lastname) : '—' }}</div>
           </template>
@@ -420,6 +420,28 @@ export default {
       const ss = String(secs).padStart(2, '0')
       return `${hh}:${mm}:${ss}`
     },
+    /** Incluye asociación anidada (WorkOrderOperation o serialización alternativa). */
+    quadrantLinkedOp(cell) {
+      if (!cell) return null
+      return cell.WorkOrderOperation || cell.workOrderOperation || null
+    },
+    quadrantOtNumber(cell) {
+      const op = this.quadrantLinkedOp(cell)
+      if (op != null && op.ot_number != null && String(op.ot_number).trim() !== '') return op.ot_number
+      return '—'
+    },
+    quadrantOperationText(cell) {
+      const op = this.quadrantLinkedOp(cell)
+      if (op) {
+        const name = String(op.operation_name || '').trim()
+        if (name) return name
+        if (op.operation_sequence != null && String(op.operation_sequence).trim() !== '') {
+          return `Sec. ${op.operation_sequence}`
+        }
+      }
+      const rc = cell && String(cell.resource_code || '').trim()
+      return rc || '—'
+    },
     formatElapsedFromSeconds(totalSeconds) {
       const total = Math.max(0, Number(totalSeconds || 0))
       const hrs = Math.floor(total / 3600)
@@ -654,25 +676,6 @@ export default {
   box-shadow: 0 0 0 2px rgba(187, 128, 9, 0.35);
 }
 
-.status-pill {
-  font-size: clamp(0.75rem, 2vw, 1.1rem);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-  padding: 4px 14px;
-  border-radius: 999px;
-}
-
-.pill-run {
-  background: #238636;
-  color: #fff;
-}
-
-.pill-pause {
-  background: #bb8009;
-  color: #0d1117;
-}
-
 /* Cuadrantes: tiempo muy grande → OT → operación → recurso → operario (más chico) */
 .q-time {
   font-size: clamp(3.2rem, 14vw, 8.5rem);
@@ -695,16 +698,35 @@ export default {
   white-space: nowrap;
 }
 
-.q-op {
+.q-op-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 4px 0 2px;
+  max-width: 100%;
+}
+
+.q-field-label {
+  font-size: clamp(0.62rem, 1.6vw, 0.78rem);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6e7681;
+}
+
+.q-op-text {
   font-size: clamp(0.85rem, 2.8vw, 1.25rem);
   font-weight: 600;
   color: #c9d1d9;
   line-height: 1.2;
-  margin-bottom: 2px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
 }
 
 .q-res {
