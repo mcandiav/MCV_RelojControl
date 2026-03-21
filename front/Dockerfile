@@ -7,9 +7,10 @@ RUN npm install
 
 COPY . .
 
-ARG VUE_APP_API_URL
+# NO declarar ARG/ENV de VUE_APP_API_URL vacío: si EasyPanel no pasa --build-arg,
+# sobreescribe .env.production y el bundle queda con localhost:8000 (regresión ya vista en 417466d).
+# La URL de producción sale de front/.env.production (reloj-api.at-once.cl).
 ARG VUE_APP_STATION_ID=default-station
-ENV VUE_APP_API_URL=$VUE_APP_API_URL
 ENV VUE_APP_STATION_ID=$VUE_APP_STATION_ID
 
 RUN npm run build
