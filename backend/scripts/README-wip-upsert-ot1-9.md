@@ -24,6 +24,8 @@ Este archivo describe la opción **1** con **PowerShell** en tu PC.
 
 *(Obtener el token por otra vía que ya usen en el equipo también sirve.)*
 
+**Importante:** el backend **no** usa `Authorization: Bearer`. Espera el header **`x-access-token`** (igual que axios en el front).
+
 ## Paso 2 — PowerShell (desde la carpeta del repo)
 
 Ajustá `$token` y, si hace falta, la URL del API.
@@ -35,7 +37,7 @@ $jsonPath = Join-Path $PSScriptRoot "wip-upsert-ot1-9.json"
 
 Invoke-RestMethod -Uri "$api/chronometer/wip/upsert" `
   -Method POST `
-  -Headers @{ Authorization = "Bearer $token" } `
+  -Headers @{ "x-access-token" = $token } `
   -ContentType "application/json; charset=utf-8" `
   -InFile $jsonPath
 ```
@@ -49,7 +51,7 @@ Respuesta esperada: `message`, `total: 52`.
 ```bash
 export TOKEN="PEGAR_JWT"
 curl -sS -X POST "https://reloj-api.at-once.cl/chronometer/wip/upsert" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "x-access-token: $TOKEN" \
   -H "Content-Type: application/json" \
   --data-binary @wip-upsert-ot1-9.json
 ```
