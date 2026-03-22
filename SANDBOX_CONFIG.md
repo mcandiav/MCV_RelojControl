@@ -22,16 +22,18 @@
 |------------|---------|
 | Repo producción (NO TOCAR) | https://github.com/mcandiav/RelojControl |
 | Repo sandbox | https://github.com/mcandiav/MCV_RelojControl |
-| Branch principal | `main` |
+| Rama de trabajo sandbox (EasyPanel) | **`V2`** — aquí se itera y se despliega el cronómetro v2 |
+| Rama `main` | Reservada para **congelar la versión final** al salir a producción (misma versión probada que `V2`, sin merges improvisados) |
 | Remote local producción | `origin` |
-| Remote local sandbox | `sandbox` |
+| Remote local sandbox | `sandbox` (si está configurado) |
 
 ### Cómo hacer push al sandbox
 ```bash
 git add .
 git commit -m "descripción del cambio"
-git push sandbox main
+git push origin V2
 ```
+*(Si el remoto `sandbox` apunta al mismo repo, puede usarse `git push sandbox V2` según la configuración local.)*
 
 ---
 
@@ -171,13 +173,13 @@ VUE_APP_API_URL=https://reloj-api.at-once.cl/
 ## Decisiones técnicas tomadas
 
 ### URL del backend en el frontend
-EasyPanel no tiene sección de "Build Arguments" visible. En lugar de usar ARG en el Dockerfile, se creó el archivo `front/.env.production` con la URL del backend hardcodeada para el sandbox. Vue CLI toma este archivo automáticamente durante `npm run build`.
+- **Build local:** Vue CLI usa `front/.env.production` si existe (útil en desarrollo).
+- **Build en EasyPanel (ZIP GitHub):** ese archivo **a menudo no va** en el repo; el **`front/Dockerfile`** incorpora **`ARG VUE_APP_API_URL`** con default `https://reloj-api.at-once.cl/` para que `npm run build` empaquete bien la URL sin depender del `.env`.
+- En EasyPanel se puede **sobrescribir** el build-arg si el dominio del API cambia.
 
 ```
 VUE_APP_API_URL=https://reloj-api.at-once.cl/
 ```
-
-Si en el futuro se cambia el dominio del backend, hay que actualizar este archivo y hacer rebuild del frontend.
 
 ---
 
@@ -185,6 +187,34 @@ Si en el futuro se cambia el dominio del backend, hay que actualizar este archiv
 
 ### Primer build no se dispara automáticamente
 Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found" y no ejecuta el primer build. **Solución:** ir a Settings → GitHub token → guardar el mismo token sin modificarlo. Esto refresca la conexión y dispara el build. Es un bug conocido de EasyPanel, no un problema del código ni del token.
+
+---
+
+## Git, despliegue y lecciones aprendidas (mar 2026)
+
+### Ramas: `V2` vs `main`
+- El **trabajo diario** en sandbox debe hacerse en **`V2`** (EasyPanel: front y API apuntando a esa rama).
+- **`main`** no es obligatoria mientras dure el desarrollo; al **cerrar** y pasar a producción, se **alinea `main` al mismo commit** que la `V2` final probada (“copiar la versión buena”), en lugar de merges grandes que mezclan historiales divergentes y pueden reintroducir regresiones.
+
+### MariaDB vs rebuild de contenedores
+- **Rebuild** de `reloj-api` / `reloj-front` **no borra** MariaDB si el volumen de datos persiste.
+- Síntomas como “no aparecen operarios” o “falla el login” **no implican** por sí solos que falten usuarios en BD: pueden ser **caché del navegador**, **URL del API mal empaquetada en el front**, o **error puntual de red/API**. Conviene mirar **F12 → Red** (`/auth/operarios`, `auth/me`) antes de asumir pérdida de datos.
+
+### Front: caché y archivos JS (Vue)
+- Tras cada deploy, el `index.html` referencia **chunks con hash** (`chunk-vendors.xxxxx.js`). Si el navegador guarda un **HTML viejo** y pide **JS que ya no existe**, el servidor puede devolver **`index.html` en lugar del `.js`** → consola: `Unexpected token '<'`.
+- **Mitigación:** `Ctrl+Shift+R` (recarga forzada), incógnito, o borrar datos del sitio para `reloj.at-once.cl`.
+- En el repo, **`front/nginx.conf`** evita servir `index.html` como si fuera un `.js`/`.css` faltante (404 en `/js/` y `/css/`) y reduce caché agresiva del `index.html` donde aplica.
+
+### Build del front desde GitHub (ZIP)
+- **`front/.env.production`** suele **no** estar en el archivo que descarga EasyPanel (gitignore). Sin variable en build, el bundle puede quedar con **`http://localhost:8000`** → HTTPS roto / pantalla en blanco.
+- **`front/Dockerfile`** define **`ARG`/`ENV` `VUE_APP_API_URL`** con valor por defecto del sandbox para que el build desde GitHub sea correcto sin depender del `.env` local.
+
+### API: arranque y healthcheck (Docker)
+- Si el proceso solo abre el puerto **después** de un `db.sync({ alter: true })` largo, un **healthcheck** agresivo puede mandar **SIGTERM** y reinicios en bucle.
+- Patrón sano: puerto HTTP abierto pronto + rutas **`/` / `/health`** que respondan durante el arranque; **`CMD`** con **`node build/index.js`** (evitar `npm` como PID 1) mejora el manejo de señales.
+
+### Cambios de código y alcance
+- Ampliar un cambio pedido con “mejoras” extra (nginx, seed, auth, etc.) sin acordarlo antes aumenta el riesgo de **regresiones** y **pérdida de tiempo**. Convención del proyecto: **discutir → acordar → implementar**; un problema (ej. lista de operarios) debe **aislarse** (log de API, red del navegador) antes de tocar datos demo o tablas.
 
 ---
 

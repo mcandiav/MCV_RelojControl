@@ -34,14 +34,14 @@ Sistema de gestión de tiempos de producción para operarios de Bignotti.
 - **Proxy:** Traefik (maneja SSL y dominios automáticamente)
 
 ## Repositorios
-- **Producción (NO TOCAR):** `https://github.com/mcandiav/RelojControl` — remote `origin`
-- **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — remote `sandbox`
+- **Producción (NO TOCAR):** `https://github.com/mcandiav/RelojControl`
+- **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — rama de trabajo **`V2`** (EasyPanel); **`main`** se alinea a la versión final al pasar a producción.
 
-### Push al sandbox
+### Push al sandbox (rama V2)
 ```bash
 git add .
 git commit -m "descripción"
-git push sandbox main
+git push origin V2
 ```
 
 ## Infraestructura sandbox
@@ -81,4 +81,4 @@ VUE_APP_API_URL=https://reloj-api.at-once.cl/
 | `Workplace` | Puestos de trabajo / centros de costo |
 
 ## Bitácora completa
-Ver `SANDBOX_CONFIG.md` en la raíz del proyecto.
+Ver `SANDBOX_CONFIG.md` en la raíz del proyecto (incluye **Git, despliegue y lecciones aprendidas**).
