@@ -9,7 +9,12 @@ const compression = require('compression');
 const cron = require('node-cron');
 
 
-const { load_data_workplaces, load_users, ensureDefaultRoles } = require('./libs/initialSetup');
+const {
+    load_data_workplaces,
+    load_users,
+    ensureDefaultRoles,
+    ensureSandboxDemoUsers
+} = require('./libs/initialSetup');
 require('./models/role');
 require('./models/work_order_operation');
 require('./models/operation_timer');
@@ -85,6 +90,7 @@ db.sync({ alter: true })
             await ensureDefaultRoles();
             await load_data_workplaces();
             await load_users();
+            await ensureSandboxDemoUsers();
         } catch (e) {
             console.error('Error en carga inicial (roles/workplaces/usuarios):', e);
         }

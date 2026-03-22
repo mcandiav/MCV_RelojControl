@@ -11,7 +11,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt-nodejs');
 const config = require('../config/config');
-const sequelize = require('../config/db');
 
 // Modelos de la Base de Datos
 const User = require('../models/user');
@@ -160,19 +159,21 @@ exports.logOut = async function (req, res) {
  */
 exports.getOperarios = async function (req, res) {
     try {
-        const operarioRole = await Role.findOne({
-            where: sequelize.where(
-                sequelize.fn('LOWER', sequelize.col('name')),
-                'operario'
-            )
-        });
+        const roles = await Role.findAll({ attributes: ['id', 'name'] });
+        const operarioRole = roles.find(
+            (r) => String(r.name || '').trim().toLowerCase() === 'operario'
+        );
         if (!operarioRole) {
+            console.warn('getOperarios: no existe rol "operario" en la BD.');
             return res.status(200).json([]);
         }
         const operarios = await User.findAll({
             where: { RoleId: operarioRole.id },
             attributes: ['id', 'username', 'name', 'lastname'],
-            order: [['name', 'ASC']]
+            order: [
+                ['name', 'ASC'],
+                ['lastname', 'ASC']
+            ]
         });
         return res.status(200).json(operarios);
     } catch (err) {

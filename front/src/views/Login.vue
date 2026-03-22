@@ -39,6 +39,10 @@
                   <div v-if="cargandoOperarios" class="text-center py-4">
                     <v-progress-circular indeterminate color="primary"></v-progress-circular>
                   </div>
+                  <div v-else-if="errorOperarios" class="text-center py-2">
+                    <v-alert type="error" dense text>{{ errorOperarios }}</v-alert>
+                    <v-btn small text color="primary" @click="cargarOperarios">Reintentar</v-btn>
+                  </div>
                   <div v-else-if="operarios.length === 0" class="text-center grey--text py-4">
                     No hay operarios registrados
                   </div>
@@ -208,11 +212,19 @@ export default {
 
     async cargarOperarios() {
       this.cargandoOperarios = true
+      this.errorOperarios = ''
       try {
         const res = await axios.get('/auth/operarios')
-        this.operarios = res.data
+        this.operarios = Array.isArray(res.data) ? res.data : []
       } catch (e) {
         console.error('Error cargando operarios', e)
+        const msg =
+          (e.response && e.response.data && e.response.data.message) ||
+          (e.message === 'Network Error'
+            ? 'No se pudo contactar al servidor (API o CORS).'
+            : 'No se pudo cargar la lista de operarios.')
+        this.errorOperarios = msg
+        this.operarios = []
       } finally {
         this.cargandoOperarios = false
       }

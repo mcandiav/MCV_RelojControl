@@ -19,5 +19,10 @@ module.exports = {
      * Timers con station_id NULL (datos previos a multi-estación) se tratan como
      * pertenecientes solo a DEFAULT_STATION_ID para visibilidad y acciones.
      */
-    STATION_LEGACY_NULL_MATCH_DEFAULT: process.env.STATION_LEGACY_NULL_MATCH_DEFAULT === 'false' ? false : true
+    STATION_LEGACY_NULL_MATCH_DEFAULT: process.env.STATION_LEGACY_NULL_MATCH_DEFAULT === 'false' ? false : true,
+    /**
+     * Si no hay usuarios y no hay usuarios.txt: crea admin + operarios demo (PIN 1234).
+     * Desactivar en producción real: AUTO_SEED_DEMO_USERS=false
+     */
+    AUTO_SEED_DEMO_USERS: process.env.AUTO_SEED_DEMO_USERS === 'false' ? false : true
 }

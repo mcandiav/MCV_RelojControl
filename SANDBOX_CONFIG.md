@@ -98,6 +98,8 @@ DELETE_SECRET=b1234
 DEFAULT_STATION_ID=default-station
 REQUIRE_PIN_FOR_TIMER_ACTIONS=true
 STATION_LEGACY_NULL_MATCH_DEFAULT=true
+# Opcional: no crear usuarios demo si la BD está vacía (por defecto: admin + 4 operarios PIN 1234)
+# AUTO_SEED_DEMO_USERS=false
 ```
 
 **Multi-estación (Cronómetro V3):**

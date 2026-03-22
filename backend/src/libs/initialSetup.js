@@ -3,6 +3,7 @@ const path = require("path");
 const User = require('../models/user')
 const Workplace = require('../models/workplace')
 const Role = require('../models/role')
+const config = require('../config/config')
 
 /**
  * Garantiza filas Role `admin` y `operario` (la semilla de usuarios depende de esto).
@@ -105,4 +106,62 @@ async function load_users(){
     }
 }
 
-module.exports = { load_data_workplaces, load_users, ensureDefaultRoles }
+/**
+ * Sin usuarios.txt en el contenedor la lista de operarios queda vacía.
+ * Si la BD no tiene ningún usuario, crea admin + operarios de prueba (PIN 1234).
+ */
+async function ensureSandboxDemoUsers() {
+    if (!config.AUTO_SEED_DEMO_USERS) return;
+
+    const totalUsers = await User.count();
+    if (totalUsers > 0) return;
+
+    const roles = await Role.findAll();
+    const adminRole = roles.find((r) => String(r.name || '').toLowerCase() === 'admin');
+    const operarioRole = roles.find((r) => String(r.name || '').toLowerCase() === 'operario');
+    const wp = await Workplace.findOne({ order: [['id', 'ASC']] });
+
+    if (!adminRole || !operarioRole || !wp) {
+        console.log('ensureSandboxDemoUsers: omitido (falta rol admin/operario o workplace).');
+        return;
+    }
+
+    const pin = '1234';
+    await User.create({
+        username: 'admin',
+        name: 'Admin',
+        lastname: 'Sistema',
+        password: pin,
+        RoleId: adminRole.id,
+        WorkplaceId: wp.id
+    });
+
+    const operarios = [
+        ['Juan', 'Perez', 'jperez'],
+        ['Maria', 'Gomez', 'mgomez'],
+        ['Pedro', 'Lopez', 'plopez'],
+        ['Ana', 'Diaz', 'adiaz']
+    ];
+    for (const [name, lastname, username] of operarios) {
+        await User.create({
+            username,
+            name,
+            lastname,
+            password: pin,
+            RoleId: operarioRole.id,
+            WorkplaceId: wp.id
+        });
+    }
+
+    console.log(
+        'Usuarios demo creados (BD vacía, sin usuarios.txt): admin + jperez, mgomez, plopez, adiaz — PIN 1234. ' +
+            'Desactivar con AUTO_SEED_DEMO_USERS=false.'
+    );
+}
+
+module.exports = {
+    load_data_workplaces,
+    load_users,
+    ensureDefaultRoles,
+    ensureSandboxDemoUsers
+}
