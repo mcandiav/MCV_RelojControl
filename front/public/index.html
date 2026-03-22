@@ -13,7 +13,13 @@
     <noscript>
       <strong>We're sorry but <%= htmlWebpackPlugin.options.title %> doesn't work properly without JavaScript enabled. Please enable it to continue.</strong>
     </noscript>
-    <div id="app"></div>
+    <div id="app">
+      <div id="app-boot-fallback" style="padding:2rem;font-family:system-ui,sans-serif;text-align:center;background:#0d1117;color:#e6edf3;min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0.5rem;">
+        <strong>Bignotti · Cronometro v2</strong>
+        <span>Cargando aplicación…</span>
+        <span style="font-size:0.85rem;opacity:0.75;">Si esto no desaparece, forzá recarga (Ctrl+Shift+R) o revisá la consola (F12).</span>
+      </div>
+    </div>
     <!-- built files will be auto injected -->
   </body>
 </html>

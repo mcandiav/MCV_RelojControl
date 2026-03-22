@@ -106,10 +106,12 @@ DELETE_SECRET=b1234
 | Puerto interno | `80` |
 | Dominio | `reloj.at-once.cl` |
 
-**Build argument del frontend:**
+**Build argument del frontend (EasyPanel / Docker):**
 ```
 VUE_APP_API_URL=https://reloj-api.at-once.cl/
 ```
+
+> **Importante (mar 2026):** `front/.env.production` no está en el ZIP de GitHub (gitignore). El **`front/Dockerfile`** define por defecto `ARG VUE_APP_API_URL=https://reloj-api.at-once.cl/` para que el build en EasyPanel **no** empaquete `axios` apuntando a `http://localhost:8000` (eso rompe el sitio en HTTPS: pantalla en blanco o login roto). Podés sobrescribir el ARG en EasyPanel si cambia el dominio del API.
 
 ---
 
