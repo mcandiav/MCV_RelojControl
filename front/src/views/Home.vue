@@ -102,8 +102,8 @@
                   <div class="font-weight-bold mb-1">Respuesta del servidor (ultimo Seed)</div>
                   <pre class="seed-json text-left">{{ lastSeedResponse }}</pre>
                   <div class="text-caption mt-2">
-                    Codigo nuevo: <code>total</code> debe ser <strong>10</strong> y <code>ot_numbers</code> debe incluir <strong>OT4444</strong>.
-                    Si ves <code>total: 6</code> sin OT4444, el contenedor del <strong>backend</strong> sigue con imagen antigua (rebuild/redeploy API).
+                    Tras Seed WIP: <code>total</code> <strong>52</strong>, <code>ot_numbers</code> <strong>OT1</strong> … <strong>OT9</strong> (nombres con <strong>CUAD A/B/…</strong> para probar cuadrantes).
+                    Si el total no coincide, el <strong>backend</strong> puede estar con imagen antigua.
                   </div>
                 </v-alert>
               </v-card>
@@ -516,7 +516,7 @@ export default {
         this.operations = res.data.operations || []
         if (this.operations.length === 0) {
           this.emptyOpsHint =
-            'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP y prueba 4444 (4 maquinas), 3289, 3491 o 2316.'
+            'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP o POST upsert (ver backend/scripts) y busca OT1 … OT9.'
         }
       } catch (error) {
         const d = error.response && error.response.data

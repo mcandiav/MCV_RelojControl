@@ -534,150 +534,40 @@ exports.upsertWipOperations = async function upsertWipOperations(req, res) {
   });
 };
 
-exports.seedWipSample = async function seedWipSample(req, res) {
-  const sample = [
-    {
-      ot_number: 'OT3289',
-      operation_sequence: 10,
-      operation_code: 'ES-10',
-      operation_name: 'ARMADO',
-      resource_code: 'ES414 ARMADO',
-      area: 'ES',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 25,
-      planned_quantity: 7,
-      completed_quantity: 0,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT3289',
-      operation_sequence: 20,
-      operation_code: 'ES-20',
-      operation_name: 'SOLDAR',
-      resource_code: 'ES512 SOLDADURA',
-      area: 'ES',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 25,
-      planned_quantity: 7,
-      completed_quantity: 7,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT3491',
-      operation_sequence: 10,
-      operation_code: 'ME-10',
-      operation_name: 'PERFORAR A DIA 56',
-      resource_code: 'ME230 TORNO REVOLVER MINGANTI',
-      area: 'ME',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 60,
-      planned_quantity: 5,
-      completed_quantity: 5,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT3491',
-      operation_sequence: 20,
-      operation_code: 'ME-20',
-      operation_name: 'TORNEADO',
-      resource_code: 'ME210 TORNO V.D.F. 2000',
-      area: 'ME',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 105,
-      planned_quantity: 5,
-      completed_quantity: 5,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT2316',
-      operation_sequence: 10,
-      operation_code: 'ME-10',
-      operation_name: 'BANCO',
-      resource_code: 'ME121 BANCO MECANICO',
-      area: 'ME',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 270,
-      planned_quantity: 1,
-      completed_quantity: 0,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT2316',
-      operation_sequence: 20,
-      operation_code: 'ME-20',
-      operation_name: 'ARMADO',
-      resource_code: 'ME123 BANCO MECANICO',
-      area: 'ME',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 540,
-      planned_quantity: 1,
-      completed_quantity: 0,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    // Demo rejilla 4 cuadrantes: una OT con 4 recursos distintos (4 timers a la vez).
-    {
-      ot_number: 'OT4444',
-      operation_sequence: 10,
-      operation_code: 'DEMO-10',
-      operation_name: 'CUADRANTE A',
-      resource_code: 'ES901 LINEA A',
-      area: 'ES',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 120,
-      planned_quantity: 10,
-      completed_quantity: 0,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT4444',
-      operation_sequence: 20,
-      operation_code: 'DEMO-20',
-      operation_name: 'CUADRANTE B',
-      resource_code: 'ES902 LINEA B',
-      area: 'ES',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 120,
-      planned_quantity: 10,
-      completed_quantity: 0,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT4444',
-      operation_sequence: 30,
-      operation_code: 'DEMO-30',
-      operation_name: 'CUADRANTE C',
-      resource_code: 'ME903 CELDA C',
-      area: 'ME',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 120,
-      planned_quantity: 10,
-      completed_quantity: 0,
-      source_status: 'WIP',
-      last_synced_at: new Date()
-    },
-    {
-      ot_number: 'OT4444',
-      operation_sequence: 40,
-      operation_code: 'DEMO-40',
-      operation_name: 'CUADRANTE D',
-      resource_code: 'ME904 CELDA D',
-      area: 'ME',
-      planned_setup_minutes: null,
-      planned_operation_minutes: 120,
-      planned_quantity: 10,
-      completed_quantity: 0,
-      source_status: 'WIP',
-      last_synced_at: new Date()
+/**
+ * OT1…OT9: 4–8 ops cada una, ME/ES mezclado, nombres con CUAD A/B/… para validar cuadrantes.
+ * Misma lógica que `backend/scripts/wip-upsert-ot1-9.json` (POST /chronometer/wip/upsert).
+ */
+function buildWipOperationsOt1To9QuadrantDemo() {
+  const rows = [];
+  const now = new Date();
+  for (let i = 1; i <= 9; i += 1) {
+    const numOps = 4 + ((i - 1) % 5);
+    for (let j = 0; j < numOps; j += 1) {
+      const area = (i - 1 + j) % 2 === 0 ? 'ES' : 'ME';
+      const seq = (j + 1) * 10;
+      const letter = String.fromCharCode(65 + j);
+      rows.push({
+        ot_number: `OT${i}`,
+        operation_sequence: seq,
+        operation_code: `${area}-${seq}`,
+        operation_name: `OT${i} OP${j + 1} ${area} — CUAD ${letter}`,
+        resource_code: `${area} OT${i} S${seq} ${letter}`.slice(0, 64),
+        area,
+        planned_setup_minutes: null,
+        planned_operation_minutes: 30 + ((i * 3 + j * 7) % 90),
+        planned_quantity: 1 + ((i + j) % 5),
+        completed_quantity: 0,
+        source_status: 'WIP',
+        last_synced_at: now
+      });
     }
-  ];
+  }
+  return rows;
+}
+
+exports.seedWipSample = async function seedWipSample(req, res) {
+  const sample = buildWipOperationsOt1To9QuadrantDemo();
 
   await WorkOrderOperation.bulkCreate(sample, {
     updateOnDuplicate: [

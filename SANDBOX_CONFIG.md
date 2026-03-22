@@ -216,6 +216,10 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 ### Cambios de código y alcance
 - Ampliar un cambio pedido con “mejoras” extra (nginx, seed, auth, etc.) sin acordarlo antes aumenta el riesgo de **regresiones** y **pérdida de tiempo**. Convención del proyecto: **discutir → acordar → implementar**; un problema (ej. lista de operarios) debe **aislarse** (log de API, red del navegador) antes de tocar datos demo o tablas.
 
+### Poblar WIP (OT de prueba) sin redeploy
+- MariaDB **no** recibe `POST` HTTP. Para cargar operaciones WIP desde Windows: **`POST /chronometer/wip/upsert`** al API con JWT **admin** y JSON `{ "operations": [ ... ] }`.
+- En el repo: `backend/scripts/wip-upsert-ot1-9.json` + instrucciones en `backend/scripts/README-wip-upsert-ot1-9.md` (PowerShell / curl).
+
 ---
 
 ## Notas importantes
