@@ -31,7 +31,11 @@ app.use(function setCommonHeaders(req, res, next) {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'files')));
-app.use(cors());
+app.use(
+  cors({
+    allowedHeaders: ['Content-Type', 'x-access-token', 'x-station-id', 'x-terminal-id']
+  })
+);
 app.use(compression());
 
 // 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).

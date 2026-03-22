@@ -17,6 +17,11 @@ const OperationTimer = sequelize.define('OperationTimer', {
     type: DataTypes.STRING(64),
     allowNull: false
   },
+  /** PC / kiosco: mismo valor en todos los operarios que usan este navegador (cabecera x-station-id). */
+  station_id: {
+    type: DataTypes.STRING(64),
+    allowNull: true
+  },
   current_user_id: {
     type: DataTypes.INTEGER,
     allowNull: true
@@ -55,6 +60,9 @@ const OperationTimer = sequelize.define('OperationTimer', {
     },
     {
       fields: ['status']
+    },
+    {
+      fields: ['station_id']
     },
     {
       unique: true,

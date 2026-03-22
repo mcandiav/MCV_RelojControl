@@ -1,43 +1,56 @@
 <template>
   <v-app>
-    <!-- Tablero tipo protector: 4 cuadrantes (inactividad o prueba manual). Clic para cerrar. -->
+    <!-- Tablero protector: siempre 2×2 visibles; si hay más de 4 tareas, carrusel (flechas / teclado). -->
     <transition name="fade">
       <div
         v-if="showIdleBoard"
         class="idle-board-overlay"
         role="dialog"
         aria-modal="true"
-        @click="closeIdleBoard"
       >
-        <div class="idle-board-grid">
-        <div
-          v-for="(cell, idx) in idleQuadrants"
-          :key="'q-' + idx"
-          class="idle-quadrant"
-          :class="{
-            'idle-quadrant--empty': !cell,
-            'idle-quadrant--active': cell && cell.status === 'ACTIVE',
-            'idle-quadrant--paused': cell && cell.status === 'PAUSED'
-          }"
-        >
-          <template v-if="cell">
-            <div class="q-time">{{ formatElapsed(cell) }}</div>
-            <div class="q-ot">{{ quadrantOtNumber(cell) }}</div>
-            <div class="q-op-block">
-              <span class="q-field-label">Operación</span>
-              <span class="q-op-text">{{ quadrantOperationText(cell) }}</span>
+        <div class="idle-board-body" @click.stop>
+          <div v-if="idleBoardTotalPages > 1" class="idle-board-carousel-bar">
+            <v-btn icon dark large class="carousel-nav" aria-label="Página anterior" @click="idleBoardPrev">
+              <v-icon large>mdi-chevron-left</v-icon>
+            </v-btn>
+            <div class="carousel-meta">
+              <span class="carousel-page">{{ idleBoardSafePage + 1 }} / {{ idleBoardTotalPages }}</span>
+              <span class="carousel-count">{{ idleActiveTimersSorted.length }} tareas · ← →</span>
             </div>
-            <div class="q-res">{{ cell.resource_code }}</div>
-            <div class="q-user">{{ cell.User ? (cell.User.name + ' ' + cell.User.lastname) : '—' }}</div>
-          </template>
-          <template v-else>
-            <div class="empty-label">Sin cronómetro</div>
-            <div class="meta">Cuadrante {{ idx + 1 }}</div>
-          </template>
+            <v-btn icon dark large class="carousel-nav" aria-label="Página siguiente" @click="idleBoardNext">
+              <v-icon large>mdi-chevron-right</v-icon>
+            </v-btn>
+          </div>
+          <div class="idle-board-grid">
+            <div
+              v-for="(cell, idx) in idleQuadrants"
+              :key="'q-' + idleBoardSafePage + '-' + idx"
+              class="idle-quadrant"
+              :class="{
+                'idle-quadrant--empty': !cell,
+                'idle-quadrant--active': cell && cell.status === 'ACTIVE',
+                'idle-quadrant--paused': cell && cell.status === 'PAUSED'
+              }"
+            >
+              <template v-if="cell">
+                <div class="q-time">{{ formatElapsed(cell) }}</div>
+                <div class="q-ot">{{ quadrantOtNumber(cell) }}</div>
+                <div class="q-op-block">
+                  <span class="q-field-label">Operación</span>
+                  <span class="q-op-text">{{ quadrantOperationText(cell) }}</span>
+                </div>
+                <div class="q-res">{{ cell.resource_code }}</div>
+                <div class="q-user">{{ cell.User ? (cell.User.name + ' ' + cell.User.lastname) : '—' }}</div>
+              </template>
+              <template v-else>
+                <div class="empty-label">Libre</div>
+                <div class="meta">Panel {{ idx + 1 }}</div>
+              </template>
+            </div>
+          </div>
         </div>
-        </div>
-        <div class="idle-board-footer">
-          Toca en cualquier lugar para volver · Actualiza cada {{ boardPollSeconds }}s mientras está abierto
+        <div class="idle-board-footer" @click="closeIdleBoard">
+          Toca aquí para cerrar · Esc · Carrusel cada {{ idleBoardCarouselSeconds }}s si hay varias páginas · Datos cada {{ boardPollSeconds }}s
         </div>
       </div>
     </transition>
@@ -172,7 +185,7 @@
                 <div class="d-flex flex-wrap align-center justify-space-between mb-2">
                   <div class="text-subtitle-1 font-weight-bold">Tablero de cronometros activos</div>
                   <div class="d-flex flex-wrap align-center" style="gap: 8px">
-                    <span class="grey--text text-caption">Protector 4 cuadrantes tras {{ idleBoardMinutes }} min sin actividad (solo si hay timers).</span>
+                    <span class="grey--text text-caption">Protector 2×2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay más de 4.</span>
                     <v-btn small outlined color="primary" @click="openIdleBoardPreview">Ver tablero grande</v-btn>
                   </div>
                 </div>
@@ -299,10 +312,13 @@ export default {
       showIdleBoard: false,
       idleBoardMinutes: Number(process.env.VUE_APP_IDLE_BOARD_MINUTES || 2),
       boardPollSeconds: Number(process.env.VUE_APP_IDLE_BOARD_POLL_SEC || 15),
+      idleBoardCarouselIntervalId: null,
       idleBoardOpenTimeout: null,
       boardPollIntervalId: null,
       lastPointerMoveTs: 0,
-      lastSeedResponse: ''
+      lastSeedResponse: '',
+      /** Página del carrusel del tablero grande (4 tareas por página, rejilla 2×2). */
+      idleBoardPage: 0
     }
   },
   created() {
@@ -326,6 +342,8 @@ export default {
     window.removeEventListener('mousemove', this.onMouseMoveForIdle)
     clearTimeout(this.idleBoardOpenTimeout)
     this.stopBoardPollWhileOpen()
+    this.stopIdleBoardCarousel()
+    document.removeEventListener('keydown', this.onIdleBoardKeydown)
   },
   watch: {
     otNumber(value) {
@@ -340,6 +358,20 @@ export default {
       this.searchTimeout = setTimeout(() => {
         this.buscarOperaciones()
       }, 300)
+    },
+    showIdleBoard(val) {
+      if (val) {
+        this.idleBoardPage = 0
+        document.addEventListener('keydown', this.onIdleBoardKeydown)
+        this.$nextTick(() => this.syncIdleBoardCarousel())
+      } else {
+        document.removeEventListener('keydown', this.onIdleBoardKeydown)
+        this.stopIdleBoardCarousel()
+      }
+    },
+    idleBoardTotalPages(n) {
+      if (this.idleBoardPage >= n) this.idleBoardPage = Math.max(0, n - 1)
+      if (this.showIdleBoard) this.syncIdleBoardCarousel()
     }
   },
   computed: {
@@ -350,14 +382,41 @@ export default {
     idleBoardEnabled() {
       return String(process.env.VUE_APP_IDLE_BOARD_ENABLED || 'true').toLowerCase() !== 'false'
     },
+    /** Segundos entre páginas del carrusel (solo si hay más de 4 tareas). */
+    idleBoardCarouselSeconds() {
+      const s = Number(process.env.VUE_APP_IDLE_BOARD_CAROUSEL_SEC || 2)
+      return Math.max(1, Math.min(120, s))
+    },
     idleMs() {
       return Math.max(1, this.idleBoardMinutes) * 60 * 1000
     },
-    idleQuadrants() {
+    /** Tamaño fijo 2×2 = 4 por pantalla (legible en monitor planta). */
+    idleBoardSlotsPerPage() {
+      const n = Number(process.env.VUE_APP_IDLE_BOARD_SLOTS || 4)
+      return Math.max(1, Math.min(4, n))
+    },
+    idleActiveTimersSorted() {
       const rows = this.activeBoard.filter((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
-      const sorted = [...rows].sort((a, b) => String(a.resource_code || '').localeCompare(String(b.resource_code || '')))
-      const q = sorted.slice(0, 4)
-      while (q.length < 4) q.push(null)
+      return [...rows].sort((a, b) => String(a.resource_code || '').localeCompare(String(b.resource_code || '')))
+    },
+    idleBoardTotalPages() {
+      const len = this.idleActiveTimersSorted.length
+      const per = this.idleBoardSlotsPerPage
+      if (len === 0) return 1
+      return Math.ceil(len / per)
+    },
+    idleBoardSafePage() {
+      const max = Math.max(0, this.idleBoardTotalPages - 1)
+      return Math.min(Math.max(0, this.idleBoardPage), max)
+    },
+    idleQuadrants() {
+      const per = this.idleBoardSlotsPerPage
+      const list = this.idleActiveTimersSorted
+      const page = this.idleBoardSafePage
+      const start = page * per
+      const slice = list.slice(start, start + per)
+      const q = [...slice]
+      while (q.length < per) q.push(null)
       return q
     }
   },
@@ -394,9 +453,61 @@ export default {
         this.boardPollIntervalId = null
       }
     },
+    stopIdleBoardCarousel() {
+      if (this.idleBoardCarouselIntervalId) {
+        clearInterval(this.idleBoardCarouselIntervalId)
+        this.idleBoardCarouselIntervalId = null
+      }
+    },
+    syncIdleBoardCarousel() {
+      if (!this.showIdleBoard) {
+        this.stopIdleBoardCarousel()
+        return
+      }
+      if (this.idleBoardTotalPages <= 1) {
+        this.stopIdleBoardCarousel()
+        return
+      }
+      if (this.idleBoardCarouselIntervalId) return
+      const ms = this.idleBoardCarouselSeconds * 1000
+      this.idleBoardCarouselIntervalId = setInterval(() => {
+        if (!this.showIdleBoard || this.idleBoardTotalPages <= 1) {
+          this.stopIdleBoardCarousel()
+          return
+        }
+        this.idleBoardNext()
+      }, ms)
+    },
+    onIdleBoardKeydown(e) {
+      if (!this.showIdleBoard) return
+      if (e.key === 'Escape') {
+        this.closeIdleBoard()
+        return
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        this.idleBoardPrev()
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        this.idleBoardNext()
+      }
+    },
+    idleBoardPrev() {
+      const n = this.idleBoardTotalPages
+      if (n <= 1) return
+      const cur = this.idleBoardSafePage
+      this.idleBoardPage = (cur - 1 + n) % n
+    },
+    idleBoardNext() {
+      const n = this.idleBoardTotalPages
+      if (n <= 1) return
+      const cur = this.idleBoardSafePage
+      this.idleBoardPage = (cur + 1) % n
+    },
     closeIdleBoard() {
       this.showIdleBoard = false
       this.stopBoardPollWhileOpen()
+      this.stopIdleBoardCarousel()
       if (this.idleBoardEnabled) this.scheduleIdleOpen()
     },
     openIdleBoardPreview() {
@@ -634,8 +745,50 @@ export default {
   color: #e6edf3;
   display: flex;
   flex-direction: column;
-  cursor: pointer;
   user-select: none;
+}
+
+.idle-board-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.idle-board-carousel-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.carousel-nav {
+  opacity: 0.92;
+}
+
+.carousel-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 100px;
+}
+
+.carousel-page {
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.carousel-count {
+  font-size: 0.72rem;
+  color: #8b949e;
+  letter-spacing: 0.02em;
 }
 
 .idle-board-grid {
@@ -779,6 +932,12 @@ export default {
   font-size: 0.85rem;
   color: #6e7681;
   background: #010409;
+  cursor: pointer;
+}
+
+.idle-board-footer:hover {
+  color: #8b949e;
+  background: #0d1117;
 }
 
 .seed-json {

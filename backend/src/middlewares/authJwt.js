@@ -17,6 +17,12 @@ exports.verifyToken = async (req, res, next) => {
 
         const decoded = jwt.verify(token, config.SECRET)
         req.userId = decoded.id
+
+        const rawStation = req.headers['x-station-id'] || req.headers['x-terminal-id']
+        req.stationId = null
+        if (rawStation != null && String(rawStation).trim()) {
+            req.stationId = String(rawStation).trim().slice(0, 64)
+        }
         
         const userFound = await User.findOne({
             where:{
@@ -41,6 +47,12 @@ exports.isAdmin = async (req, res, next) => {
 
         const decoded = jwt.verify(token, config.SECRET)
         req.userId = decoded.id
+
+        const rawStation = req.headers['x-station-id'] || req.headers['x-terminal-id']
+        req.stationId = null
+        if (rawStation != null && String(rawStation).trim()) {
+            req.stationId = String(rawStation).trim().slice(0, 64)
+        }
         
         const userFound = await User.findOne({
             where:{

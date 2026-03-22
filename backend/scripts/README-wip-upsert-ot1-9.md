@@ -3,7 +3,8 @@
 No se hace POST a MariaDB: el motor SQL no expone HTTP. Hay que:
 
 1. **POST al API** `https://reloj-api.at-once.cl/chronometer/wip/upsert` con JWT de **admin**, **o**
-2. Ejecutar SQL a mano (Adminer / `mysql`).
+2. **Importar CSV en Adminer** (recomendado si querés evitar tokens/curl): ver **`README-seed-wip-adminer.md`**, archivo **`seed-wip-ot1-9-adminer.csv`**, **o**
+3. Ejecutar SQL a mano (Adminer / `mysql`).
 
 Este archivo describe la opción **1** con **PowerShell** en tu PC.
 

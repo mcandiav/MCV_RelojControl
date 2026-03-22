@@ -37,6 +37,37 @@ async function getCurrentUser(req) {
   });
 }
 
+/**
+ * Operario: pause/stop/resume solo en la misma terminal (cabecera x-station-id ↔ timer.station_id).
+ * Timer sin station_id (datos viejos): solo quien tiene current_user_id.
+ * Sin cabecera de terminal: mismo criterio que antes (solo current_user_id).
+ */
+function operarioMayControlTimer(req, timer) {
+  if (!timer) return false;
+  if (req.stationId) {
+    if (timer.station_id && timer.station_id === req.stationId) return true;
+    if (!timer.station_id && Number(timer.current_user_id) === Number(req.userId)) return true;
+    return false;
+  }
+  return Number(timer.current_user_id) === Number(req.userId);
+}
+
+async function assertTimerControlOrRespond(req, timer, res) {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Invalid user.' });
+    return false;
+  }
+  const roleName =
+    currentUser.Role && currentUser.Role.name
+      ? String(currentUser.Role.name).trim().toLowerCase()
+      : '';
+  if (roleName === 'admin') return true;
+  if (operarioMayControlTimer(req, timer)) return true;
+  res.status(403).json({ message: 'Este cronómetro pertenece a otra terminal.' });
+  return false;
+}
+
 async function appendEvent({ timerId, operationId, userId, eventType, details }) {
   return TimerEvent.create({
     operation_timer_id: timerId,
@@ -304,9 +335,19 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
   const where = {
     status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
   };
-  // Operario: solo sus cronómetros (evita ver OTs de otros PCs / otros operarios).
+  // Operario: cronómetros de ESTA terminal (cabecera x-station-id), no solo del usuario actual.
+  // Compatibilidad: sin station_id en BD (null) se muestran solo los que inició este usuario.
   if (!isAdmin) {
-    where.current_user_id = req.userId;
+    if (req.stationId) {
+      where[Op.or] = [
+        { station_id: req.stationId },
+        {
+          [Op.and]: [{ station_id: { [Op.is]: null } }, { current_user_id: req.userId }]
+        }
+      ];
+    } else {
+      where.current_user_id = req.userId;
+    }
   }
 
   const timers = await OperationTimer.findAll({
@@ -353,6 +394,7 @@ exports.startTimer = async function startTimer(req, res) {
     timer = await OperationTimer.create({
       work_order_operation_id: operation.id,
       resource_code: operation.resource_code,
+      station_id: req.stationId || null,
       current_user_id: currentUser.id,
       status: 'ACTIVE',
       active_since: new Date(),
@@ -364,7 +406,12 @@ exports.startTimer = async function startTimer(req, res) {
     if (timer.status === 'ACTIVE') {
       return res.status(400).json({ message: 'Timer is already active.' });
     }
+    // En PAUSA solo la misma terminal (o dueño legacy) puede reanudar con Play; evita secuestrar desde otro PC.
+    if (timer.status === 'PAUSED') {
+      if (!(await assertTimerControlOrRespond(req, timer, res))) return;
+    }
     timer.current_user_id = currentUser.id;
+    if (req.stationId) timer.station_id = req.stationId;
     timer.status = 'ACTIVE';
     timer.active_since = new Date();
     timer.last_event_at = new Date();
@@ -390,6 +437,8 @@ exports.pauseTimer = async function pauseTimer(req, res) {
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
   if (timer.status !== 'ACTIVE') return res.status(400).json({ message: 'Only active timers can be paused.' });
 
+  if (!(await assertTimerControlOrRespond(req, timer, res))) return;
+
   timer.status = 'PAUSED';
   timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
   timer.active_since = null;
@@ -414,6 +463,8 @@ exports.resumeTimer = async function resumeTimer(req, res) {
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
   if (timer.status !== 'PAUSED') return res.status(400).json({ message: 'Only paused timers can be resumed.' });
 
+  if (!(await assertTimerControlOrRespond(req, timer, res))) return;
+
   const operation = await WorkOrderOperation.findByPk(work_order_operation_id);
   if (!operation) return res.status(404).json({ message: 'Operation not found.' });
 
@@ -432,6 +483,7 @@ exports.resumeTimer = async function resumeTimer(req, res) {
   timer.active_since = new Date();
   timer.last_event_at = new Date();
   timer.current_user_id = req.userId;
+  if (req.stationId) timer.station_id = req.stationId;
   if (!Number.isFinite(timer.total_elapsed_seconds)) timer.total_elapsed_seconds = 0;
   await timer.save();
 
@@ -452,6 +504,8 @@ exports.stopTimer = async function stopTimer(req, res) {
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
   if (timer.status === 'STOPPED') return res.status(400).json({ message: 'Timer is already stopped.' });
+
+  if (!(await assertTimerControlOrRespond(req, timer, res))) return;
 
   if (timer.status === 'ACTIVE') {
     timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
