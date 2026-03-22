@@ -55,14 +55,18 @@ if (config.NS_SHIFT_BATCH_ENABLED && config.NS_AUTO_STOP_AT_SHIFT_END) {
     }
 }
 
-db.sync({ alter: true }).then(() => {
-    console.log('Base de datos sincronizada.');
-    load_data_workplaces();
-    load_users();
-}).catch((error) => {
-    console.error('Error al sincronizar la base de datos:', error);
-});
-
-server.listen(8000, ()=>{
-    console.log('Server initialized.')
-});
+// Escuchar solo después de sync + seeds: evita peticiones con API “a medias”.
+// SIGTERM en logs suele ser Docker/EasyPanel deteniendo el contenedor (redeploy), no un bug de Sequelize.
+db.sync({ alter: true })
+    .then(async () => {
+        console.log('Base de datos sincronizada.');
+        await load_data_workplaces();
+        await load_users();
+        server.listen(8000, () => {
+            console.log('Server initialized.');
+        });
+    })
+    .catch((error) => {
+        console.error('Error al sincronizar la base de datos:', error);
+        process.exit(1);
+    });
