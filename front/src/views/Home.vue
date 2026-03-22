@@ -142,7 +142,7 @@
                   <th>Tiempo planificado ejecucion (min)</th>
                   <th>Tiempo en uso</th>
                   <th>Cantidad planificada</th>
-                  <th>Cantidad</th>
+                  <th>Cant. terminada</th>
                       <th>Area</th>
                       <th>Accion</th>
                     </tr>
@@ -165,7 +165,7 @@
                     <div class="action-buttons">
                       <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
                       <v-btn x-small color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
-                      <v-btn x-small color="error" @click="timerAction('stop', op.id)">Stop</v-btn>
+                      <v-btn x-small color="error" @click="openStopQuantityDialog(op)">Stop</v-btn>
                     <template v-if="isAdmin">
                       <v-btn x-small color="error" @click="borrarOperacion(op.id)">Borrar</v-btn>
                     </template>
@@ -268,6 +268,35 @@
         </v-tab-item>
       </v-tabs-items>
     </v-container>
+
+    <!-- Stop: cantidad terminada (opcional) -->
+    <v-dialog v-model="stopQtyDialog" max-width="420" persistent>
+      <v-card>
+        <v-card-title class="text-h6">Detener cronómetro</v-card-title>
+        <v-card-text>
+          <p class="body-2 mb-3">
+            Podés registrar la <strong>cantidad terminada</strong> de esta operación al cerrar. Si no cargás nada, solo se detiene el cronómetro y no se cambia el valor en base.
+          </p>
+          <v-text-field
+            v-model="stopQtyValue"
+            label="Cantidad terminada (opcional)"
+            type="number"
+            min="0"
+            step="1"
+            outlined
+            dense
+            hide-details="auto"
+            :disabled="stopQtyLoading"
+            @keyup.enter="confirmStopWithQuantity"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text :disabled="stopQtyLoading" @click="closeStopQuantityDialog">Cancelar</v-btn>
+          <v-btn color="error" :loading="stopQtyLoading" @click="confirmStopWithQuantity">Detener</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
@@ -318,7 +347,11 @@ export default {
       lastPointerMoveTs: 0,
       lastSeedResponse: '',
       /** Página del carrusel del tablero grande (4 tareas por página, rejilla 2×2). */
-      idleBoardPage: 0
+      idleBoardPage: 0,
+      stopQtyDialog: false,
+      stopQtyOpId: null,
+      stopQtyValue: '',
+      stopQtyLoading: false
     }
   },
   created() {
@@ -658,6 +691,47 @@ export default {
       } catch (error) {
         const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
         alert(msg)
+      }
+    },
+    openStopQuantityDialog(op) {
+      this.stopQtyOpId = op.id
+      this.stopQtyValue =
+        op.completed_quantity != null && op.completed_quantity !== ''
+          ? String(op.completed_quantity)
+          : ''
+      this.stopQtyDialog = true
+    },
+    closeStopQuantityDialog() {
+      if (this.stopQtyLoading) return
+      this.stopQtyDialog = false
+      this.stopQtyOpId = null
+      this.stopQtyValue = ''
+    },
+    async confirmStopWithQuantity() {
+      if (!this.stopQtyOpId) return
+      const trimmed = String(this.stopQtyValue || '').trim()
+      const body = { work_order_operation_id: this.stopQtyOpId }
+      if (trimmed !== '') {
+        if (!/^\d+$/.test(trimmed)) {
+          alert('Ingresá solo números enteros ≥ 0, o dejá vacío para no cambiar la cantidad terminada.')
+          return
+        }
+        body.completed_quantity = parseInt(trimmed, 10)
+      }
+      this.stopQtyLoading = true
+      try {
+        await axios.post('/chronometer/timers/stop', body)
+        await this.refreshBoard()
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+        this.closeStopQuantityDialog()
+      } catch (error) {
+        const msg =
+          (error.response && error.response.data && (error.response.data.message || error.response.data.text)) ||
+          'No fue posible detener el cronómetro.'
+        alert(msg)
+      } finally {
+        this.stopQtyLoading = false
       }
     },
     async seedWip() {

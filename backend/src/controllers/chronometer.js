@@ -507,6 +507,16 @@ exports.stopTimer = async function stopTimer(req, res) {
 
   if (!(await assertTimerControlOrRespond(req, timer, res))) return;
 
+  const rawQty = req.body && req.body.completed_quantity;
+  let completedQtyToStore = null;
+  if (rawQty !== undefined && rawQty !== null && rawQty !== '') {
+    const n = Number(rawQty);
+    if (!Number.isInteger(n) || n < 0) {
+      return res.status(400).json({ message: 'completed_quantity debe ser un entero mayor o igual a 0.' });
+    }
+    completedQtyToStore = n;
+  }
+
   if (timer.status === 'ACTIVE') {
     timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
   }
@@ -515,11 +525,23 @@ exports.stopTimer = async function stopTimer(req, res) {
   timer.last_event_at = new Date();
   await timer.save();
 
+  if (completedQtyToStore !== null) {
+    const operation = await WorkOrderOperation.findByPk(timer.work_order_operation_id);
+    if (operation) {
+      operation.completed_quantity = completedQtyToStore;
+      await operation.save();
+    }
+  }
+
   await appendEvent({
     timerId: timer.id,
     operationId: timer.work_order_operation_id,
     userId: req.userId,
-    eventType: 'STOP'
+    eventType: 'STOP',
+    details:
+      completedQtyToStore !== null
+        ? { completed_quantity: completedQtyToStore }
+        : undefined
   });
 
   return res.status(200).json(timer);
