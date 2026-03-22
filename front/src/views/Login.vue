@@ -220,10 +220,15 @@ export default {
         this.operarios = Array.isArray(res.data) ? res.data : []
       } catch (e) {
         console.error('Error cargando operarios', e)
+        const base = String(axios.defaults.baseURL || '').trim() || '(vacío)'
+        const onHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+        const baseEsLocal = /localhost|127\.0\.0\.1/i.test(base)
         const msg =
           (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
           (e.message === 'Network Error'
-            ? 'Sin conexión con el servidor (CORS, API caída o URL incorrecta). Revisá la consola Red.'
+            ? onHttps && baseEsLocal
+              ? `Sin respuesta del API. El sitio es HTTPS (${window.location.host}) pero axios usa baseURL "${base}" (localhost). El build del front debe incluir VUE_APP_API_URL=https://reloj-api.at-once.cl/ — reconstruí/redeploy el contenedor front (Dockerfile ARG).`
+              : `Sin respuesta del API (Network Error). baseURL axios: "${base}". Revisá F12 → Red: la petición a /auth/operarios, que el API esté arriba y la URL sea la del servidor (no localhost en producción).`
             : null) ||
           'No se pudo cargar la lista de operarios.'
         this.errorOperarios = msg

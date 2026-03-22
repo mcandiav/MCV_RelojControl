@@ -35,6 +35,28 @@ git push origin V2
 ```
 *(Si el remoto `sandbox` apunta al mismo repo, puede usarse `git push sandbox V2` según la configuración local.)*
 
+### Congelación — baseline antes del refactor de UI (mar 2026)
+
+| Campo | Valor |
+|-------|--------|
+| **Tag** | **`v2-freeze-pre-ui`** |
+| **Rama** | **`V2`** (misma rama; el tag marca el commit exacto) |
+| **Propósito** | Última versión **probada y subida a GitHub** antes de cambios **solo de presentación** (componentes, tema, layout). API y reglas de negocio se mantienen estables salvo correcciones puntuales acordadas. |
+
+**Crear y subir el tag** (después de `git pull` y con árbol limpio):
+
+```bash
+git fetch origin
+git checkout V2
+git pull origin V2
+git tag -a v2-freeze-pre-ui -m "Baseline antes de refactor UI (presentación)"
+git push origin v2-freeze-pre-ui
+```
+
+**Volver a esta base:** `git checkout v2-freeze-pre-ui` o `git checkout -b hotfix/desde-freeze v2-freeze-pre-ui`.
+
+**Commit exacto:** ver en GitHub → tag `v2-freeze-pre-ui` → “Tagged commit”.
+
 ---
 
 ## Dominios (Cloudflare + at-once.cl)
@@ -131,6 +153,10 @@ En este proyecto **el API Express siempre escucha en el puerto `8000`** (`backen
 | **Axios sin `.env` local** | En **`front/src/main.js`**, fallback: **`http://localhost:8000/`** vía `VUE_APP_API_URL`. |
 
 **Producción / EasyPanel:** el front compilado **no** usa ese proxy; usa **`VUE_APP_API_URL`** (HTTPS del API). Los problemas “en un entorno anda y en otro no” suelen ser mezclar **proxy dev (8000)** con **URL empaquetada distinta** o un **`vue.config.js` apuntando a un puerto incorrecto**.
+
+### Login: “Network Error” / operarios no cargan (HTTPS)
+
+Si el front está en **`https://reloj.at-once.cl`** y en el navegador el bundle sigue con **`axios.defaults.baseURL = http://localhost:8000/`**, el pedido va al **localhost de la PC del usuario** → falla siempre. **Causa:** imagen del front buildada **sin** `VUE_APP_API_URL` (o build local subido a nginx). **Qué hacer:** rebuild del servicio front en EasyPanel asegurando **`ARG`/`ENV` `VUE_APP_API_URL=https://reloj-api.at-once.cl/`** (el `front/Dockerfile` ya lo trae por defecto si construís desde ese archivo). Tras redeploy, en F12 → Red la URL de `/auth/operarios` debe ser **`https://reloj-api.at-once.cl/auth/operarios`**.
 
 ---
 
