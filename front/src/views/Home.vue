@@ -104,8 +104,8 @@
                   <div class="font-weight-bold mb-1">Respuesta del servidor (ultimo Seed)</div>
                   <pre class="seed-json text-left">{{ lastSeedResponse }}</pre>
                   <div class="text-caption mt-2">
-                    Codigo nuevo: <code>total</code> debe ser <strong>10</strong> y <code>ot_numbers</code> debe incluir <strong>OT4444</strong>.
-                    Si ves <code>total: 6</code> sin OT4444, el contenedor del <strong>backend</strong> sigue con imagen antigua (rebuild/redeploy API).
+                    Tras Seed WIP: <code>total</code> debe ser <strong>52</strong> y <code>ot_numbers</code> debe listar <strong>OT1111</strong> … <strong>OT9999</strong> (9 OTs).
+                    Si el total es distinto, el contenedor del <strong>backend</strong> sigue con imagen antigua (rebuild/redeploy API).
                   </div>
                 </v-alert>
               </v-card>
@@ -748,7 +748,7 @@ export default {
         await this.loadProcessList()
         if (this.operations.length === 0) {
           this.emptyOpsHint =
-            'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP y prueba 4444 (4 maquinas), 3289, 3491 o 2316.'
+            'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP y busca OT 1111, 2222 … 9999 (4–8 ops ME/ES por OT).'
         }
       } catch (error) {
         const d = error.response && error.response.data
