@@ -21,6 +21,8 @@ const chronometerController = require('./controllers/chronometer');
 const config = require('./config/config');
 var cors = require('cors');
 
+/** Evita bucle SIGTERM: EasyPanel/Docker suelen hacer healthcheck HTTP mientras corre db.sync (alter). */
+let dbReady = false;
 
 app.use(function setCommonHeaders(req, res, next) {
     res.set("Access-Control-Allow-Private-Network", "true");
@@ -31,6 +33,17 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'files')));
 app.use(cors());
 app.use(compression());
+
+// 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).
+app.get(['/', '/health'], (req, res) => {
+    if (dbReady) return res.status(200).json({ status: 'ok' });
+    return res.status(200).json({ status: 'starting' });
+});
+
+app.use((req, res, next) => {
+    if (!dbReady) return res.status(503).json({ message: 'Service starting' });
+    next();
+});
 
 app.use('/auth', authRoutes);
 app.use('/chronometer', chronometerRoutes);
@@ -55,16 +68,18 @@ if (config.NS_SHIFT_BATCH_ENABLED && config.NS_AUTO_STOP_AT_SHIFT_END) {
     }
 }
 
-// Escuchar solo después de sync + seeds: evita peticiones con API “a medias”.
-// SIGTERM en logs suele ser Docker/EasyPanel deteniendo el contenedor (redeploy), no un bug de Sequelize.
+// Puerto abierto de inmediato: healthcheck TCP/HTTP no mata el contenedor durante sync.
+server.listen(8000, () => {
+    console.log('HTTP en puerto 8000 (sync DB en curso; /health = 503 hasta listo).');
+});
+
 db.sync({ alter: true })
     .then(async () => {
         console.log('Base de datos sincronizada.');
         await load_data_workplaces();
         await load_users();
-        server.listen(8000, () => {
-            console.log('Server initialized.');
-        });
+        dbReady = true;
+        console.log('Server initialized (API lista).');
     })
     .catch((error) => {
         console.error('Error al sincronizar la base de datos:', error);
