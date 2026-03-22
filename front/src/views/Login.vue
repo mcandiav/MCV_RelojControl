@@ -39,24 +39,29 @@
                   <div v-if="cargandoOperarios" class="text-center py-4">
                     <v-progress-circular indeterminate color="primary"></v-progress-circular>
                   </div>
-                  <div v-else-if="operarios.length === 0" class="text-center grey--text py-4">
-                    No hay operarios registrados
-                  </div>
-                  <div v-else class="lista-operarios">
-                    <v-btn
-                      v-for="op in operarios"
-                      :key="op.username"
-                      @click="seleccionarOperario(op)"
-                      block
-                      x-large
-                      class="nombre-btn mb-2"
-                      color="blue darken-4"
-                      dark
-                      elevation="2"
-                    >
-                      <span class="nombre-texto">{{ op.name }} {{ op.lastname }}</span>
-                    </v-btn>
-                  </div>
+                  <template v-else>
+                    <v-alert v-if="errorOperarios" type="error" dense rounded class="mb-3">
+                      {{ errorOperarios }}
+                    </v-alert>
+                    <div v-else-if="operarios.length === 0" class="text-center grey--text py-4">
+                      No hay operarios registrados
+                    </div>
+                    <div v-else class="lista-operarios">
+                      <v-btn
+                        v-for="op in operarios"
+                        :key="op.username"
+                        @click="seleccionarOperario(op)"
+                        block
+                        x-large
+                        class="nombre-btn mb-2"
+                        color="blue darken-4"
+                        dark
+                        elevation="2"
+                      >
+                        <span class="nombre-texto">{{ op.name }} {{ op.lastname }}</span>
+                      </v-btn>
+                    </div>
+                  </template>
                 </div>
 
                 <!-- PASO 2: Ingresar PIN -->
@@ -181,6 +186,7 @@ export default {
       pin: '',
       teclado: [1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, '⌫'],
       cargandoOperarios: false,
+      errorOperarios: '',
       // Admin
       username: '',
       password: '',
@@ -208,11 +214,20 @@ export default {
 
     async cargarOperarios() {
       this.cargandoOperarios = true
+      this.errorOperarios = ''
       try {
         const res = await axios.get('/auth/operarios')
-        this.operarios = res.data
+        this.operarios = Array.isArray(res.data) ? res.data : []
       } catch (e) {
         console.error('Error cargando operarios', e)
+        const msg =
+          (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
+          (e.message === 'Network Error'
+            ? 'Sin conexión con el servidor (CORS, API caída o URL incorrecta). Revisá la consola Red.'
+            : null) ||
+          'No se pudo cargar la lista de operarios.'
+        this.errorOperarios = msg
+        this.operarios = []
       } finally {
         this.cargandoOperarios = false
       }

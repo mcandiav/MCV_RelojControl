@@ -31,11 +31,10 @@ app.use(function setCommonHeaders(req, res, next) {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'files')));
-app.use(
-  cors({
-    allowedHeaders: ['Content-Type', 'x-access-token', 'x-station-id', 'x-terminal-id']
-  })
-);
+// Sin lista fija de allowedHeaders: el paquete cors refleja las cabeceras del preflight
+// (si acotamos a mano, axios/navegador pueden mandar Accept u otras y el GET /auth/operarios falla
+// en silencio en el front → lista vacía "No hay operarios").
+app.use(cors());
 app.use(compression());
 
 // 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).

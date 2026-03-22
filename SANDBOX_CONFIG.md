@@ -119,6 +119,21 @@ VUE_APP_API_URL=https://reloj-api.at-once.cl/
 
 ---
 
+## Desarrollo local — puertos (contrato fijo, no improvisar)
+
+En este proyecto **el API Express siempre escucha en el puerto `8000`** (`backend/src/index.js`: `server.listen(8000)`). **No usar `4000`** ni otro puerto para el backend en documentación, proxy ni ejemplos.
+
+| Qué | Puerto / URL |
+|-----|----------------|
+| **Backend (Node)** | **`http://localhost:8000`** |
+| **Front dev (`npm run serve`)** | Suele ser **`http://localhost:8080`** (Vue CLI) |
+| **Proxy del front hacia el API** | En **`front/vue.config.js`** → `devServer.proxy` debe apuntar a **`http://localhost:8000`** para que rutas relativas (`/auth/operarios`, etc.) lleguen al backend. |
+| **Axios sin `.env` local** | En **`front/src/main.js`**, fallback: **`http://localhost:8000/`** vía `VUE_APP_API_URL`. |
+
+**Producción / EasyPanel:** el front compilado **no** usa ese proxy; usa **`VUE_APP_API_URL`** (HTTPS del API). Los problemas “en un entorno anda y en otro no” suelen ser mezclar **proxy dev (8000)** con **URL empaquetada distinta** o un **`vue.config.js` apuntando a un puerto incorrecto**.
+
+---
+
 ## Stack Tecnológico
 
 | Capa | Tecnología |

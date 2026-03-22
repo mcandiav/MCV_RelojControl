@@ -26,7 +26,8 @@ Sistema de gestión de tiempos de producción para operarios de Bignotti.
 - Los datos fluyen: **NetSuite (Excel) → RelojControl → CSV → NetSuite** (manual hoy, automático a futuro).
 
 ## Stack tecnológico
-- **Backend:** Node.js 16, Express, Sequelize ORM
+- **Backend:** Node.js 16, Express, Sequelize ORM — en local el API escucha en **puerto 8000** (`server.listen(8000)`). **No usar 4000** para el API en `vue.config.js` (proxy), ejemplos ni docs.
+- **Front en dev:** `npm run serve` → proxy en **`front/vue.config.js`** hacia **`http://localhost:8000`**; `main.js` fallback axios **`http://localhost:8000/`**. Detalle: **`SANDBOX_CONFIG.md`** → *Desarrollo local — puertos*.
 - **Base de datos sandbox:** MariaDB (producción usa SQL Server/MSSQL)
 - **Frontend:** Vue.js 2, Vuetify 2, Vuex
 - **Servidor frontend:** nginx (Alpine)

@@ -5,7 +5,8 @@ module.exports = {
     'vuetify'
   ],
   devServer: {
-    proxy: 'http://localhost:4000'
+    // API Express (backend/src/index.js) escucha en 8000
+    proxy: 'http://localhost:8000'
   },
   chainWebpack: (config) => {
     config.plugin('html').tap((args) => {
