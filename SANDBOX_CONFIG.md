@@ -117,13 +117,15 @@ STATION_LEGACY_NULL_MATCH_DEFAULT=true
 | Puerto interno | `80` |
 | Dominio | `reloj.at-once.cl` |
 
-**Build argument del frontend:**
+**Build argument del frontend (EasyPanel / Docker):**
 ```
 VUE_APP_API_URL=https://reloj-api.at-once.cl/
 VUE_APP_STATION_ID=default-station
 ```
 
-**Multi-estación:** cada PC físico debe tener un **`VUE_APP_STATION_ID` distinto** (ej. `puesto-linea-1`, `sala-es-2`). El cliente envía `x-station-id` en cada request; el tablero y los cronómetros activos se filtran por esa estación.
+**Multi-estación:** cada PC físico puede tener un **`VUE_APP_STATION_ID` distinto** (ej. `puesto-linea-1`, `sala-es-2`). El cliente envía `x-station-id` en cada request; el tablero y los cronómetros activos se filtran por esa estación.
+
+> **Importante (mar 2026):** `front/.env.production` suele no ir en el ZIP de GitHub (gitignore). El **`front/Dockerfile`** define por defecto `ARG VUE_APP_API_URL=https://reloj-api.at-once.cl/` para que el build en EasyPanel **no** empaquete `axios` apuntando a `http://localhost:8000` (HTTPS + pantalla en blanco). Podés sobrescribir el ARG en EasyPanel si cambia el dominio del API.
 
 ---
 

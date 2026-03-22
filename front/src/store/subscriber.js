@@ -1,7 +1,9 @@
 import store from "@/store";
 import axios from "axios"
 
-window.name = window.name.length === 0? generateWindowName() : window.name
+// window.name debe ser string; en casos raros evitamos .length sobre no-string (rompe todo el bundle).
+const existingName = String(typeof window.name === 'string' ? window.name : '')
+window.name = existingName.length === 0 ? generateWindowName() : existingName
 console.log('windowName', window.name)
 
 store.subscribe((mutation) => {

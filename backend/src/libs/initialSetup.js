@@ -32,10 +32,10 @@ async function load_data_workplaces(){
                 const data = fs.readFileSync(filepath, 'utf8');
                 data_split = data.split("\n").filter(Boolean);
             }
-            for(ot of data_split) {
-                promises.push(new Workplace({name: ot}).save());
+            for (const ot of data_split) {
+                promises.push(new Workplace({ name: ot }).save());
             }
-            await Promise.all(promises)
+            await Promise.all(promises);
         }
     } catch (error) {
         console.log(error)
@@ -74,7 +74,7 @@ async function load_users(){
                 "ME": 3,
                 "ALL": 4
             }
-            for (data of data_split){
+            for (const data of data_split) {
                 info = data.split(":")
                 if (!info[0] || !info[3] || !info[4]) continue;
                 var name = info[0]

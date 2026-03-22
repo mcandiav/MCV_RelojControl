@@ -218,7 +218,7 @@ async function enrichOperationsWithTimerState(operations, viewerStationId) {
   });
 }
 
-/** Lista operaciones del área del usuario con estado de cronómetro (filtro opcional). */
+/** Lista operaciones del área del usuario con estado de cronómetro (filtro opcional). GET /chronometer/operations antes de /:otNumber. */
 exports.listOperations = async function listOperations(req, res) {
   const statusFilter = String(req.query.status || 'ALL').toUpperCase();
   const allowed = ['ALL', 'ACTIVE', 'PAUSED', 'STOPPED'];
@@ -291,9 +291,23 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
 };
 
 exports.getActiveBoard = async function getActiveBoard(req, res) {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
+
   const stationId = resolveStationId(req);
+  const roleName =
+    currentUser.Role && currentUser.Role.name
+      ? String(currentUser.Role.name).trim().toLowerCase()
+      : '';
+  const isAdmin = roleName === 'admin';
+
+  const where = { ...getBoardTimerWhere(stationId) };
+  if (!isAdmin) {
+    where.current_user_id = req.userId;
+  }
+
   const timers = await OperationTimer.findAll({
-    where: getBoardTimerWhere(stationId),
+    where,
     include: [WorkOrderOperation, User],
     order: [['updatedAt', 'DESC']]
   });

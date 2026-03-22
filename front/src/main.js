@@ -16,7 +16,10 @@ axios.defaults.headers.common['Access-Control-Allow-Origin'] = '*'
 const stationId = String(process.env.VUE_APP_STATION_ID || 'default-station').trim().slice(0, 64)
 axios.defaults.headers.common['x-station-id'] = stationId
 
-function bootstrapVue() {
+// Evita pantalla en blanco indefinida si la API no responde (attempt espera auth/me).
+axios.defaults.timeout = 20000
+
+function mountApp() {
   Vue.use(VueSession)
   Vue.use(VueCookies)
   Vue.$cookies.config('1d')
@@ -30,5 +33,9 @@ function bootstrapVue() {
 
 store
   .dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`))
-  .then(() => bootstrapVue())
-  .catch(() => bootstrapVue())
+  .catch((err) => {
+    console.error('[bootstrap] auth/attempt falló, se monta la app igual:', err)
+  })
+  .finally(() => {
+    mountApp()
+  })

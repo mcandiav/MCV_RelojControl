@@ -22,6 +22,8 @@ const chronometerController = require('./controllers/chronometer');
 const config = require('./config/config');
 var cors = require('cors');
 
+/** Evita bucle SIGTERM: EasyPanel/Docker suelen hacer healthcheck HTTP mientras corre db.sync (alter). */
+let dbReady = false;
 
 app.use(function setCommonHeaders(req, res, next) {
     res.set("Access-Control-Allow-Private-Network", "true");
@@ -36,6 +38,17 @@ app.use(
   })
 );
 app.use(compression());
+
+// 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).
+app.get(['/', '/health'], (req, res) => {
+    if (dbReady) return res.status(200).json({ status: 'ok' });
+    return res.status(200).json({ status: 'starting' });
+});
+
+app.use((req, res, next) => {
+    if (!dbReady) return res.status(503).json({ message: 'Service starting' });
+    next();
+});
 
 app.use('/auth', authRoutes);
 app.use('/chronometer', chronometerRoutes);
@@ -60,19 +73,25 @@ if (config.NS_SHIFT_BATCH_ENABLED && config.NS_AUTO_STOP_AT_SHIFT_END) {
     }
 }
 
-db.sync({ alter: true }).then(async () => {
-    console.log('Base de datos sincronizada.');
-    try {
-        await ensureDefaultRoles();
-        await load_data_workplaces();
-        await load_users();
-    } catch (e) {
-        console.error('Error en carga inicial (roles/workplaces/usuarios):', e);
-    }
-}).catch((error) => {
-    console.error('Error al sincronizar la base de datos:', error);
+// Puerto abierto de inmediato: healthcheck TCP/HTTP no mata el contenedor durante sync.
+server.listen(8000, () => {
+    console.log('HTTP en puerto 8000 (sync DB en curso; /health = starting hasta listo).');
 });
 
-server.listen(8000, ()=>{
-    console.log('Server initialized.')
-});
+db.sync({ alter: true })
+    .then(async () => {
+        console.log('Base de datos sincronizada.');
+        try {
+            await ensureDefaultRoles();
+            await load_data_workplaces();
+            await load_users();
+        } catch (e) {
+            console.error('Error en carga inicial (roles/workplaces/usuarios):', e);
+        }
+        dbReady = true;
+        console.log('Server initialized (API lista).');
+    })
+    .catch((error) => {
+        console.error('Error al sincronizar la base de datos:', error);
+        process.exit(1);
+    });

@@ -10,4 +10,5 @@ RUN npm run build
 
 EXPOSE 8000
 
-CMD ["npm", "start"]
+# Evita npm como PID 1 (mejor manejo de SIGTERM en Docker)
+CMD ["node", "build/index.js"]

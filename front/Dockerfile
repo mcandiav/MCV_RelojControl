@@ -2,14 +2,15 @@ FROM node:16-alpine AS build
 
 WORKDIR /app
 
+# .env.production suele no ir en el ZIP de GitHub (gitignore). Sin esto, el build usa localhost y el navegador queda roto en HTTPS.
+ARG VUE_APP_API_URL=https://reloj-api.at-once.cl/
+ENV VUE_APP_API_URL=$VUE_APP_API_URL
+
 COPY package*.json ./
 RUN npm install
 
 COPY . .
 
-# NO declarar ARG/ENV de VUE_APP_API_URL vacío: si EasyPanel no pasa --build-arg,
-# sobreescribe .env.production y el bundle queda con localhost:8000 (regresión ya vista en 417466d).
-# La URL de producción sale de front/.env.production (reloj-api.at-once.cl).
 ARG VUE_APP_STATION_ID=default-station
 ENV VUE_APP_STATION_ID=$VUE_APP_STATION_ID
 
