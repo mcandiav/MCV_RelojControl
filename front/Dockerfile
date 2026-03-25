@@ -2,16 +2,18 @@ FROM node:16-alpine AS build
 
 WORKDIR /app
 
-# .env.production suele no ir en el ZIP de GitHub (gitignore). Sin esto, el build usa localhost y el navegador queda roto en HTTPS.
+# Si EasyPanel deja el build-arg vacío, Docker pisa el default y Vue termina con localhost → desde HTTPS del front = mixed content = "Network Error" instantáneo.
 ARG VUE_APP_API_URL=https://reloj-api.at-once.cl/
-ENV VUE_APP_API_URL=$VUE_APP_API_URL
 
 COPY package*.json ./
 RUN npm install
 
 COPY . .
 
-RUN npm run build
+RUN API_URL="${VUE_APP_API_URL:-https://reloj-api.at-once.cl/}" && \
+    export VUE_APP_API_URL="$API_URL" && \
+    echo ">>> npm run build con VUE_APP_API_URL=$VUE_APP_API_URL" && \
+    npm run build
 
 FROM nginx:alpine
 

@@ -302,6 +302,14 @@
             <v-col cols="12" md="6">
               <v-card outlined class="pa-4">
                 <div class="text-subtitle-1 font-weight-bold mb-2">NetSuite</div>
+                <v-alert v-if="apiUrlBrokenOnHttps" type="error" dense prominent class="mb-3">
+                  La app carga en <strong>HTTPS</strong> pero axios apunta a <code>{{ axiosBaseUrlDisplay }}</code>.
+                  El navegador bloquea eso (mixed content) y verás <strong>Network Error</strong> al instante.
+                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacío en EasyPanel.
+                </v-alert>
+                <p class="text-body-2 grey--text text--darken-1 mb-3">
+                  URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> · Origen web: <code>{{ browserOrigin }}</code>
+                </p>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Pull: dataset <strong>MCV_cronometro_out</strong>. Push: RESTlet IN (3 datos por operación). Requiere variables
                   <code>NETSUITE_*</code> en el backend.
@@ -561,6 +569,22 @@ export default {
         key: k,
         val: typeof this.nsStatus[k] === 'object' ? JSON.stringify(this.nsStatus[k]) : String(this.nsStatus[k])
       }))
+    },
+    axiosBaseUrlDisplay() {
+      return String((axios.defaults && axios.defaults.baseURL) || '(sin baseURL)')
+    },
+    browserOrigin() {
+      if (typeof window === 'undefined') return '—'
+      return window.location.origin || '—'
+    },
+    /** HTTPS en planta + API en http://localhost o http://cualquiera → bloqueo inmediato del navegador. */
+    apiUrlBrokenOnHttps() {
+      if (typeof window === 'undefined') return false
+      if (window.location.protocol !== 'https:') return false
+      const b = String(axios.defaults.baseURL || '').toLowerCase()
+      if (/localhost|127\.0\.0\.1/.test(b)) return true
+      if (b.startsWith('http://')) return true
+      return false
     }
   },
   methods: {

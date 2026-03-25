@@ -11,11 +11,16 @@ require('@/store/subscriber')
 
 Vue.config.productionTip = false
 axios.defaults.baseURL = process.env.VUE_APP_API_URL || 'http://localhost:8000/'
-// Allow-Origin lo envía el servidor; no corresponde en el cliente (no arregla CORS).
-if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /localhost|127\.0\.0\.1/i.test(String(axios.defaults.baseURL))) {
-  console.warn(
-    '[RelojControl] Estás en HTTPS pero axios apunta a localhost. Reconstruí el front con VUE_APP_API_URL=https://reloj-api.at-once.cl/ (ver Dockerfile ARG / EasyPanel).'
-  )
+// Mixed content: página HTTPS no puede llamar a http://localhost — falla en <1s como "Network Error".
+if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+  const bu = String(axios.defaults.baseURL || '')
+  if (/localhost|127\.0\.0\.1/i.test(bu) || /^http:\/\//i.test(bu)) {
+    console.error(
+      '[Cronómetro] API URL incompatible con HTTPS:',
+      bu,
+      '→ Rebuild del front con VUE_APP_API_URL=https://reloj-api.at-once.cl/ (en EasyPanel no dejes el build-arg vacío).'
+    )
+  }
 }
 // Evita pantalla en blanco indefinida si la API no responde (attempt espera auth/me).
 axios.defaults.timeout = 20000
