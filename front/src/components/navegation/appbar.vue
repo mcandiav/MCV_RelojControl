@@ -7,7 +7,7 @@
     >
       <v-app-bar-nav-icon></v-app-bar-nav-icon>
 
-      <v-toolbar-title>BIGNOTTI Cronometro v2</v-toolbar-title>
+      <v-toolbar-title>BIGNOTTI Cronómetro v3</v-toolbar-title>
 
       <v-spacer></v-spacer>
 

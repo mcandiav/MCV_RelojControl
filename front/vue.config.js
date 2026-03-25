@@ -1,4 +1,4 @@
-const PAGE_TITLE = 'Bignotti · Cronometro v2'
+const PAGE_TITLE = 'Bignotti · Cronómetro v3'
 
 module.exports = {
   transpileDependencies: [

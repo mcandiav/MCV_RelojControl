@@ -33,7 +33,7 @@ export default {
   },
   methods: {
     syncDocumentTitle() {
-      const base = 'Bignotti · Cronometro v2'
+      const base = 'Bignotti · Cronómetro v3'
       if (this.user != null) {
         const who = [this.user.name, this.user.lastname].filter(Boolean).join(' ').trim()
         document.title = who ? `${base} – ${who}` : base

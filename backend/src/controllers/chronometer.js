@@ -11,6 +11,7 @@ const OperationTimer = require('../models/operation_timer');
 const TimerEvent = require('../models/timer_event');
 const OperationTimeTotal = require('../models/operation_time_total');
 const config = require('../config/config');
+const { getShiftDateString, computeTotalsFromEvents } = require('../lib/timerEventTotals');
 
 function normalizeWorkplaceArea(workplaceName) {
   const area = String(workplaceName || '').trim().toUpperCase();
@@ -87,61 +88,6 @@ function accumulateElapsedSeconds(timer) {
   return Math.max(0, (timer.total_elapsed_seconds || 0) + deltaSeconds);
 }
 
-function getShiftDateString(date = new Date(), timeZone = config.NS_TIMEZONE) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date);
-}
-
-function computeTotalsFromEvents(events) {
-  let totalActiveMs = 0;
-  let totalPauseMs = 0;
-  let activeStart = null;
-  let pauseStart = null;
-
-  for (const event of events) {
-    const at = new Date(event.event_at).getTime();
-    if (!Number.isFinite(at)) continue;
-
-    if (event.event_type === 'START' || event.event_type === 'RESUME') {
-      if (pauseStart) {
-        totalPauseMs += at - pauseStart;
-        pauseStart = null;
-      }
-      if (!activeStart) activeStart = at;
-      continue;
-    }
-
-    if (event.event_type === 'PAUSE') {
-      if (activeStart) {
-        totalActiveMs += at - activeStart;
-        activeStart = null;
-      }
-      if (!pauseStart) pauseStart = at;
-      continue;
-    }
-
-    if (event.event_type === 'STOP' || event.event_type === 'AUTO_STOP_SHIFT_END') {
-      if (activeStart) {
-        totalActiveMs += at - activeStart;
-        activeStart = null;
-      }
-      if (pauseStart) {
-        totalPauseMs += at - pauseStart;
-        pauseStart = null;
-      }
-    }
-  }
-
-  return {
-    total_active_seconds: Math.max(0, Math.floor(totalActiveMs / 1000)),
-    total_pause_seconds: Math.max(0, Math.floor(totalPauseMs / 1000))
-  };
-}
-
 async function consolidateShiftForOperation(operationId, shiftDate) {
   const allEvents = await TimerEvent.findAll({
     where: { work_order_operation_id: operationId },
@@ -197,6 +143,18 @@ async function runShiftClose(trigger = 'manual') {
 
   for (const operationId of affectedOperationIds) {
     await consolidateShiftForOperation(operationId, shiftDate);
+  }
+
+  if (config.NETSUITE_PUSH_ON_SHIFT_CLOSE) {
+    setImmediate(async () => {
+      try {
+        const { tryPushAfterShiftClose } = require('../services/netsuite/shiftPushHook');
+        const pushResult = await tryPushAfterShiftClose();
+        console.log('NetSuite push after shift close:', pushResult);
+      } catch (error) {
+        console.error('NetSuite push after shift close failed:', error.message || error);
+      }
+    });
   }
 
   return {

@@ -1,3 +1,7 @@
 # Importaciones volátiles (Adminer / Excel en contenedor)
 backend/src/uploads/*
 !backend/src/uploads/.gitkeep
+
+# Credenciales locales (no versionar)
+.env.local
+NETSUITE_ENV_LOCAL.md

@@ -6,19 +6,17 @@ const path = require('path');
 const server = http.createServer(app);
 const db = require('./config/db');
 const compression = require('compression');
-const cron = require('node-cron');
-
-
-const { load_data_workplaces, load_users } = require('./libs/initialSetup');
+const { load_data_workplaces, load_users, ensureShiftCloseSlots } = require('./libs/initialSetup');
 require('./models/work_order_operation');
 require('./models/operation_timer');
 require('./models/timer_event');
 require('./models/operation_time_total');
+require('./models/shift_close_slot');
 
 const authRoutes = require('./routes/auth');
 const chronometerRoutes = require('./routes/chronometer');
-const chronometerController = require('./controllers/chronometer');
 const config = require('./config/config');
+const { registerShiftCloseCrons } = require('./jobs/shiftCloseScheduler');
 var cors = require('cors');
 
 /** Evita bucle SIGTERM: EasyPanel/Docker suelen hacer healthcheck HTTP mientras corre db.sync (alter). */
@@ -51,26 +49,6 @@ app.use((req, res, next) => {
 app.use('/auth', authRoutes);
 app.use('/chronometer', chronometerRoutes);
 
-if (config.NS_SHIFT_BATCH_ENABLED && config.NS_AUTO_STOP_AT_SHIFT_END) {
-    const [hourRaw, minuteRaw] = String(config.NS_SHIFT_BATCH_TIME || '17:00').split(':');
-    const hour = Number(hourRaw);
-    const minute = Number(minuteRaw);
-    if (Number.isInteger(hour) && Number.isInteger(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-        const cronExpr = `${minute} ${hour} * * *`;
-        cron.schedule(cronExpr, async () => {
-            try {
-                const result = await chronometerController.runShiftClose('scheduler');
-                console.log('Shift batch completed:', result);
-            } catch (error) {
-                console.error('Shift batch failed:', error);
-            }
-        }, { timezone: config.NS_TIMEZONE });
-        console.log(`Shift batch scheduler enabled at ${config.NS_SHIFT_BATCH_TIME} (${config.NS_TIMEZONE}).`);
-    } else {
-        console.warn(`Invalid NS_SHIFT_BATCH_TIME value: ${config.NS_SHIFT_BATCH_TIME}`);
-    }
-}
-
 // Puerto abierto de inmediato: healthcheck TCP/HTTP no mata el contenedor durante sync.
 server.listen(8000, () => {
     console.log('HTTP en puerto 8000 (sync DB en curso; /health = 503 hasta listo).');
@@ -81,6 +59,8 @@ db.sync({ alter: true })
         console.log('Base de datos sincronizada.');
         await load_data_workplaces();
         await load_users();
+        await ensureShiftCloseSlots();
+        await registerShiftCloseCrons();
         dbReady = true;
         console.log('Server initialized (API lista).');
     })

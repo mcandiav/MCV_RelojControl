@@ -1,213 +1,151 @@
-# Sistema de Gestión de Tiempos (Bignotti)
+# Backend de Cronómetro
 
-Este repositorio contiene el backend para el **Sistema de Gestión de Tiempos y Órdenes de Trabajo**.  
-La aplicación está construida con **Node.js** y **Express**, y se encarga de gestionar usuarios, órdenes de trabajo (OTs), el seguimiento del tiempo de los operarios y la generación de reportes.
+Este directorio contiene el backend actual usado en el sandbox.
 
-Las versiones instaladas y probadas son:
-- Node.js v16.16.1
-- npm v6.14.12
----
+## Fuente de verdad documental
 
-## Tabla de Contenidos
+Para evitar ambigüedades, la documentación autoritativa del proyecto está en:
 
-- [Características Principales](#características-principales)
-- [Tecnologías Utilizadas](#tecnologías-utilizadas)
-- [Puesta en Marcha](#puesta-en-marcha)
-  - [Prerrequisitos](#prerrequisitos)
-  - [Instalación](#instalación)
-- [Modelos de Base de Datos](#modelos-de-base-de-datos)
-- [API Endpoints](#api-endpoints)
-  - [Autenticación](#autenticación-apiauth)
-  - [Órdenes de Trabajo](#órdenes-de-trabajo-apiorders)
-  - [Carga de Archivos](#carga-de-archivos-apifiles)
+- `../Arquitectura MCV_Cronometro.md`
+- `../cust.netsuite.md`
+
+Este README solo resume el backend técnico actual.
 
 ---
 
-## Características Principales
+## Corrección crítica sobre NetSuite
 
-- **Autenticación y Autorización**  
-  Registro e inicio de sesión con **JWT**, roles de usuario (Administrador y Operario) y contraseñas encriptadas.
+El retorno correcto **Cronómetro -> NetSuite** no es un único valor genérico de tiempo.
 
-- **Gestión de Órdenes (CRUD)**  
-  Creación, lectura, actualización y eliminación de órdenes de trabajo.
+El contrato correcto de retorno por operación incluye estos **3 datos reales**:
 
-- **Control de Tiempo**  
-  Los operarios pueden iniciar, pausar y detener el trabajo, registrando intervalos precisos para cada etapa (montaje, ejecución, pausa).
+1. **tiempo real de configuración**
+2. **tiempo real de trabajo / ejecución**
+3. **cantidad terminada**
 
-- **Carga Masiva de Datos**  
-  Importación de órdenes de trabajo mediante archivos **Excel (.xlsx)**.
+Estos 3 datos corresponden a los 3 datos planificados que NetSuite entrega a Cronómetro:
 
-- **Generación de Reportes**  
-  Cumplimiento, productividad y control de tiempo.
+1. **tiempo de montaje planificado**
+2. **tiempo de ejecución planificado**
+3. **cantidad planificada**
 
-- **Gestión de Usuarios**  
-  Administración de usuarios, roles y puestos de trabajo.
+Si alguna referencia heredada habla de un solo consolidado ambiguo, debe considerarse desactualizada para efectos de integración.
 
 ---
 
-## Tecnologías Utilizadas
+## Flujo vigente con NetSuite
 
-- **Node.js** – Entorno de ejecución JavaScript.
-- **Express.js** – Framework para la API REST.
-- **Sequelize** – ORM para la base de datos (**MSSQL**).
-- **Bcrypt-nodejs** – Encriptación de contraseñas.
-- **JWT (JSON Web Token)** – Seguridad y sesiones.
-- **Multer** – Middleware para subida de archivos.
-- **XLSX** – Lectura y procesamiento de archivos Excel.
+### Entrada: NetSuite -> Cronómetro
 
----
+La lectura oficial desde NetSuite se basa en el dataset:
 
-## Puesta en Marcha
+- `MCV_cronometro_out`
 
-### Prerrequisitos
+Campos funcionales principales:
 
-- Node.js (se recomienda usar **NVM** para instalar las diferentes versiones de node).
-- npm.
-- Una base de datos SQL (mssql).
-- Acceso al servidor de base de datos con las tablas necesarias (pedir credenciales al administrador del sistema).
-- Si quieres hacer pruebas, idealmente tener una base de datos local.
+- `NETSUITE_OPERATION_ID`
+- `OT_NUMBER`
+- `TIEMPO_MONTAJE_MIN`
+- `OPERATION_NAME`
+- `OPERATION_SEQUENCE`
+- `RESOURCE_CODE`
+- `PLANNED_QUANTITY`
+- `TIEMPO_OPERACION_MIN_UNIT`
+- `SOURCE_STATUS`
 
-### Instalación
+### Salida: Cronómetro -> NetSuite
 
-Clonar el repositorio:
+Cronómetro devuelve por operación:
 
-```bash
-git clone https://github.com/tu-usuario/tu-repositorio.git
-cd tu-repositorio
-```
+- tiempo real de configuración
+- tiempo real de trabajo / ejecución
+- cantidad terminada
 
-Instalar dependencias:
+Reglas:
 
-```bash
-npm install
-```
+- envío por batch al cierre de turno o cierre manual administrativo
+- no se envían eventos individuales
+- no se envían deltas aislados
+- la granularidad correcta es **operación**
 
-Configurar variables de entorno en un archivo del archivo `./backend/config/config.js`. Asegúrate de ajustar los valores según tu entorno local:
+### Implementación en este repo (capa 3)
 
-```js
-module.exports = {
-    // Configuración token login
-    SECRET: "api-secret-",
-    // Configuración base de datos.
-    HOST: "localhost",
-    PORT: 1433, // Puerto predeterminado para SQL Server
-    USER: "user_bdd",
-    PASSWORD: "pass_bdd",
-    DB: "databse",
-    dialect: "mssql", // Indica que estás utilizando SQL Server
+Módulos en `src/services/netsuite/`: OAuth 2.0 M2M (JWT **PS256** con *fallback* **RS256**), cliente del dataset REST (`/services/rest/query/v1/dataset/{id}/result`), y POST al RESTlet IN.
 
-    // Clave para eliminar recursos.
-    DELETE_SECRET: "b1234", // Asumo que DELETE_SECRET es diferente de SECRET
-}
-```
+Endpoints (cabecera JWT de **admin**):
 
-Ejecutar el servidor:
+| Método | Ruta | Uso |
+|--------|------|-----|
+| GET | `/chronometer/netsuite/status` | Comprobación de entorno |
+| GET | `/chronometer/netsuite/peek-dataset` | Muestra columnas y primeras filas del OUT |
+| POST | `/chronometer/netsuite/pull-dataset` | Pull + upsert local desde `MCV_cronometro_out` |
+| POST | `/chronometer/netsuite/push-actuals` | Push de los 3 datos vigentes hacia NetSuite |
+| POST | `/chronometer/netsuite/oauth/clear-cache` | Invalida token en memoria |
 
-```bash
-npm run dev
-```
+| GET | `/chronometer/admin/shift-schedule` | Tres horarios de cierre (admin) |
+| PUT | `/chronometer/admin/shift-schedule` | Body `{ "slots": [{ "sequence":1,"hhmm":"07:00","enabled":true }, …] }` |
 
-El servidor estará disponible en `http://localhost:3000`. Debes tener una base de datos local (o remota) para que Sequelize pueda crear automáticamente las tablas en la base de datos configurada. De lo contrario, el backend no funcionará. Una vez con la base de datos lista, se recomienda descargar una muestra de la base de datos desde el servidor de producción para tener datos de prueba. Con ellos, el sistema podrá ser probado correctamente.
+Variables: ver `../NETSUITE_ENV_TEMPLATE.md`. Para push automático tras cierre de turno: `NETSUITE_PUSH_ON_SHIFT_CLOSE=true` (por defecto desactivado).
+
+Semilla inicial de los 3 horarios (solo si la tabla está vacía): `NS_SHIFT_BATCH_TIMES=06:00,14:00,22:00` o el legado `NS_SHIFT_BATCH_TIME` para el primer slot.
+
+**Nota de modelo:** `actual_setup_time` hacia NetSuite se envía en **0** hasta que existan eventos o reglas que distingan montaje frente a ejecución (la arquitectura exige no inferir setup solo desde pausa). `actual_run_time` se deriva del tiempo activo acumulado en eventos (minutos). `completed_quantity` sale del campo local al cerrar operación.
 
 ---
 
-## Modelos de Base de Datos
+## Stack técnico actual
 
-### User
-
-- Información de los usuarios.
-- Contraseñas encriptadas mediante hook `beforeCreate`.
-- Relaciones: pertenece a un **Role**, a un **Workplace** y tiene muchos **Log, Record, Registry y TaskIntervals**.
-
-### Role
-
-- Define permisos (admin, operario).
-- Relaciones: tiene muchos **User**.
-
-### Workplace
-
-- Define puestos de trabajo o centros de costo.
-- Relaciones: tiene muchos **User**.
-
-### Data
-
-- Contiene la información original y planificada de cada OT (desde Excel).
-- Relaciones: tiene muchos **Registry** y **TaskIntervals**.
-
-### Record
-
-- Representa una OT activa gestionada por un operario.
-- Contiene estado en tiempo real (En montaje, En curso, Pausado).
-- Relaciones: pertenece a **User**, tiene muchos **Registry**.
-
-### Finalized
-
-- Copia inmutable de **Record** al completar una tarea.
-- Sirve de historial.
-- Relaciones: tiene muchos **Registry**.
-
-### Registry
-
-- Log de alto nivel de cada trabajo.
-- Registra inicio y fin de una OT.
-- Relaciones: pertenece a **User, Data, Record y Finalized**.
-
-### TaskIntervals
-
-- Tabla clave para control de tiempo.
-- Registra intervalos de trabajo/pausa.
-- Relaciones: pertenece a **User** y **Data**.
-
-### Log
-
-- Registro de inicio y cierre de sesión de usuarios.
-- Relaciones: pertenece a **User**.
-
-### Tablas Auxiliares
-
-- **Count**: contador incremental.
-- **Discharged**: marca órdenes ya procesadas en otro sistema.
+- Node.js
+- Express.js
+- Sequelize
+- JWT
+- bcrypt-nodejs
+- Multer
+- XLSX
 
 ---
 
-## API Endpoints
+## Endpoints heredados existentes
 
 ### Autenticación (`/api/auth`)
 
-- `POST /signin` – Iniciar sesión.
-- `POST /signup` – Registrar usuario (Admin).
-- `POST /signout` – Cerrar sesión.
-- `GET /me` – Datos del usuario autenticado.
-- `GET /users` – Listar usuarios (Admin).
-- `PUT /users/:id` – Actualizar usuario (Admin).
-- `DELETE /users/:id` – Eliminar usuario (Admin).
+- `POST /signin`
+- `POST /signup`
+- `POST /signout`
+- `GET /me`
+- `GET /users`
+- `PUT /users/:id`
+- `DELETE /users/:id`
 
-### Órdenes de Trabajo (`/api/orders`)
+### Órdenes (`/api/orders`)
 
-- `GET /` – Listar órdenes.
-- `POST /` – Crear orden (Admin).
-- `POST /edit` – Editar orden (Admin).
-- `POST /delete` – Eliminar orden (Admin).
-- `POST /deleteAll` – Eliminar todas las órdenes (Admin).
-- `POST /play` – Iniciar/reanudar trabajo en orden.
-- `POST /pause` – Pausar trabajo en orden.
-- `POST /stop` – Finalizar trabajo en orden.
-- `GET /download` – Descargar reporte (Admin).
-- `GET /workers` – Listar actividad de operarios.
-- `POST /report` – Reporte mensual.
-- `POST /reportbyDay` – Reporte diario.
-- `POST /timerReport` – Reporte detallado.
-- `GET /inconsistency` – Detectar órdenes inconsistentes.
-- `POST /fixInconsistency` – Corregir órdenes inconsistentes.
-- `GET /roles` – Listar roles.
-- `GET /workplaces` – Listar puestos de trabajo.
+- `GET /`
+- `POST /`
+- `POST /edit`
+- `POST /delete`
+- `POST /deleteAll`
+- `POST /play`
+- `POST /pause`
+- `POST /stop`
+- `GET /download`
+- `GET /workers`
+- `POST /report`
+- `POST /reportbyDay`
+- `POST /timerReport`
+- `GET /inconsistency`
+- `POST /fixInconsistency`
+- `GET /roles`
+- `GET /workplaces`
 
-### Carga de Archivos (`/api/files`)
+### Archivos (`/api/files`)
 
-- `POST /upload` – Subir archivo Excel (.xlsx).
+- `POST /upload`
 
 ---
 
-## Notas
-- Se deben pedir los accesos al servidor donde se encuentra la aplicación para descargar la base de datos y hacer pruebas locales.
-- Dentro del mimso código se tiene más información sobre el funcionamiento de cada endpoint y modelo.
+## Qué debe asumir otro hilo
+
+1. La arquitectura vigente no se define por este README aislado.
+2. El retorno correcto hacia NetSuite incluye 3 datos reales por operación.
+3. `completed_quantity` no pertenece al input desde NetSuite; pertenece al retorno desde Cronómetro.
+4. El dataset oficial de lectura es `MCV_cronometro_out`.

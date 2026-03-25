@@ -2,6 +2,48 @@ var fs = require('fs');
 const path = require("path");
 const User = require('../models/user')
 const Workplace = require('../models/workplace')
+const ShiftCloseSlot = require('../models/shift_close_slot')
+const config = require('../config/config')
+
+/**
+ * Tres slots de cierre de turno (arquitectura v6). Solo crea filas si la tabla está vacía.
+ * Prioridad: NS_SHIFT_BATCH_TIMES (coma) > NS_SHIFT_BATCH_TIME + dos por defecto > 07:00,15:00,23:00
+ */
+async function ensureShiftCloseSlots() {
+  try {
+    let d1 = '07:00';
+    let d2 = '15:00';
+    let d3 = '23:00';
+
+    const multi = process.env.NS_SHIFT_BATCH_TIMES;
+    if (multi && String(multi).trim()) {
+      const parts = String(multi)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length >= 3) {
+        [d1, d2, d3] = [parts[0], parts[1], parts[2]];
+      } else if (parts.length === 2) {
+        [d1, d2] = [parts[0], parts[1]];
+      } else if (parts.length === 1) {
+        d1 = parts[0];
+      }
+    } else if (config.NS_SHIFT_BATCH_TIME && String(config.NS_SHIFT_BATCH_TIME).trim()) {
+      d1 = String(config.NS_SHIFT_BATCH_TIME).trim();
+    }
+
+    const defaults = [d1, d2, d3];
+    for (let seq = 1; seq <= 3; seq += 1) {
+      const hhmm = defaults[seq - 1];
+      await ShiftCloseSlot.findOrCreate({
+        where: { sequence: seq },
+        defaults: { hhmm, enabled: true }
+      });
+    }
+  } catch (error) {
+    console.error('ensureShiftCloseSlots:', error);
+  }
+}
 
 async function load_data_workplaces(){
     try {
@@ -74,4 +116,4 @@ async function load_users(){
     }
 }
 
-module.exports = { load_data_workplaces, load_users }
+module.exports = { load_data_workplaces, load_users, ensureShiftCloseSlots }

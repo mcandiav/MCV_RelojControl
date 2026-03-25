@@ -10,5 +10,7 @@ module.exports = {
     NS_SHIFT_BATCH_ENABLED: process.env.NS_SHIFT_BATCH_ENABLED === 'false' ? false : true,
     NS_AUTO_STOP_AT_SHIFT_END: process.env.NS_AUTO_STOP_AT_SHIFT_END === 'false' ? false : true,
     NS_TIMEZONE: process.env.NS_TIMEZONE || 'America/Santiago',
-    NS_SHIFT_BATCH_TIME: process.env.NS_SHIFT_BATCH_TIME || '17:00'
+    NS_SHIFT_BATCH_TIME: process.env.NS_SHIFT_BATCH_TIME || '17:00',
+    /** Tras cierre de turno, intenta push a NetSuite (requiere credenciales M2M completas). */
+    NETSUITE_PUSH_ON_SHIFT_CLOSE: process.env.NETSUITE_PUSH_ON_SHIFT_CLOSE === 'true'
 }

@@ -60,7 +60,7 @@
       <v-row>
         <v-col cols="12">
           <v-card outlined class="pa-4">
-            <div class="text-h6 font-weight-bold mb-2">Cronometro v2</div>
+            <div class="text-h6 font-weight-bold mb-2">Cronómetro v3</div>
             <div v-if="user" class="subtitle-2">
               Usuario: {{ user.name }} {{ user.lastname }} |
               Rol: {{ user.Role && user.Role.name }} |
@@ -73,6 +73,7 @@
       <v-tabs v-model="activeTab" background-color="transparent" class="mb-4">
         <v-tab>Operación</v-tab>
         <v-tab v-if="isAdmin">Usuarios</v-tab>
+        <v-tab v-if="isAdmin">Sistema</v-tab>
       </v-tabs>
 
       <v-tabs-items v-model="activeTab" class="transparent">
@@ -266,8 +267,78 @@
             </v-col>
           </v-row>
         </v-tab-item>
+
+        <v-tab-item v-if="isAdmin">
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-card outlined class="pa-4">
+                <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automáticos</div>
+                <p class="text-body-2 grey--text text--darken-1 mb-3">
+                  Tres horarios (zona {{ shiftMeta.timezone || '—' }}). Se programan cron jobs en el servidor al guardar.
+                  Los flags globales vienen de variables de entorno del API (<code>NS_SHIFT_BATCH_ENABLED</code>,
+                  <code>NS_AUTO_STOP_AT_SHIFT_END</code>).
+                </p>
+                <v-alert v-if="shiftMeta.shift_batch_enabled === false || shiftMeta.auto_stop_at_shift_end === false" type="warning" dense outlined class="mb-3">
+                  El planificador está deshabilitado por configuración del servidor; igual podés editar y guardar horarios para cuando se active.
+                </v-alert>
+                <v-alert v-if="shiftScheduleError" type="error" dense class="mb-3">{{ shiftScheduleError }}</v-alert>
+                <div v-for="slot in shiftSlotsDraft" :key="'s-' + slot.sequence" class="d-flex flex-wrap align-center mb-3" style="gap: 12px">
+                  <span class="text-caption font-weight-medium" style="min-width: 72px">Cierre {{ slot.sequence }}</span>
+                  <v-text-field
+                    v-model="slot.hhmm"
+                    type="time"
+                    dense
+                    outlined
+                    hide-details
+                    style="max-width: 140px"
+                  />
+                  <v-switch v-model="slot.enabled" label="Activo" dense hide-details class="mt-0" />
+                </div>
+                <v-btn color="primary" :loading="loadingShiftSave" :disabled="loadingShiftSchedule" @click="saveShiftSchedule">
+                  Guardar horarios
+                </v-btn>
+              </v-card>
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-card outlined class="pa-4">
+                <div class="text-subtitle-1 font-weight-bold mb-2">NetSuite</div>
+                <p class="text-body-2 grey--text text--darken-1 mb-3">
+                  Pull: dataset <strong>MCV_cronometro_out</strong>. Push: RESTlet IN (3 datos por operación). Requiere variables
+                  <code>NETSUITE_*</code> en el backend.
+                </p>
+                <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integración</v-btn>
+                <v-simple-table v-if="nsStatus" dense class="mb-3 ns-status-table">
+                  <tbody>
+                    <tr v-for="row in nsStatusFlat" :key="row.key">
+                      <td class="text-caption font-weight-medium">{{ row.key }}</td>
+                      <td class="text-caption">{{ row.val }}</td>
+                    </tr>
+                  </tbody>
+                </v-simple-table>
+                <div class="d-flex flex-wrap" style="gap: 8px">
+                  <v-btn color="primary" :loading="loadingNsPull" :disabled="!isAdmin" @click="netsuitePull">
+                    Traer operaciones (pull)
+                  </v-btn>
+                  <v-btn color="secondary" :loading="loadingNsPush" :disabled="!isAdmin" @click="netsuitePush">
+                    Publicar a NetSuite (push)
+                  </v-btn>
+                </div>
+                <v-alert v-if="nsLastResult" type="info" dense outlined class="mt-3 mb-0 text-left">
+                  <pre class="ns-json">{{ nsLastResult }}</pre>
+                </v-alert>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-tab-item>
       </v-tabs-items>
     </v-container>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="5000" bottom>
+      {{ snackbarText }}
+      <template v-slot:action="{ attrs }">
+        <v-btn text v-bind="attrs" @click="snackbar = false">Cerrar</v-btn>
+      </template>
+    </v-snackbar>
 
     <!-- Stop: cantidad terminada (opcional) -->
     <v-dialog v-model="stopQtyDialog" max-width="420" persistent>
@@ -351,12 +422,32 @@ export default {
       stopQtyDialog: false,
       stopQtyOpId: null,
       stopQtyValue: '',
-      stopQtyLoading: false
+      stopQtyLoading: false,
+      shiftSlotsDraft: [
+        { sequence: 1, hhmm: '07:00', enabled: true },
+        { sequence: 2, hhmm: '15:00', enabled: true },
+        { sequence: 3, hhmm: '23:00', enabled: true }
+      ],
+      shiftMeta: {
+        timezone: '',
+        shift_batch_enabled: null,
+        auto_stop_at_shift_end: null
+      },
+      loadingShiftSchedule: false,
+      loadingShiftSave: false,
+      shiftScheduleError: '',
+      loadingNsStatus: false,
+      loadingNsPull: false,
+      loadingNsPush: false,
+      nsStatus: null,
+      nsLastResult: '',
+      snackbar: false,
+      snackbarText: '',
+      snackbarColor: 'success'
     }
   },
   created() {
     this.refreshBoard()
-    if (this.isAdmin) this.loadAdminCatalogs()
     this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
   },
   mounted() {
@@ -379,6 +470,15 @@ export default {
     document.removeEventListener('keydown', this.onIdleBoardKeydown)
   },
   watch: {
+    isAdmin: {
+      immediate: true,
+      handler(val) {
+        if (val) {
+          this.loadAdminCatalogs()
+          this.loadShiftSchedule()
+        }
+      }
+    },
     otNumber(value) {
       if (this.searchTimeout) clearTimeout(this.searchTimeout)
       const digits = String(value || '').replace(/[^0-9]/g, '')
@@ -451,6 +551,13 @@ export default {
       const q = [...slice]
       while (q.length < per) q.push(null)
       return q
+    },
+    nsStatusFlat() {
+      if (!this.nsStatus || typeof this.nsStatus !== 'object') return []
+      return Object.keys(this.nsStatus).map((k) => ({
+        key: k,
+        val: typeof this.nsStatus[k] === 'object' ? JSON.stringify(this.nsStatus[k]) : String(this.nsStatus[k])
+      }))
     }
   },
   methods: {
@@ -778,6 +885,120 @@ export default {
       } finally {
         this.loadingShiftClose = false
       }
+    },
+    showSnack(text, color = 'success') {
+      this.snackbarText = text
+      this.snackbarColor = color
+      this.snackbar = true
+    },
+    async loadShiftSchedule() {
+      if (!this.isAdmin) return
+      this.shiftScheduleError = ''
+      this.loadingShiftSchedule = true
+      try {
+        const res = await axios.get('/chronometer/admin/shift-schedule')
+        const d = res.data || {}
+        this.shiftMeta = {
+          timezone: d.timezone || '',
+          shift_batch_enabled: d.shift_batch_enabled,
+          auto_stop_at_shift_end: d.auto_stop_at_shift_end
+        }
+        const slots = Array.isArray(d.slots) ? d.slots : []
+        if (slots.length >= 3) {
+          this.shiftSlotsDraft = slots
+            .slice()
+            .sort((a, b) => a.sequence - b.sequence)
+            .map((s) => ({
+              sequence: s.sequence,
+              hhmm: String(s.hhmm || '00:00').slice(0, 5),
+              enabled: s.enabled !== false
+            }))
+        }
+      } catch (error) {
+        this.shiftScheduleError =
+          (error.response && error.response.data && error.response.data.message) ||
+          'No se pudo cargar el horario de cierres.'
+      } finally {
+        this.loadingShiftSchedule = false
+      }
+    },
+    async saveShiftSchedule() {
+      this.shiftScheduleError = ''
+      this.loadingShiftSave = true
+      try {
+        const slots = this.shiftSlotsDraft.map((s) => ({
+          sequence: s.sequence,
+          hhmm: String(s.hhmm || '').trim(),
+          enabled: s.enabled !== false
+        }))
+        const res = await axios.put('/chronometer/admin/shift-schedule', { slots })
+        if (res.data && Array.isArray(res.data.slots)) {
+          this.shiftSlotsDraft = res.data.slots
+            .slice()
+            .sort((a, b) => a.sequence - b.sequence)
+            .map((s) => ({
+              sequence: s.sequence,
+              hhmm: String(s.hhmm || '').slice(0, 5),
+              enabled: s.enabled !== false
+            }))
+        }
+        this.showSnack('Horarios de cierre guardados y crons actualizados.')
+      } catch (error) {
+        const msg =
+          (error.response && error.response.data && error.response.data.message) ||
+          'No se pudo guardar el horario.'
+        this.shiftScheduleError = msg
+        this.showSnack(msg, 'error')
+      } finally {
+        this.loadingShiftSave = false
+      }
+    },
+    async loadNsStatus() {
+      this.loadingNsStatus = true
+      try {
+        const res = await axios.get('/chronometer/netsuite/status')
+        this.nsStatus = res.data || null
+        this.showSnack('Estado NetSuite actualizado.')
+      } catch (error) {
+        this.nsStatus = null
+        const msg =
+          (error.response && error.response.data && error.response.data.message) || 'Error al leer estado NetSuite.'
+        this.showSnack(msg, 'error')
+      } finally {
+        this.loadingNsStatus = false
+      }
+    },
+    async netsuitePull() {
+      this.loadingNsPull = true
+      this.nsLastResult = ''
+      try {
+        const res = await axios.post('/chronometer/netsuite/pull-dataset')
+        this.nsLastResult = JSON.stringify(res.data, null, 2)
+        this.showSnack('Pull NetSuite completado.')
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+      } catch (error) {
+        const d = error.response && error.response.data
+        this.nsLastResult = JSON.stringify(d || { message: error.message }, null, 2)
+        this.showSnack((d && d.message) || 'Error en pull NetSuite.', 'error')
+      } finally {
+        this.loadingNsPull = false
+      }
+    },
+    async netsuitePush() {
+      this.loadingNsPush = true
+      this.nsLastResult = ''
+      try {
+        const res = await axios.post('/chronometer/netsuite/push-actuals')
+        this.nsLastResult = JSON.stringify(res.data, null, 2)
+        this.showSnack('Push a NetSuite enviado.')
+      } catch (error) {
+        const d = error.response && error.response.data
+        this.nsLastResult = JSON.stringify(d || { message: error.message }, null, 2)
+        this.showSnack((d && d.message) || 'Error en push NetSuite.', 'error')
+      } finally {
+        this.loadingNsPush = false
+      }
     }
   }
 }
@@ -1012,6 +1233,15 @@ export default {
 .idle-board-footer:hover {
   color: #8b949e;
   background: #0d1117;
+}
+
+.ns-json {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
 }
 
 .seed-json {
