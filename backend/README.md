@@ -89,6 +89,25 @@ Variables: ver `../NETSUITE_ENV_TEMPLATE.md`. Para push automático tras cierre 
 
 Semilla inicial de los 3 horarios (solo si la tabla está vacía): `NS_SHIFT_BATCH_TIMES=06:00,14:00,22:00` o el legado `NS_SHIFT_BATCH_TIME` para el primer slot.
 
+### Pull NetSuite fuera de Docker (host)
+
+Si la lectura del dataset debe hacerse **desde la máquina anfitriona** (sin salir al NetSuite desde el contenedor), usá el script:
+
+```bash
+cd backend
+# .env.local en la raíz del repo con NETSUITE_* o exportá variables en la shell
+npm run netsuite:pull:standalone > ../tmp/netsuite-wip.json
+```
+
+Para cargar el resultado en la base del servidor (API en Docker / EasyPanel), con JWT de **admin**:
+
+```bash
+npm run netsuite:pull:standalone -- --sync-api https://reloj-api.at-once.cl --jwt "TU_JWT"
+# o: set CRONOMETRO_ADMIN_JWT=... y omitir --jwt
+```
+
+Eso llama a `POST /chronometer/admin/netsuite-ingest-wip`, mismo upsert que el pull interno (no pisa `completed_quantity` en duplicados).
+
 **Nota de modelo:** `actual_setup_time` hacia NetSuite se envía en **0** hasta que existan eventos o reglas que distingan montaje frente a ejecución (la arquitectura exige no inferir setup solo desde pausa). `actual_run_time` se deriva del tiempo activo acumulado en eventos (minutos). `completed_quantity` sale del campo local al cerrar operación.
 
 ---

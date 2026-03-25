@@ -311,8 +311,8 @@
                   URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> · Origen web: <code>{{ browserOrigin }}</code>
                 </p>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
-                  Pull: dataset <strong>MCV_cronometro_out</strong>. Push: RESTlet IN (3 datos por operación). Requiere variables
-                  <code>NETSUITE_*</code> en el backend.
+                  Pull: dataset <strong>MCV_cronometro_out</strong> (desde el navegador o con script en el host:
+                  <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la máquina donde corrás el script.
                 </p>
                 <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integración</v-btn>
                 <v-simple-table v-if="nsStatus" dense class="mb-3 ns-status-table">

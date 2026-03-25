@@ -7,7 +7,8 @@
     "start": "node build/index.js",
     "dev": "nodemon src/index.js --exec babel-node",
     "build": "babel src --out-dir build",
-    "test": "node src/index.js"
+    "test": "node src/index.js",
+    "netsuite:pull:standalone": "node scripts/netsuite-pull-standalone.js"
   },
   "author": "",
   "license": "ISC",

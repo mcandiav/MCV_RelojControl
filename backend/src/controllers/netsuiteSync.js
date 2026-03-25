@@ -26,6 +26,16 @@ const NS_UPSERT_UPDATE_FIELDS = [
   'updatedAt'
 ];
 
+async function persistNetsuiteWipRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { imported: 0 };
+  }
+  await WorkOrderOperation.bulkCreate(rows, {
+    updateOnDuplicate: NS_UPSERT_UPDATE_FIELDS
+  });
+  return { imported: rows.length };
+}
+
 exports.getConfigStatus = async function getConfigStatus(req, res) {
   return res.status(200).json(getNetsuiteConfigStatus());
 };
@@ -47,13 +57,11 @@ exports.pullDataset = async function pullDataset(req, res) {
       });
     }
 
-    await WorkOrderOperation.bulkCreate(rows, {
-      updateOnDuplicate: NS_UPSERT_UPDATE_FIELDS
-    });
+    const { imported } = await persistNetsuiteWipRows(rows);
 
     return res.status(200).json({
       message: 'Pull MCV_cronometro_out aplicado (upsert). completed_quantity local no se sobrescribe en duplicados.',
-      imported: rows.length,
+      imported,
       totalRows
     });
   } catch (err) {
@@ -61,6 +69,42 @@ exports.pullDataset = async function pullDataset(req, res) {
     return res.status(502).json({
       message: 'Fallo al leer dataset o guardar operaciones.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
+    });
+  }
+};
+
+/**
+ * Recibe operaciones ya leídas del dataset (p. ej. script en el host fuera de Docker) y aplica el mismo upsert que pull-dataset.
+ * No incluye completed_quantity en updateOnDuplicate.
+ */
+exports.ingestWipFromStandalonePull = async function ingestWipFromStandalonePull(req, res) {
+  const { operations } = req.body || {};
+  if (!Array.isArray(operations) || operations.length === 0) {
+    return res.status(400).json({ message: 'Body debe incluir operations: array no vacío.' });
+  }
+
+  for (let i = 0; i < operations.length; i += 1) {
+    const op = operations[i];
+    if (!op || !op.ot_number || !op.resource_code || op.operation_sequence == null || !op.operation_name) {
+      return res.status(400).json({
+        message: `operations[${i}]: faltan ot_number, operation_sequence, operation_name o resource_code.`
+      });
+    }
+    if (!['ME', 'ES'].includes(String(op.area || '').toUpperCase())) {
+      return res.status(400).json({ message: `operations[${i}]: area debe ser ME o ES.` });
+    }
+  }
+
+  try {
+    const { imported } = await persistNetsuiteWipRows(operations);
+    return res.status(200).json({
+      message: 'Ingesta aplicada (mismo criterio que pull interno; completed_quantity local no se pisa en duplicados).',
+      imported
+    });
+  } catch (err) {
+    return res.status(500).json({
+      message: 'Error al persistir operaciones.',
+      error: err.message || String(err)
     });
   }
 };

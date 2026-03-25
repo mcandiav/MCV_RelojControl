@@ -19,6 +19,8 @@ router.post('/shift/close', [security.verifyToken, security.isAdmin], chronomete
 router.get('/admin/shift-schedule', [security.verifyToken, security.isAdmin], shiftSchedule.getShiftSchedule);
 router.put('/admin/shift-schedule', [security.verifyToken, security.isAdmin], shiftSchedule.putShiftSchedule);
 
+router.post('/admin/netsuite-ingest-wip', [security.verifyToken, security.isAdmin], netsuiteSync.ingestWipFromStandalonePull);
+
 router.get('/netsuite/status', [security.verifyToken, security.isAdmin], netsuiteSync.getConfigStatus);
 router.get('/netsuite/peek-dataset', [security.verifyToken, security.isAdmin], netsuiteSync.peekDataset);
 router.post('/netsuite/pull-dataset', [security.verifyToken, security.isAdmin], netsuiteSync.pullDataset);

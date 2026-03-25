@@ -52,3 +52,7 @@ Con variables completas, el API expone (JWT admin):
 - `POST /chronometer/netsuite/oauth/clear-cache` — limpia caché del access token
 
 **Importante:** el registro de integración en NetSuite debe permitir el alcance **`suite_analytics`** además de RESTlets, o el GET del dataset fallará. Ajustar según documentación Oracle y rol `MCV_Cronometro_Rol`.
+
+### Pull solo desde el host (fuera de Docker)
+
+Si el dataset se lee con Node **en la máquina anfitriona**, usá `backend/scripts/netsuite-pull-standalone.js` (mismas variables `NETSUITE_*`). Opcionalmente `--sync-api` + JWT admin para enviar las filas a `POST /chronometer/admin/netsuite-ingest-wip`. Detalle en `backend/README.md`.
