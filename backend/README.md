@@ -110,7 +110,11 @@ Eso llama a `POST /chronometer/admin/netsuite-ingest-wip`, mismo upsert que el p
 
 ### Network Error al instante desde el navegador (HTTPS)
 
-Suele ser **mixed content** (front en HTTPS y `axios` apuntando a `http://localhost`) o **503 sin CORS** mientras el API arranca. El front ahora carga `/api-config.js` antes del bundle (Docker escribe ahí la URL HTTPS del API). El API añade cabeceras CORS en respuestas **503** de “Service starting”.
+Suele ser **mixed content** (front en HTTPS y `axios` apuntando a `http://localhost`) o **503 sin CORS** mientras el API arranca. El front carga `/api-config.js` antes del bundle; el API añade CORS en **503**.
+
+Si la **baseURL ya es `https://reloj-api…`** y sigue “Network Error”, suele ser **certificado TLS**, **DNS**, **firewall** o **proxy** — no la variable del front. Probar en el navegador: `https://reloj-api…/health` y el botón del front **Probar conexión API** (`GET /cors-ping`, sin JWT).
+
+CORS: cabeceras explícitas para `x-access-token`. Diagnóstico extremo: `CORS_ALLOW_ALL=true` en el contenedor del API (solo pruebas).
 
 **Nota de modelo:** `actual_setup_time` hacia NetSuite se envía en **0** hasta que existan eventos o reglas que distingan montaje frente a ejecución (la arquitectura exige no inferir setup solo desde pausa). `actual_run_time` se deriva del tiempo activo acumulado en eventos (minutos). `completed_quantity` sale del campo local al cerrar operación.
 

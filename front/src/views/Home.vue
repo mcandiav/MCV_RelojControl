@@ -314,6 +314,9 @@
                   Pull: dataset <strong>MCV_cronometro_out</strong> (desde el navegador o con script en el host:
                   <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la máquina donde corrás el script.
                 </p>
+                <v-btn class="mr-2 mb-2" small outlined :loading="loadingCorsPing" @click="testApiCorsPing">
+                  Probar conexión API
+                </v-btn>
                 <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integración</v-btn>
                 <v-simple-table v-if="nsStatus" dense class="mb-3 ns-status-table">
                   <tbody>
@@ -447,6 +450,7 @@ export default {
       loadingShiftSchedule: false,
       loadingShiftSave: false,
       shiftScheduleError: '',
+      loadingCorsPing: false,
       loadingNsStatus: false,
       loadingNsPull: false,
       loadingNsPush: false,
@@ -927,11 +931,22 @@ export default {
         }
       }
       if (error && error.message === 'Network Error') {
+        const base = String(axios.defaults.baseURL || '').replace(/\/$/, '')
+        const httpsOk = /^https:/i.test(base)
+        const pasos = [
+          `Abrí en una pestaña nueva: ${base}/health — si el navegador marca certificado inválido, el problema es TLS (no CORS).`,
+          `Desde acá usá el botón «Probar conexión API» (GET ${base}/cors-ping, sin JWT).`,
+          'Si /health abre bien pero axios falla: otra red/VPN, antivirus, bloqueo DNS o proxy frente a reloj-api.'
+        ]
+        if (!httpsOk) {
+          pasos.unshift('La base del API debería ser https:// en producción.')
+        }
         return {
           message:
-            'Network Error: el navegador no pudo hablar con la API. Revisá VUE_APP_API_URL en el build del front (HTTPS hacia reloj-api), CORS, proxy/SSL y que el API esté arriba.',
+            'Network Error: no hubo respuesta HTTP usable. Tu baseURL ya es HTTPS hacia reloj-api → suele ser certificado TLS, red/firewall o DNS, no la variable VUE_APP_API_URL.',
           code: 'NETWORK_ERROR',
-          axios_baseURL: axios.defaults.baseURL || null
+          axios_baseURL: axios.defaults.baseURL || null,
+          pasos
         }
       }
       return { message: (error && error.message) || 'Error de red', code: error && error.code }
@@ -996,6 +1011,28 @@ export default {
         this.showSnack(msg, 'error')
       } finally {
         this.loadingShiftSave = false
+      }
+    },
+    async testApiCorsPing() {
+      this.loadingCorsPing = true
+      this.nsLastResult = ''
+      const base = String(axios.defaults.baseURL || '').replace(/\/$/, '')
+      const url = `${base}/cors-ping`
+      try {
+        const res = await axios.get(url, { timeout: 25000 })
+        this.nsLastResult = JSON.stringify(
+          { ok: true, url, respuesta: res.data },
+          null,
+          2
+        )
+        this.showSnack('API alcanzable (cors-ping).')
+      } catch (error) {
+        const d = error.response && error.response.data
+        const payload = d || this.netsuiteAxiosErrorPayload(error)
+        this.nsLastResult = JSON.stringify({ ...payload, intento_url: url }, null, 2)
+        this.showSnack('No se pudo contactar al API.', 'error')
+      } finally {
+        this.loadingCorsPing = false
       }
     },
     async loadNsStatus() {

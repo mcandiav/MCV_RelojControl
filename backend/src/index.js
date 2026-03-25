@@ -17,7 +17,8 @@ const authRoutes = require('./routes/auth');
 const chronometerRoutes = require('./routes/chronometer');
 const config = require('./config/config');
 const { registerShiftCloseCrons } = require('./jobs/shiftCloseScheduler');
-var cors = require('cors');
+const cors = require('cors');
+const corsOptions = require('./config/corsOptions');
 
 /** Evita bucle SIGTERM: EasyPanel/Docker suelen hacer healthcheck HTTP mientras corre db.sync (alter). */
 let dbReady = false;
@@ -29,16 +30,18 @@ app.use(function setCommonHeaders(req, res, next) {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'files')));
-// Sin lista fija de allowedHeaders: el paquete cors refleja las cabeceras del preflight
-// (si acotamos a mano, axios/navegador pueden mandar Accept u otras y el GET /auth/operarios falla
-// en silencio en el front → lista vacía "No hay operarios").
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(compression());
 
 // 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).
 app.get(['/', '/health'], (req, res) => {
     if (dbReady) return res.status(200).json({ status: 'ok' });
     return res.status(200).json({ status: 'starting' });
+});
+
+/** GET sin auth: probar desde el front (otro subdominio) que haya TLS + CORS. */
+app.get('/cors-ping', (req, res) => {
+    res.status(200).json({ ok: true, dbReady, t: new Date().toISOString() });
 });
 
 function applyCorsForEarlyResponse(req, res) {
