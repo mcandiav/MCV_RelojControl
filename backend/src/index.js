@@ -41,9 +41,26 @@ app.get(['/', '/health'], (req, res) => {
     return res.status(200).json({ status: 'starting' });
 });
 
+function applyCorsForEarlyResponse(req, res) {
+    const origin = req.headers.origin;
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    const reqHdr = req.headers['access-control-request-headers'];
+    res.setHeader(
+        'Access-Control-Allow-Headers',
+        reqHdr || 'Content-Type, Authorization, x-access-token, x-station-id, x-terminal-id, Accept'
+    );
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS');
+}
+
 app.use((req, res, next) => {
-    if (!dbReady) return res.status(503).json({ message: 'Service starting' });
-    next();
+    if (dbReady) return next();
+    applyCorsForEarlyResponse(req, res);
+    return res.status(503).json({ message: 'Service starting' });
 });
 
 app.use('/auth', authRoutes);

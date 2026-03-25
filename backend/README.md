@@ -108,6 +108,10 @@ npm run netsuite:pull:standalone -- --sync-api https://reloj-api.at-once.cl --jw
 
 Eso llama a `POST /chronometer/admin/netsuite-ingest-wip`, mismo upsert que el pull interno (no pisa `completed_quantity` en duplicados).
 
+### Network Error al instante desde el navegador (HTTPS)
+
+Suele ser **mixed content** (front en HTTPS y `axios` apuntando a `http://localhost`) o **503 sin CORS** mientras el API arranca. El front ahora carga `/api-config.js` antes del bundle (Docker escribe ahí la URL HTTPS del API). El API añade cabeceras CORS en respuestas **503** de “Service starting”.
+
 **Nota de modelo:** `actual_setup_time` hacia NetSuite se envía en **0** hasta que existan eventos o reglas que distingan montaje frente a ejecución (la arquitectura exige no inferir setup solo desde pausa). `actual_run_time` se deriva del tiempo activo acumulado en eventos (minutos). `completed_quantity` sale del campo local al cerrar operación.
 
 ---

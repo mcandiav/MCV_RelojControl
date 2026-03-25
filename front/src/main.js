@@ -10,7 +10,21 @@ import VueCookies from 'vue-cookies'
 require('@/store/subscriber')
 
 Vue.config.productionTip = false
-axios.defaults.baseURL = process.env.VUE_APP_API_URL || 'http://localhost:8000/'
+
+function resolveApiBaseURL() {
+  const w =
+    typeof window !== 'undefined' &&
+    window.__CRONOMETRO_API_BASE__ != null &&
+    String(window.__CRONOMETRO_API_BASE__).trim() !== ''
+      ? String(window.__CRONOMETRO_API_BASE__).trim()
+      : ''
+  const env = (process.env.VUE_APP_API_URL && String(process.env.VUE_APP_API_URL).trim()) || ''
+  const raw = w || env || 'http://localhost:8000/'
+  return raw.endsWith('/') ? raw : `${raw}/`
+}
+
+axios.defaults.baseURL = resolveApiBaseURL()
+
 // Mixed content: página HTTPS no puede llamar a http://localhost — falla en <1s como "Network Error".
 if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
   const bu = String(axios.defaults.baseURL || '')
@@ -18,7 +32,7 @@ if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     console.error(
       '[Cronómetro] API URL incompatible con HTTPS:',
       bu,
-      '→ Rebuild del front con VUE_APP_API_URL=https://reloj-api.at-once.cl/ (en EasyPanel no dejes el build-arg vacío).'
+      '→ Revisá public/api-config.js en el servidor, o rebuild con VUE_APP_API_URL=https://reloj-api.at-once.cl/'
     )
   }
 }
