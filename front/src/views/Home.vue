@@ -377,6 +377,9 @@ import '@mdi/font/css/materialdesignicons.css'
 import appbar from '@/components/navegation/appbar.vue'
 import { mapGetters } from 'vuex'
 
+/** Pull/push NetSuite suele tardar >20s; el timeout global de axios en main.js es corto. */
+const NETSUITE_AXIOS_TIMEOUT_MS = 180000
+
 export default {
   name: 'Home',
   components: { appbar },
@@ -891,6 +894,24 @@ export default {
       this.snackbarColor = color
       this.snackbar = true
     },
+    /** Mensaje legible cuando axios no recibe respuesta (timeout, CORS, URL mal, SSL). */
+    netsuiteAxiosErrorPayload(error) {
+      if (error && error.code === 'ECONNABORTED') {
+        return {
+          message: 'Tiempo de espera agotado. El pull puede tardar varios minutos; reintentá o revisá la API.',
+          code: 'ECONNABORTED'
+        }
+      }
+      if (error && error.message === 'Network Error') {
+        return {
+          message:
+            'Network Error: el navegador no pudo hablar con la API. Revisá VUE_APP_API_URL en el build del front (HTTPS hacia reloj-api), CORS, proxy/SSL y que el API esté arriba.',
+          code: 'NETWORK_ERROR',
+          axios_baseURL: axios.defaults.baseURL || null
+        }
+      }
+      return { message: (error && error.message) || 'Error de red', code: error && error.code }
+    },
     async loadShiftSchedule() {
       if (!this.isAdmin) return
       this.shiftScheduleError = ''
@@ -956,13 +977,14 @@ export default {
     async loadNsStatus() {
       this.loadingNsStatus = true
       try {
-        const res = await axios.get('/chronometer/netsuite/status')
+        const res = await axios.get('/chronometer/netsuite/status', { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
         this.nsStatus = res.data || null
         this.showSnack('Estado NetSuite actualizado.')
       } catch (error) {
         this.nsStatus = null
-        const msg =
-          (error.response && error.response.data && error.response.data.message) || 'Error al leer estado NetSuite.'
+        const fromApi = error.response && error.response.data && error.response.data.message
+        const net = !error.response ? this.netsuiteAxiosErrorPayload(error) : null
+        const msg = fromApi || (net && net.message) || 'Error al leer estado NetSuite.'
         this.showSnack(msg, 'error')
       } finally {
         this.loadingNsStatus = false
@@ -972,15 +994,17 @@ export default {
       this.loadingNsPull = true
       this.nsLastResult = ''
       try {
-        const res = await axios.post('/chronometer/netsuite/pull-dataset')
+        const res = await axios.post('/chronometer/netsuite/pull-dataset', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
         this.nsLastResult = JSON.stringify(res.data, null, 2)
         this.showSnack('Pull NetSuite completado.')
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
       } catch (error) {
         const d = error.response && error.response.data
-        this.nsLastResult = JSON.stringify(d || { message: error.message }, null, 2)
-        this.showSnack((d && d.message) || 'Error en pull NetSuite.', 'error')
+        const fallback = !error.response ? this.netsuiteAxiosErrorPayload(error) : { message: error.message }
+        this.nsLastResult = JSON.stringify(d || fallback, null, 2)
+        const msg = (d && d.message) || (fallback && fallback.message) || 'Error en pull NetSuite.'
+        this.showSnack(msg, 'error')
       } finally {
         this.loadingNsPull = false
       }
@@ -989,13 +1013,15 @@ export default {
       this.loadingNsPush = true
       this.nsLastResult = ''
       try {
-        const res = await axios.post('/chronometer/netsuite/push-actuals')
+        const res = await axios.post('/chronometer/netsuite/push-actuals', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
         this.nsLastResult = JSON.stringify(res.data, null, 2)
         this.showSnack('Push a NetSuite enviado.')
       } catch (error) {
         const d = error.response && error.response.data
-        this.nsLastResult = JSON.stringify(d || { message: error.message }, null, 2)
-        this.showSnack((d && d.message) || 'Error en push NetSuite.', 'error')
+        const fallback = !error.response ? this.netsuiteAxiosErrorPayload(error) : { message: error.message }
+        this.nsLastResult = JSON.stringify(d || fallback, null, 2)
+        const msg = (d && d.message) || (fallback && fallback.message) || 'Error en push NetSuite.'
+        this.showSnack(msg, 'error')
       } finally {
         this.loadingNsPush = false
       }
