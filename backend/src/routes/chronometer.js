@@ -23,7 +23,6 @@ router.post('/admin/netsuite-ingest-wip', [security.verifyToken, security.isAdmi
 
 router.get('/netsuite/status', [security.verifyToken, security.isAdmin], netsuiteSync.getConfigStatus);
 router.get('/netsuite/peek-dataset', [security.verifyToken, security.isAdmin], netsuiteSync.peekDataset);
-router.get('/netsuite/pull-dataset-dry-run', netsuiteSync.pullDatasetDryRun);
 router.post('/netsuite/pull-dataset', [security.verifyToken, security.isAdmin], netsuiteSync.pullDataset);
 router.post('/netsuite/push-actuals', [security.verifyToken, security.isAdmin], netsuiteSync.pushActuals);
 router.post('/netsuite/oauth/clear-cache', [security.verifyToken, security.isAdmin], netsuiteSync.clearOAuthCache);

@@ -74,40 +74,6 @@ exports.pullDataset = async function pullDataset(req, res) {
 };
 
 /**
- * Diagnóstico público (NO persiste): lee y mapea el dataset y devuelve un resumen.
- * Útil para aislar si el problema está en: red/TLS/proxy hacia NetSuite, OAuth token, o mapeo de columnas.
- */
-exports.pullDatasetDryRun = async function pullDatasetDryRun(req, res) {
-  if (!isNetsuiteConfigured()) {
-    return res.status(503).json({
-      message: 'NetSuite no está configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.'
-    });
-  }
-
-  const sampleSize = Math.min(25, Math.max(1, parseInt(String(req.query.sample || '10'), 10) || 10));
-
-  try {
-    const startedAt = Date.now();
-    const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource);
-    const elapsedMs = Date.now() - startedAt;
-
-    return res.status(200).json({
-      message: 'Dry-run OK: dataset leído y mapeado (sin persistir).',
-      totalRows,
-      sampleSize,
-      elapsedMs,
-      sample: rows.slice(0, sampleSize)
-    });
-  } catch (err) {
-    const detail = err.response && err.response.data ? err.response.data : err.message;
-    return res.status(502).json({
-      message: 'Dry-run falló al leer/mapea el dataset (sin persistir).',
-      error: typeof detail === 'string' ? detail : JSON.stringify(detail)
-    });
-  }
-};
-
-/**
  * Recibe operaciones ya leídas del dataset (p. ej. script en el host fuera de Docker) y aplica el mismo upsert que pull-dataset.
  * No incluye completed_quantity en updateOnDuplicate.
  */
