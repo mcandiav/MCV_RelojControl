@@ -149,7 +149,14 @@ Se creó en sandbox el dataset:
 - **`MCV_cronometro_out`**
 
 ### Dataset ID en sandbox
-- **`17`**
+En REST (SuiteTalk) el dataset se ejecuta con un ID tipo **`custdatasetXX`**, no con el número visible en algunas URLs de UI (p. ej. `dataset.nl?dataset=17`).
+
+Para esta cuenta sandbox se validó:
+
+- **`name`**: `MCV_cronometro_out`
+- **`id` (REST)**: **`custdataset17`**
+
+> Cómo obtenerlo de forma robusta: listar datasets por REST `GET /services/rest/query/v1/dataset/` o desde Cronómetro `GET /chronometer/netsuite/list-datasets` (admin/JWT) y tomar el item con `name: MCV_cronometro_out`.
 
 ### Registro raíz finalmente utilizado
 Después de probar alternativas como:
@@ -391,7 +398,7 @@ La sincronización tiene **dos flujos separados**:
 #### 1. Pull: NetSuite → Cronómetro
 Cronómetro debe hacer **pull** del dataset:
 - **`MCV_cronometro_out`**
-- **dataset id: `17` en sandbox**
+- **dataset id (REST): `custdataset17` en sandbox**
 
 Ese pull es la forma oficial de recoger:
 - operaciones WIP
@@ -402,6 +409,27 @@ Ese pull es la forma oficial de recoger:
 
 #### 2. Push: Cronómetro → NetSuite
 Cronómetro debe hacer **push** de los 3 datos reales por operación al RESTlet desplegado en NetSuite.
+
+### Orden oficial (mar 2026): push → pull con cronómetros detenidos
+
+Para mantener consistencia operativa y evitar pisar datos en curso:
+
+- La sincronización oficial se ejecuta con cronómetros detenidos (auto-stop).
+- Orden obligatorio:
+  1. **Push** del valor vigente (setup real, run real, cantidad terminada) por `netsuite_operation_id` (overwrite).
+  2. **Pull** del universo WIP vigente desde el dataset OUT.
+
+Esto queda naturalmente alineado con los **3 cierres de turno** configurables: cada cierre detiene cronómetros y luego ejecuta la sincronización.
+
+### Regla de consolidación (mar 2026): NetSuite aporta “base” previa
+
+Cuando una operación ya tiene valores en NetSuite (p. ej. tiempos reales previos o cantidades previas), Cronómetro debe tratar eso como **base previa** y publicar el **nuevo total vigente**:
+
+- Si al hacer pull una operación venía con 1h (base NetSuite previa),
+- y Cronómetro cronometró 3h adicionales,
+- entonces el push debe enviar \(1h + 3h = 4h\) como valor vigente (overwrite).
+
+Esta regla aplica a los 3 datos reales por operación (setup, run y cantidad).
 
 ### Regla crítica
 El programador **no debe asumir** que el mismo endpoint de escritura devuelve el dataset de lectura.
@@ -679,7 +707,7 @@ Tipo:
 - Dataset / conjunto de datos de NetSuite
 
 Dataset ID en sandbox:
-- 17
+- `custdataset17` (REST)
 
 Función:
 - Cronómetro debe leer desde aquí las operaciones WIP y sus datos planificados
@@ -789,7 +817,7 @@ Cronómetro debe guardar de forma segura:
 - account_id de NetSuite
 - token endpoint OAuth 2.0 M2M
 - URL del RESTlet IN
-- referencia del dataset OUT id 17
+- referencia del dataset OUT id `custdataset17` (REST)
 
 Importante:
 - la private_key NO se sube a NetSuite
@@ -818,7 +846,7 @@ Esto aplica a:
 ==================================================
 
 A. Pull del dataset OUT
-- ejecutar MCV_cronometro_out (dataset id 17)
+- ejecutar MCV_cronometro_out (dataset id REST `custdataset17`)
 - traer operaciones WIP y planificados
 - refrescar o upsertear operación local
 
@@ -858,7 +886,7 @@ Cronómetro debe guardar de forma segura:
 - URL del token endpoint OAuth 2.0 M2M
 - URL externa del RESTlet IN desplegado
 - referencia/configuración del mecanismo con que leerá `MCV_cronometro_out`
-- dataset id `17` en sandbox
+- dataset id `custdataset17` (REST) en sandbox
 
 ### Regla
 La `private_key` **no** se sube a NetSuite.
@@ -881,7 +909,7 @@ La `private_key` **no** se sube a NetSuite.
 8. No corresponde crear el script deployment antes de tener el archivo JavaScript cargado en File Cabinet.
 9. No se debe pedir a otro hilo que modele esto como un único total ambiguo ni que meta logs/staging en NetSuite en esta etapa.
 10. La sincronización completa debe quedar implementada del lado Cronómetro, separando lectura y escritura.
-11. El dataset OUT quedó identificado en sandbox con id `17`.
+11. El dataset OUT quedó identificado en sandbox con id REST `custdataset17`.
 12. El naming funcional correcto es:
    - OUT = dataset `MCV_cronometro_out`
    - IN = RESTlet `MCV_Cronometro_In`
@@ -894,7 +922,7 @@ La `private_key` **no** se sube a NetSuite.
 2. definir usuario técnico dedicado para producción
 3. probar end-to-end el M2M + token + RESTlet + actualización real
 4. cerrar la documentación exacta del token endpoint y parámetros JWT del lado Cronómetro
-5. ~~documentar definitivamente el mecanismo exacto que usará Cronómetro para leer `MCV_cronometro_out`~~ **Parcialmente cerrado (2026-03-25):** Cronómetro usa la API REST de ejecución de datasets de NetSuite: `GET https://{accountId}.suitetalk.api.netsuite.com/services/rest/query/v1/dataset/{datasetId}/result` con paginación `limit`/`offset`, Bearer token OAuth 2.0 M2M. Referencia Oracle: [Working with SuiteAnalytics Datasets in REST Web Services](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156577938018.html). En sandbox `datasetId` = **`17`**. Queda validar end-to-end con credenciales reales y permisos de rol.
+5. ~~documentar definitivamente el mecanismo exacto que usará Cronómetro para leer `MCV_cronometro_out`~~ **Cerrado (mar 2026):** Cronómetro usa la API REST de ejecución de datasets de NetSuite: `GET https://{accountId}.suitetalk.api.netsuite.com/services/rest/query/v1/dataset/{datasetId}/result` con paginación `limit`/`offset`, Bearer token OAuth 2.0 M2M. Referencia Oracle: [Working with SuiteAnalytics Datasets in REST Web Services](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156577938018.html). En sandbox `datasetId` (REST) = **`custdataset17`** (obtenido por listado REST de datasets). Queda validar end-to-end con credenciales reales y permisos de rol.
 
 ---
 
@@ -904,7 +932,7 @@ La `private_key` **no** se sube a NetSuite.
 - fuente funcional validada: `710`
 - la `710` no se toca
 - dataset oficial nuevo de extracción: `MCV_cronometro_out`
-- dataset id en sandbox: `17`
+- dataset id en sandbox (REST): `custdataset17`
 - registro raíz usado en sandbox: `Tiempo planificado de fabricación`
 - filtro aplicado: excluir `Completado`
 - dos tiempos planificados por operación:
@@ -969,6 +997,6 @@ La `private_key` **no** se sube a NetSuite.
    - cantidad terminada
 7. El canal mínimo implementado para recepción en NetSuite es un **RESTlet SuiteScript 2.1** autenticado con **OAuth 2.0 M2M**.
 8. La sincronización completa debe implementarse en Cronómetro como:
-   - **pull** del dataset `MCV_cronometro_out` (id `17` en sandbox)
+   - **pull** del dataset `MCV_cronometro_out` (id REST `custdataset17` en sandbox)
    - **push** del batch de 3 datos reales al RESTlet `MCV_Cronometro_In`
 9. El punto más importante pendiente ya no es la arquitectura general, sino dejar completamente operativa la lectura del dataset y probar el flujo end-to-end desde Cronómetro.

@@ -1,4 +1,5 @@
 const WorkOrderOperation = require('../models/work_order_operation');
+const OperationTimer = require('../models/operation_timer');
 const { isNetsuiteConfigured, getNetsuiteConfigStatus } = require('../services/netsuite/config');
 const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
@@ -36,6 +37,28 @@ async function persistNetsuiteWipRows(rows) {
   return { imported: rows.length };
 }
 
+async function replaceAllWipRows(rows) {
+  if (!Array.isArray(rows)) rows = [];
+  // Si hay cronómetros corriendo/pausados, no es seguro pisar el universo WIP.
+  const active = await OperationTimer.count({
+    where: { status: ['ACTIVE', 'PAUSED'] }
+  });
+  if (active > 0) {
+    const err = new Error('Hay cronómetros activos/pausados. Detenelos antes de sincronizar WIP desde NetSuite.');
+    err.code = 'TIMERS_ACTIVE';
+    err.activeTimers = active;
+    throw err;
+  }
+
+  return WorkOrderOperation.sequelize.transaction(async (t) => {
+    // Universo WIP = verdad NetSuite: reemplazar todo lo local.
+    await WorkOrderOperation.destroy({ where: {}, truncate: true, transaction: t });
+    if (rows.length === 0) return { imported: 0 };
+    await WorkOrderOperation.bulkCreate(rows, { transaction: t });
+    return { imported: rows.length };
+  });
+}
+
 exports.getConfigStatus = async function getConfigStatus(req, res) {
   return res.status(200).json(getNetsuiteConfigStatus());
 };
@@ -57,14 +80,23 @@ exports.pullDataset = async function pullDataset(req, res) {
       });
     }
 
-    const { imported } = await persistNetsuiteWipRows(rows);
+    const replace = String(req.query.replace || '').trim() === '1' || String(req.query.replace || '').toLowerCase() === 'true';
+    const result = replace ? await replaceAllWipRows(rows) : await persistNetsuiteWipRows(rows);
 
     return res.status(200).json({
-      message: 'Pull MCV_cronometro_out aplicado (upsert). completed_quantity local no se sobrescribe en duplicados.',
-      imported,
+      message: replace
+        ? 'Pull MCV_cronometro_out aplicado (replace total de work_order_operations).'
+        : 'Pull MCV_cronometro_out aplicado (upsert). completed_quantity local no se sobrescribe en duplicados.',
+      imported: result.imported,
       totalRows
     });
   } catch (err) {
+    if (err && err.code === 'TIMERS_ACTIVE') {
+      return res.status(409).json({
+        message: err.message,
+        activeTimers: err.activeTimers
+      });
+    }
     const detail = err.response && err.response.data ? err.response.data : err.message;
     return res.status(200).json({
       ok: false,

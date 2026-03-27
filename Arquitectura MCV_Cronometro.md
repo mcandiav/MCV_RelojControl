@@ -284,7 +284,12 @@ La arquitectura debe soportar que una sola pantalla física sea usada por varios
 9. Los cronómetros visibles se filtran por estación.
 10. La visibilidad de operaciones se filtra por área del operario.
 11. Los datos reales vigentes son únicos por operación y representan el estado histórico acumulado publicado por Cronómetro.
-12. El cierre de turno ejecuta auto-stop, consolidación operativa, preparación del lote y sincronización automática con NetSuite.
+12. El cierre de turno ejecuta auto-stop, consolidación operativa, **sincronización automática oficial** y realineación con NetSuite.
+    - Orden oficial: **push → pull**
+    - **Push**: publicar a NetSuite los 3 datos reales vigentes por operación (overwrite).
+    - **Pull**: refrescar el universo WIP desde el dataset OUT oficial.
+    - Precondición: la sincronización automática ocurre con cronómetros detenidos (auto-stop).
+    - Regla: si NetSuite ya tenía valores reales previos, Cronómetro publica el **total vigente** (base previa NetSuite + delta local del turno), no solo el delta.
 13. Cronómetro consume solo operaciones no completadas provenientes del input NetSuite.
 14. Cronómetro no depende de `completed_quantity` proveniente de NetSuite.
 15. “Pausa” no equivale automáticamente a setup; la partición exacta setup/run pertenece a la lógica de Cronómetro y no debe inferirse desde NetSuite.
