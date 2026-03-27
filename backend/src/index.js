@@ -35,6 +35,27 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(compression());
 
+/**
+ * CORS explícito solo para diagnóstico NetSuite.
+ * Motivo: cuando la llamada a NetSuite falla y devolvemos 502, algunos paths/proxies terminan sin ACAO
+ * y el navegador oculta el body (“blocked by CORS”), impidiendo ver el error real.
+ */
+app.use('/chronometer/netsuite', (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+    }
+    res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, x-access-token, x-station-id, x-terminal-id, Accept'
+    );
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+});
+
 // 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).
 app.get(['/', '/health'], (req, res) => {
     if (dbReady) return res.status(200).json({ status: 'ok' });
