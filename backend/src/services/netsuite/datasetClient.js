@@ -177,7 +177,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     }
   };
 
-  const limit = 1000;
+  const limit = maxRows > 0 ? Math.min(1000, maxRows) : 1000;
   const maxRows =
     options && Number.isInteger(Number(options.maxRows)) && Number(options.maxRows) > 0
       ? Number(options.maxRows)
@@ -186,6 +186,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   const mapped = [];
   let hasMore = true;
   let pageCount = 0;
+  let rowProcessed = 0;
 
   // #region agent log
   console.log('[dbg][H2][dataset-start]', runId, JSON.stringify({ datasetResultUrl: cfg.datasetResultUrl, maxRows, pageLimit: limit }));
@@ -195,6 +196,9 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     pageCount += 1;
     const page = await fetchDatasetPage(cfg.datasetResultUrl, token, limit, offset);
     const items = Array.isArray(page.items) ? page.items : [];
+    // #region agent log
+    console.log('[dbg][H2][dataset-page-start]', runId, JSON.stringify({ pageCount, itemsOnPage: items.length, offset, elapsedMs: Date.now() - startedAt }));
+    // #endregion
     for (const raw of items) {
       const out = await mapDatasetRowToWip(raw, resolveAreaFromResource, helpers);
       if (!out.skip) {
@@ -203,6 +207,12 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
           hasMore = false;
           break;
         }
+      }
+      rowProcessed += 1;
+      if (rowProcessed % 100 === 0) {
+        // #region agent log
+        console.log('[dbg][H2][dataset-row-progress]', runId, JSON.stringify({ rowProcessed, mappedRows: mapped.length, elapsedMs: Date.now() - startedAt }));
+        // #endregion
       }
     }
     if (!hasMore) break;
