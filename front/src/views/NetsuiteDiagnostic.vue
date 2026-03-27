@@ -34,6 +34,7 @@
           <v-card outlined class="pa-4">
             <div class="text-subtitle-1 font-weight-bold mb-3">Pruebas integración</div>
             <div class="d-flex flex-wrap" style="gap: 8px">
+              <v-btn color="primary" :loading="loadingListDatasets" @click="listDatasets">Listar datasets</v-btn>
               <v-btn color="primary" :loading="loadingPeek" @click="peekDataset">Peek dataset</v-btn>
               <v-btn color="primary" :loading="loadingPull" @click="pullDataset">Pull dataset</v-btn>
               <v-btn color="secondary" :loading="loadingPush" @click="pushActuals">Push actuals</v-btn>
@@ -63,6 +64,7 @@ export default {
     return {
       loadingPing: false,
       loadingStatus: false,
+      loadingListDatasets: false,
       loadingPeek: false,
       loadingPull: false,
       loadingPush: false,
@@ -139,6 +141,17 @@ export default {
         this.setResult(this.normalizeAxiosError(error))
       } finally {
         this.loadingPeek = false
+      }
+    },
+    async listDatasets() {
+      this.loadingListDatasets = true
+      try {
+        const res = await axios.get('/chronometer/netsuite/list-datasets?limit=50&offset=0', { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
+        this.setResult(res.data || {})
+      } catch (error) {
+        this.setResult(this.normalizeAxiosError(error))
+      } finally {
+        this.loadingListDatasets = false
       }
     },
     async pullDataset() {

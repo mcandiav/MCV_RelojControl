@@ -155,6 +155,40 @@ exports.clearOAuthCache = async function clearOAuthCacheController(req, res) {
   return res.status(200).json({ message: 'Token cache cleared.' });
 };
 
+/** Diagnóstico: listar datasets visibles por REST. */
+exports.listDatasets = async function listDatasets(req, res) {
+  if (!isNetsuiteConfigured()) {
+    return res.status(503).json({ message: 'NetSuite no está configurado.' });
+  }
+  try {
+    const axios = require('axios');
+    const { getNetsuiteConfig } = require('../services/netsuite/config');
+    const { getNetsuiteAccessToken } = require('../services/netsuite/oauthToken');
+    const cfg = getNetsuiteConfig();
+    const token = await getNetsuiteAccessToken();
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
+    const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
+    const url = `https://${cfg.suitetalkHost}/services/rest/query/v1/dataset/`;
+    const { data } = await axios.get(url, {
+      params: { limit, offset },
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      timeout: 120000
+    });
+    return res.status(200).json({
+      url,
+      ...data
+    });
+  } catch (err) {
+    const detail = err.response && err.response.data ? err.response.data : err.message;
+    return res.status(200).json({
+      ok: false,
+      httpStatus: 502,
+      message: 'No se pudo listar datasets.',
+      error: typeof detail === 'string' ? detail : JSON.stringify(detail)
+    });
+  }
+};
+
 /** Diagnóstico: primera página del dataset sin persistir (útil para validar columnas). */
 exports.peekDataset = async function peekDataset(req, res) {
   if (!isNetsuiteConfigured()) {
