@@ -7,7 +7,7 @@
     >
       <v-app-bar-nav-icon></v-app-bar-nav-icon>
 
-      <v-toolbar-title>BIGNOTTI Cronómetro v3</v-toolbar-title>
+      <v-toolbar-title>{{ appTitle }}</v-toolbar-title>
 
       <v-spacer></v-spacer>
 
@@ -27,7 +27,13 @@
 
 <script>
 import { mapActions } from 'vuex'
+import { isTestBuild } from '@/utils/buildMode'
 export default {
+  computed: {
+    appTitle() {
+      return isTestBuild() ? 'BIGNOTTI Cronómetro v3 [TEST]' : 'BIGNOTTI Cronómetro v3'
+    }
+  },
   methods: {
     ...mapActions({
         signOutAction: 'auth/signOut',

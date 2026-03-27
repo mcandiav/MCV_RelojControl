@@ -6,6 +6,7 @@ import store from './store'
 import vuetify from './plugins/vuetify'
 import VueSession from 'vue-session'
 import VueCookies from 'vue-cookies'
+import { getBuildPath } from './utils/buildMode'
 
 require('@/store/subscriber')
 
@@ -24,6 +25,9 @@ function resolveApiBaseURL() {
 }
 
 axios.defaults.baseURL = resolveApiBaseURL()
+if (typeof window !== 'undefined') {
+  window.__CRONOMETRO_BUILD_PATH__ = getBuildPath()
+}
 
 // Mixed content: página HTTPS no puede llamar a http://localhost — falla en <1s como "Network Error".
 if (typeof window !== 'undefined' && window.location.protocol === 'https:') {

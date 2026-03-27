@@ -92,6 +92,19 @@ Vue CLI lee este archivo automáticamente en `npm run build`.
 
 - El proxy del dominio `reloj-api.at-once.cl` debe apuntar al puerto **8000**.
 - La conexión a MariaDB desde el backend usa `DB_HOST=mariadb`, no `localhost`.
+
+### Build path `test` (diagnóstico NetSuite)
+
+Se agregó `test/Dockerfile` para levantar un front de diagnóstico separado del front operativo:
+
+- Login igual que el front normal.
+- Si `VUE_APP_BUILD_PATH=test`, al autenticar redirige a `/diagnostic`.
+- La vista `/diagnostic` permite correr `cors-ping`, `netsuite/status`, `peek-dataset`, `pull-dataset`, `push-actuals` y limpiar caché OAuth.
+
+Build args recomendados para ese servicio:
+
+- `VUE_APP_API_URL=https://reloj-api.at-once.cl/`
+- `VUE_APP_BUILD_PATH=test`
 - Si al crear un nuevo servicio App desde GitHub aparece `no actions found`, refrescar el token de GitHub en configuración para disparar el primer build.
 - Al hacer cambios, rebuild solo del servicio afectado.
 

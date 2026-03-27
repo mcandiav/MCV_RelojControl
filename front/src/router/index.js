@@ -2,6 +2,7 @@ import Vue from 'vue'
 import VueRouter from 'vue-router'
 import Home from '@/views/Home.vue'
 import Login from '@/views/Login.vue'
+import NetsuiteDiagnostic from '@/views/NetsuiteDiagnostic.vue'
 import NotFound from '@/views/NotFound.vue'
 import store from '@/store'
 
@@ -18,6 +19,20 @@ const routes = [
             }else{
                 next({name: 'Login'})
             }
+        }
+      },
+    {
+        path: '/diagnostic',
+        name: 'NetsuiteDiagnostic',
+        component: NetsuiteDiagnostic,
+        beforeEnter: (to, from, next) => {
+            if (!store.getters['auth/authenticated']) {
+                return next({ name: 'Login' })
+            }
+            if (!store.getters['auth/isAdmin']) {
+                return next({ name: 'Home' })
+            }
+            return next()
         }
       },
     {

@@ -175,6 +175,7 @@
 <script>
 import axios from 'axios'
 import { mapActions } from 'vuex'
+import { isTestBuild } from '@/utils/buildMode'
 
 export default {
   data() {
@@ -263,7 +264,7 @@ export default {
       this.cargando = true
       try {
         await this.signIn({ username: this.operarioSeleccionado.username, password: this.pin })
-        this.$router.push('/')
+        this.routeAfterLogin()
       } catch {
         this.error = { status: true, message: 'PIN incorrecto. Intentá de nuevo.' }
         this.pin = ''
@@ -280,12 +281,19 @@ export default {
       this.cargando = true
       try {
         await this.signIn({ username: this.username, password: this.password })
-        this.$router.push('/')
+        this.routeAfterLogin()
       } catch {
         this.error = { status: true, message: 'Usuario o contraseña incorrectos.' }
       } finally {
         this.cargando = false
       }
+    },
+    routeAfterLogin() {
+      if (isTestBuild()) {
+        this.$router.push('/diagnostic')
+        return
+      }
+      this.$router.push('/')
     }
   }
 }

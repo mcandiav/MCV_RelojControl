@@ -6,6 +6,7 @@
 
 <script>
 import { mapGetters } from 'vuex'
+import { isTestBuild } from '@/utils/buildMode'
 
 export default {
   name: 'App',
@@ -33,7 +34,7 @@ export default {
   },
   methods: {
     syncDocumentTitle() {
-      const base = 'Bignotti · Cronómetro v3'
+      const base = isTestBuild() ? 'Bignotti · Cronómetro v3 [TEST]' : 'Bignotti · Cronómetro v3'
       if (this.user != null) {
         const who = [this.user.name, this.user.lastname].filter(Boolean).join(' ').trim()
         document.title = who ? `${base} – ${who}` : base
