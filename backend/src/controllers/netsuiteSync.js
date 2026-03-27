@@ -1,5 +1,7 @@
 const WorkOrderOperation = require('../models/work_order_operation');
 const OperationTimer = require('../models/operation_timer');
+const TimerEvent = require('../models/timer_event');
+const OperationTimeTotal = require('../models/operation_time_total');
 const { isNetsuiteConfigured, getNetsuiteConfigStatus } = require('../services/netsuite/config');
 const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
@@ -56,7 +58,14 @@ async function replaceAllWipRows(rows) {
 
   return WorkOrderOperation.sequelize.transaction(async (t) => {
     // Universo WIP = verdad NetSuite: reemplazar todo lo local.
-    await WorkOrderOperation.destroy({ where: {}, truncate: true, transaction: t });
+    // No usar TRUNCATE: falla con FK en MariaDB (1701).
+    // Orden de borrado por dependencias:
+    // timer_events -> operation_time_totals -> operation_timers -> work_order_operations
+    await TimerEvent.destroy({ where: {}, transaction: t });
+    await OperationTimeTotal.destroy({ where: {}, transaction: t });
+    await OperationTimer.destroy({ where: {}, transaction: t });
+    await WorkOrderOperation.destroy({ where: {}, transaction: t });
+
     if (rows.length === 0) return { imported: 0 };
     await WorkOrderOperation.bulkCreate(rows, { transaction: t });
     return { imported: rows.length };
