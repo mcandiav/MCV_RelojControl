@@ -38,6 +38,12 @@ function inferAreaFromText(text) {
   return null;
 }
 
+function parseDefaultArea(raw) {
+  const area = String(raw || '').trim().toUpperCase();
+  if (area === 'ME' || area === 'ES') return area;
+  return null;
+}
+
 /**
  * Maps a SuiteAnalytics dataset row to the internal WIP shape.
  * Column names may vary in casing; see cust.netsuite.md.
@@ -92,6 +98,9 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   if (!area) area = inferAreaFromText(operation_name);
   if (!area && workcenterId && options.workcenterAreaMap) {
     area = options.workcenterAreaMap.get(String(workcenterId)) || null;
+  }
+  if (!area && options.defaultArea) {
+    area = options.defaultArea;
   }
   if (!netsuite_operation_id || !ot_number || !resource_code || !operation_name || !Number.isFinite(operation_sequence)) {
     return { skip: true, reason: 'missing_required_fields' };
@@ -150,6 +159,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
 
   const token = await getNetsuiteAccessToken();
   const workcenterAreaMap = parseWorkcenterAreaMap(process.env.NETSUITE_WORKCENTER_AREA_MAP);
+  const defaultArea = parseDefaultArea(process.env.NETSUITE_AREA_FALLBACK);
 
   const maxRows =
     options && Number.isInteger(Number(options.maxRows)) && Number(options.maxRows) > 0
@@ -185,7 +195,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
         }));
         // #endregion
       }
-      const out = mapDatasetRowToWip(raw, resolveAreaFromResource, { workcenterAreaMap });
+      const out = mapDatasetRowToWip(raw, resolveAreaFromResource, { workcenterAreaMap, defaultArea });
       if (!out.skip) {
         mapped.push(out.row);
         if (maxRows > 0 && mapped.length >= maxRows) {
