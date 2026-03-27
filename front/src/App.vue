@@ -34,7 +34,7 @@ export default {
   },
   methods: {
     syncDocumentTitle() {
-      const buildLabel = String(process.env.VUE_APP_BUILD_LABEL || 'V2').trim()
+      const buildLabel = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'V2').trim()
       const baseCore = `Bignotti · Cronómetro v3 ${buildLabel}`.trim()
       const base = isTestBuild() ? `${baseCore} [TEST]` : baseCore
       if (this.user != null) {

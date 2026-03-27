@@ -31,7 +31,7 @@ import { isTestBuild } from '@/utils/buildMode'
 export default {
   computed: {
     appTitle() {
-      const buildLabel = String(process.env.VUE_APP_BUILD_LABEL || 'V2').trim()
+      const buildLabel = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'V2').trim()
       const base = `BIGNOTTI Cronómetro v3 ${buildLabel}`.trim()
       return isTestBuild() ? `${base} [TEST]` : base
     }

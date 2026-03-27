@@ -22,6 +22,7 @@ const corsOptions = require('./config/corsOptions');
 
 /** Evita bucle SIGTERM: EasyPanel/Docker suelen hacer healthcheck HTTP mientras corre db.sync (alter). */
 let dbReady = false;
+const BUILD_VERSION = String(process.env.APP_BUILD_VERSION || process.env.GIT_SHA || process.env.BUILD_VERSION || 'V2').trim();
 
 app.use(function setCommonHeaders(req, res, next) {
     res.set("Access-Control-Allow-Private-Network", "true");
@@ -58,8 +59,8 @@ app.use('/chronometer/netsuite', (req, res, next) => {
 
 // 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).
 app.get(['/', '/health'], (req, res) => {
-    if (dbReady) return res.status(200).json({ status: 'ok' });
-    return res.status(200).json({ status: 'starting' });
+    if (dbReady) return res.status(200).json({ status: 'ok', build: BUILD_VERSION });
+    return res.status(200).json({ status: 'starting', build: BUILD_VERSION });
 });
 
 /** GET sin auth: probar desde el front (otro subdominio) que haya TLS + CORS. */
@@ -108,7 +109,7 @@ app.use('/chronometer', chronometerRoutes);
 
 // Puerto abierto de inmediato: healthcheck TCP/HTTP no mata el contenedor durante sync.
 server.listen(8000, () => {
-    console.log('HTTP en puerto 8000 (sync DB en curso; /health = 503 hasta listo).');
+    console.log(`HTTP en puerto 8000 (build=${BUILD_VERSION}) (sync DB en curso; /health = 503 hasta listo).`);
 });
 
 db.sync({ alter: true })
@@ -119,7 +120,7 @@ db.sync({ alter: true })
         await ensureShiftCloseSlots();
         await registerShiftCloseCrons();
         dbReady = true;
-        console.log('Server initialized (API lista).');
+        console.log(`Server initialized (API lista, build=${BUILD_VERSION}).`);
     })
     .catch((error) => {
         console.error('Error al sincronizar la base de datos:', error);
