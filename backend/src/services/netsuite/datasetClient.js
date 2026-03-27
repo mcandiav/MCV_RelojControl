@@ -2,6 +2,13 @@ const axios = require('axios');
 const { getNetsuiteConfig } = require('./config');
 const { getNetsuiteAccessToken } = require('./oauthToken');
 
+function coalesce(...vals) {
+  for (const v of vals) {
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+  }
+  return undefined;
+}
+
 function getFieldCaseInsensitive(row, canonicalName) {
   const target = String(canonicalName).toUpperCase();
   const keys = Object.keys(row || {});
@@ -9,13 +16,31 @@ function getFieldCaseInsensitive(row, canonicalName) {
   return hit === undefined ? undefined : row[hit];
 }
 
+async function fetchRecordById({ type, id, token, host }) {
+  const url = `https://${host}/services/rest/record/v1/${type}/${encodeURIComponent(String(id))}`;
+  const { data } = await axios.get(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    timeout: 120000
+  });
+  return data;
+}
+
 /**
  * Maps a SuiteAnalytics dataset row to the internal WIP shape.
  * Column names may vary in casing; see cust.netsuite.md.
  */
-function mapDatasetRowToWip(row, resolveAreaFromResource) {
-  const netsuite_operation_id = getFieldCaseInsensitive(row, 'NETSUITE_OPERATION_ID');
-  let ot_number = String(getFieldCaseInsensitive(row, 'OT_NUMBER') ?? '').trim();
+async function mapDatasetRowToWip(row, resolveAreaFromResource, helpers) {
+  const netsuite_operation_id = coalesce(
+    getFieldCaseInsensitive(row, 'NETSUITE_OPERATION_ID'),
+    row && row.netsuite_operation_id,
+    row && row.manufacturingoperationtask,
+    row && row.id
+  );
+
+  // Prefer OT_NUMBER if dataset provides it; otherwise try to resolve from workorder record.
+  const workorderId = coalesce(row && row.workorder, row && row.manufacturingworkorder);
+  const otFromDataset = getFieldCaseInsensitive(row, 'OT_NUMBER');
+  let ot_number = String(otFromDataset ?? '').trim();
   const digits = ot_number.replace(/[^0-9]/g, '');
   if (digits && !/^OT/i.test(ot_number)) {
     ot_number = `OT${digits}`;
@@ -23,15 +48,40 @@ function mapDatasetRowToWip(row, resolveAreaFromResource) {
     ot_number = `OT${digits}`;
   }
 
-  const resource_code = String(getFieldCaseInsensitive(row, 'RESOURCE_CODE') ?? '')
-    .trim()
-    .toUpperCase();
-  const operation_name = String(getFieldCaseInsensitive(row, 'OPERATION_NAME') ?? '').trim();
-  const operation_sequence = Number(getFieldCaseInsensitive(row, 'OPERATION_SEQUENCE'));
-  const planned_setup = getFieldCaseInsensitive(row, 'TIEMPO_MONTAJE_MIN');
-  const planned_op_unit = getFieldCaseInsensitive(row, 'TIEMPO_OPERACION_MIN_UNIT');
-  const planned_quantity = getFieldCaseInsensitive(row, 'PLANNED_QUANTITY');
-  const source_status = String(getFieldCaseInsensitive(row, 'SOURCE_STATUS') ?? '').trim() || 'WIP';
+  const resourceFromDataset = getFieldCaseInsensitive(row, 'RESOURCE_CODE');
+  const workcenterId = coalesce(row && row.manufacturingworkcenter, row && row.workcenter);
+
+  let resource_code = String(resourceFromDataset ?? '').trim();
+  if (!resource_code && workcenterId && helpers && helpers.getWorkcenterName) {
+    const wcName = await helpers.getWorkcenterName(String(workcenterId));
+    if (wcName) resource_code = wcName;
+  }
+  resource_code = String(resource_code || workcenterId || '').trim().toUpperCase();
+
+  const operation_name = String(
+    coalesce(getFieldCaseInsensitive(row, 'OPERATION_NAME'), row && row.operation_name) ??
+      `NS OP ${netsuite_operation_id || ''}`
+  ).trim();
+
+  const operation_sequence = Number(
+    coalesce(getFieldCaseInsensitive(row, 'OPERATION_SEQUENCE'), row && row.operationsequence)
+  );
+
+  const planned_setup = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_MONTAJE_MIN'), row && row.setuptime);
+  const planned_op_unit = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_OPERACION_MIN_UNIT'), row && row.runrate);
+  const planned_quantity = coalesce(getFieldCaseInsensitive(row, 'PLANNED_QUANTITY'), row && row.inputquantity);
+  const source_status = String(
+    coalesce(getFieldCaseInsensitive(row, 'SOURCE_STATUS'), row && row.status) ?? ''
+  ).trim() || 'WIP';
+
+  if (!ot_number && workorderId && helpers && helpers.getWorkorderTranId) {
+    const tranId = await helpers.getWorkorderTranId(String(workorderId));
+    if (tranId) ot_number = String(tranId).trim();
+  }
+  if (!ot_number && workorderId) {
+    // Fallback: keep something searchable/stable even before enrichment.
+    ot_number = `WO${String(workorderId).trim()}`;
+  }
 
   const area = resolveAreaFromResource(resource_code);
   if (!netsuite_operation_id || !ot_number || !resource_code || !operation_name || !Number.isFinite(operation_sequence)) {
@@ -88,6 +138,43 @@ async function fetchFullDataset(resolveAreaFromResource) {
   }
 
   const token = await getNetsuiteAccessToken();
+  const host = cfg.suitetalkHost;
+  const workcenterCache = new Map();
+  const workorderCache = new Map();
+  const helpers = {
+    async getWorkcenterName(id) {
+      if (!id) return null;
+      if (workcenterCache.has(id)) return workcenterCache.get(id);
+      try {
+        const rec = await fetchRecordById({ type: 'manufacturingworkcenter', id, token, host });
+        const name = rec && (rec.name || rec.externalid || rec.id) ? String(rec.name || rec.externalid || rec.id) : '';
+        const val = name.trim() || null;
+        workcenterCache.set(id, val);
+        return val;
+      } catch (_) {
+        workcenterCache.set(id, null);
+        return null;
+      }
+    },
+    async getWorkorderTranId(id) {
+      if (!id) return null;
+      if (workorderCache.has(id)) return workorderCache.get(id);
+      try {
+        const rec = await fetchRecordById({ type: 'workorder', id, token, host });
+        const tran =
+          rec && (rec.tranid || rec.transactionnumber || rec.externalid || rec.id)
+            ? String(rec.tranid || rec.transactionnumber || rec.externalid || rec.id)
+            : '';
+        const val = tran.trim() || null;
+        workorderCache.set(id, val);
+        return val;
+      } catch (_) {
+        workorderCache.set(id, null);
+        return null;
+      }
+    }
+  };
+
   const limit = 1000;
   let offset = 0;
   const mapped = [];
@@ -97,7 +184,7 @@ async function fetchFullDataset(resolveAreaFromResource) {
     const page = await fetchDatasetPage(cfg.datasetResultUrl, token, limit, offset);
     const items = Array.isArray(page.items) ? page.items : [];
     for (const raw of items) {
-      const out = mapDatasetRowToWip(raw, resolveAreaFromResource);
+      const out = await mapDatasetRowToWip(raw, resolveAreaFromResource, helpers);
       if (!out.skip) mapped.push(out.row);
     }
     hasMore = Boolean(page.hasMore);
