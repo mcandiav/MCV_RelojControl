@@ -31,6 +31,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'files')));
 app.use(cors(corsOptions));
+// Asegura preflight OPTIONS en proxies estrictos (Cloudflare/Traefik).
+app.options('*', cors(corsOptions));
 app.use(compression());
 
 // 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).
@@ -64,6 +66,20 @@ app.use((req, res, next) => {
     if (dbReady) return next();
     applyCorsForEarlyResponse(req, res);
     return res.status(503).json({ message: 'Service starting' });
+});
+
+// Logging mínimo para diagnóstico (NetSuite): útil cuando el proxy devuelve 502 y no llega al handler.
+app.use((req, res, next) => {
+    const p = req.path || '';
+    if (!p.startsWith('/chronometer/netsuite')) return next();
+    const started = Date.now();
+    const origin = req.headers.origin || '';
+    console.log('[netsuite][in]', req.method, p, origin ? `origin=${origin}` : '');
+    res.on('finish', () => {
+        const ms = Date.now() - started;
+        console.log('[netsuite][out]', req.method, p, `status=${res.statusCode}`, `ms=${ms}`);
+    });
+    return next();
 });
 
 app.use('/auth', authRoutes);
