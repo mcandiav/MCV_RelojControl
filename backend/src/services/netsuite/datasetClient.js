@@ -16,20 +16,11 @@ function getFieldCaseInsensitive(row, canonicalName) {
   return hit === undefined ? undefined : row[hit];
 }
 
-async function fetchRecordById({ type, id, token, host }) {
-  const url = `https://${host}/services/rest/record/v1/${type}/${encodeURIComponent(String(id))}`;
-  const { data } = await axios.get(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    timeout: 120000
-  });
-  return data;
-}
-
 /**
  * Maps a SuiteAnalytics dataset row to the internal WIP shape.
  * Column names may vary in casing; see cust.netsuite.md.
  */
-async function mapDatasetRowToWip(row, resolveAreaFromResource, helpers) {
+function mapDatasetRowToWip(row, resolveAreaFromResource) {
   const netsuite_operation_id = coalesce(
     getFieldCaseInsensitive(row, 'NETSUITE_OPERATION_ID'),
     row && row.netsuite_operation_id,
@@ -37,7 +28,7 @@ async function mapDatasetRowToWip(row, resolveAreaFromResource, helpers) {
     row && row.id
   );
 
-  // Prefer OT_NUMBER if dataset provides it; otherwise try to resolve from workorder record.
+  // Bulk real: usar solo columnas del dataset (sin lookups record/v1 por fila).
   const workorderId = coalesce(row && row.workorder, row && row.manufacturingworkorder);
   const otFromDataset = getFieldCaseInsensitive(row, 'OT_NUMBER');
   let ot_number = String(otFromDataset ?? '').trim();
@@ -52,17 +43,6 @@ async function mapDatasetRowToWip(row, resolveAreaFromResource, helpers) {
   const workcenterId = coalesce(row && row.manufacturingworkcenter, row && row.workcenter);
 
   let resource_code = String(resourceFromDataset ?? '').trim();
-  if (!resource_code && workcenterId && helpers && helpers.getWorkcenterName) {
-    const t0 = Date.now();
-    // #region agent log
-    console.log('[dbg][H2][lookup-workcenter:start]', JSON.stringify({ workcenterId }));
-    // #endregion
-    const wcName = await helpers.getWorkcenterName(String(workcenterId));
-    // #region agent log
-    console.log('[dbg][H2][lookup-workcenter:done]', JSON.stringify({ workcenterId, found: Boolean(wcName), ms: Date.now() - t0 }));
-    // #endregion
-    if (wcName) resource_code = wcName;
-  }
   resource_code = String(resource_code || workcenterId || '').trim().toUpperCase();
 
   const operation_name = String(
@@ -81,17 +61,6 @@ async function mapDatasetRowToWip(row, resolveAreaFromResource, helpers) {
     coalesce(getFieldCaseInsensitive(row, 'SOURCE_STATUS'), row && row.status) ?? ''
   ).trim() || 'WIP';
 
-  if (!ot_number && workorderId && helpers && helpers.getWorkorderTranId) {
-    const t0 = Date.now();
-    // #region agent log
-    console.log('[dbg][H2][lookup-workorder:start]', JSON.stringify({ workorderId }));
-    // #endregion
-    const tranId = await helpers.getWorkorderTranId(String(workorderId));
-    // #region agent log
-    console.log('[dbg][H2][lookup-workorder:done]', JSON.stringify({ workorderId, found: Boolean(tranId), ms: Date.now() - t0 }));
-    // #endregion
-    if (tranId) ot_number = String(tranId).trim();
-  }
   if (!ot_number && workorderId) {
     // Fallback: keep something searchable/stable even before enrichment.
     ot_number = `WO${String(workorderId).trim()}`;
@@ -154,60 +123,6 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   }
 
   const token = await getNetsuiteAccessToken();
-  const host = cfg.suitetalkHost;
-  const workcenterCache = new Map();
-  const workorderCache = new Map();
-  const lookupStats = {
-    workcenter: { cacheHit: 0, cacheMiss: 0, apiCalls: 0, apiMsTotal: 0 },
-    workorder: { cacheHit: 0, cacheMiss: 0, apiCalls: 0, apiMsTotal: 0 }
-  };
-  const helpers = {
-    async getWorkcenterName(id) {
-      if (!id) return null;
-      if (workcenterCache.has(id)) {
-        lookupStats.workcenter.cacheHit += 1;
-        return workcenterCache.get(id);
-      }
-      lookupStats.workcenter.cacheMiss += 1;
-      try {
-        const t0 = Date.now();
-        const rec = await fetchRecordById({ type: 'manufacturingworkcenter', id, token, host });
-        lookupStats.workcenter.apiCalls += 1;
-        lookupStats.workcenter.apiMsTotal += Date.now() - t0;
-        const name = rec && (rec.name || rec.externalid || rec.id) ? String(rec.name || rec.externalid || rec.id) : '';
-        const val = name.trim() || null;
-        workcenterCache.set(id, val);
-        return val;
-      } catch (_) {
-        workcenterCache.set(id, null);
-        return null;
-      }
-    },
-    async getWorkorderTranId(id) {
-      if (!id) return null;
-      if (workorderCache.has(id)) {
-        lookupStats.workorder.cacheHit += 1;
-        return workorderCache.get(id);
-      }
-      lookupStats.workorder.cacheMiss += 1;
-      try {
-        const t0 = Date.now();
-        const rec = await fetchRecordById({ type: 'workorder', id, token, host });
-        lookupStats.workorder.apiCalls += 1;
-        lookupStats.workorder.apiMsTotal += Date.now() - t0;
-        const tran =
-          rec && (rec.tranid || rec.transactionnumber || rec.externalid || rec.id)
-            ? String(rec.tranid || rec.transactionnumber || rec.externalid || rec.id)
-            : '';
-        const val = tran.trim() || null;
-        workorderCache.set(id, val);
-        return val;
-      } catch (_) {
-        workorderCache.set(id, null);
-        return null;
-      }
-    }
-  };
 
   const maxRows =
     options && Number.isInteger(Number(options.maxRows)) && Number(options.maxRows) > 0
@@ -243,7 +158,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
         }));
         // #endregion
       }
-      const out = await mapDatasetRowToWip(raw, resolveAreaFromResource, helpers);
+      const out = mapDatasetRowToWip(raw, resolveAreaFromResource);
       if (!out.skip) {
         mapped.push(out.row);
         if (maxRows > 0 && mapped.length >= maxRows) {
@@ -271,7 +186,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   }
 
   // #region agent log
-  console.log('[dbg][H2][dataset-done]', runId, JSON.stringify({ pageCount, mappedRows: mapped.length, skipReasons, lookupStats, elapsedMs: Date.now() - startedAt }));
+  console.log('[dbg][H2][dataset-done]', runId, JSON.stringify({ pageCount, mappedRows: mapped.length, skipReasons, elapsedMs: Date.now() - startedAt }));
   // #endregion
 
   return { rows: mapped, totalRows: mapped.length };
