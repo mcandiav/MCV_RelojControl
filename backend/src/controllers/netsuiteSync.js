@@ -66,7 +66,9 @@ exports.pullDataset = async function pullDataset(req, res) {
     });
   } catch (err) {
     const detail = err.response && err.response.data ? err.response.data : err.message;
-    return res.status(502).json({
+    return res.status(200).json({
+      ok: false,
+      httpStatus: 502,
       message: 'Fallo al leer dataset o guardar operaciones.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
@@ -139,7 +141,9 @@ exports.pushActuals = async function pushActuals(req, res) {
     });
   } catch (err) {
     const detail = err.response && err.response.data ? err.response.data : err.message;
-    return res.status(502).json({
+    return res.status(200).json({
+      ok: false,
+      httpStatus: 502,
       message: 'Fallo al publicar en NetSuite.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
@@ -179,7 +183,9 @@ exports.peekDataset = async function peekDataset(req, res) {
     });
   } catch (err) {
     const detail = err.response && err.response.data ? err.response.data : err.message;
-    return res.status(502).json({
+    return res.status(200).json({
+      ok: false,
+      httpStatus: 502,
       message: 'No se pudo leer el dataset.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
