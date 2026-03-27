@@ -157,12 +157,23 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   const host = cfg.suitetalkHost;
   const workcenterCache = new Map();
   const workorderCache = new Map();
+  const lookupStats = {
+    workcenter: { cacheHit: 0, cacheMiss: 0, apiCalls: 0, apiMsTotal: 0 },
+    workorder: { cacheHit: 0, cacheMiss: 0, apiCalls: 0, apiMsTotal: 0 }
+  };
   const helpers = {
     async getWorkcenterName(id) {
       if (!id) return null;
-      if (workcenterCache.has(id)) return workcenterCache.get(id);
+      if (workcenterCache.has(id)) {
+        lookupStats.workcenter.cacheHit += 1;
+        return workcenterCache.get(id);
+      }
+      lookupStats.workcenter.cacheMiss += 1;
       try {
+        const t0 = Date.now();
         const rec = await fetchRecordById({ type: 'manufacturingworkcenter', id, token, host });
+        lookupStats.workcenter.apiCalls += 1;
+        lookupStats.workcenter.apiMsTotal += Date.now() - t0;
         const name = rec && (rec.name || rec.externalid || rec.id) ? String(rec.name || rec.externalid || rec.id) : '';
         const val = name.trim() || null;
         workcenterCache.set(id, val);
@@ -174,9 +185,16 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     },
     async getWorkorderTranId(id) {
       if (!id) return null;
-      if (workorderCache.has(id)) return workorderCache.get(id);
+      if (workorderCache.has(id)) {
+        lookupStats.workorder.cacheHit += 1;
+        return workorderCache.get(id);
+      }
+      lookupStats.workorder.cacheMiss += 1;
       try {
+        const t0 = Date.now();
         const rec = await fetchRecordById({ type: 'workorder', id, token, host });
+        lookupStats.workorder.apiCalls += 1;
+        lookupStats.workorder.apiMsTotal += Date.now() - t0;
         const tran =
           rec && (rec.tranid || rec.transactionnumber || rec.externalid || rec.id)
             ? String(rec.tranid || rec.transactionnumber || rec.externalid || rec.id)
@@ -253,7 +271,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   }
 
   // #region agent log
-  console.log('[dbg][H2][dataset-done]', runId, JSON.stringify({ pageCount, mappedRows: mapped.length, skipReasons, elapsedMs: Date.now() - startedAt }));
+  console.log('[dbg][H2][dataset-done]', runId, JSON.stringify({ pageCount, mappedRows: mapped.length, skipReasons, lookupStats, elapsedMs: Date.now() - startedAt }));
   // #endregion
 
   return { rows: mapped, totalRows: mapped.length };

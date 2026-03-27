@@ -100,6 +100,7 @@ Se agregó `test/Dockerfile` para levantar un front de diagnóstico separado del
 - Login igual que el front normal.
 - Si `VUE_APP_BUILD_PATH=test`, al autenticar redirige a `/diagnostic`.
 - La vista `/diagnostic` permite correr `cors-ping`, `netsuite/status`, `peek-dataset`, `pull-dataset`, `push-actuals` y limpiar caché OAuth.
+  - Además incluye “listar datasets” para obtener el `dataset_id` real que usa REST (tipo `custdatasetXX`) y evitar confundirlo con IDs numéricos de pantallas UI.
 
 Build args recomendados para ese servicio:
 
@@ -213,6 +214,7 @@ El contrato correcto de retorno hacia NetSuite es **por operación** y devuelve 
 ### Reglas de integración vigentes
 
 - El retorno es por **batch** al cierre de turno o cierre manual administrativo.
+- Lógica oficial de sincronización (mar 2026): con cronómetros detenidos (auto-stop), ejecutar **push → pull**.
 - No se envían eventos `start`, `pause`, `resume`, `stop`.
 - No se envían deltas aislados.
 - NetSuite recibe el valor vigente publicado por Cronómetro.
