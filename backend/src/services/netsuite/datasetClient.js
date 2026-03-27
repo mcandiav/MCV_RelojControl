@@ -44,6 +44,19 @@ function parseDefaultArea(raw) {
   return null;
 }
 
+function toIntOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+function clampText(value, maxLen) {
+  const s = String(value == null ? '' : value).trim();
+  if (!s) return '';
+  return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
 /**
  * Maps a SuiteAnalytics dataset row to the internal WIP shape.
  * Column names may vary in casing; see cust.netsuite.md.
@@ -59,7 +72,7 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   // Bulk real: usar solo columnas del dataset (sin lookups record/v1 por fila).
   const workorderId = coalesce(row && row.workorder, row && row.manufacturingworkorder);
   const otFromDataset = getFieldCaseInsensitive(row, 'OT_NUMBER');
-  let ot_number = String(otFromDataset ?? '').trim();
+  let ot_number = clampText(otFromDataset ?? '', 64);
   const digits = ot_number.replace(/[^0-9]/g, '');
   if (digits && !/^OT/i.test(ot_number)) {
     ot_number = `OT${digits}`;
@@ -71,27 +84,29 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   const workcenterId = coalesce(row && row.manufacturingworkcenter, row && row.workcenter);
 
   let resource_code = String(resourceFromDataset ?? '').trim();
-  resource_code = String(resource_code || workcenterId || '').trim().toUpperCase();
+  resource_code = clampText(String(resource_code || workcenterId || '').toUpperCase(), 64);
 
-  const operation_name = String(
+  const operation_name = clampText(
     coalesce(getFieldCaseInsensitive(row, 'OPERATION_NAME'), row && row.operation_name) ??
-      `NS OP ${netsuite_operation_id || ''}`
-  ).trim();
+      `NS OP ${netsuite_operation_id || ''}`,
+    255
+  );
 
-  const operation_sequence = Number(
+  const operation_sequence = toIntOrNull(
     coalesce(getFieldCaseInsensitive(row, 'OPERATION_SEQUENCE'), row && row.operationsequence)
   );
 
   const planned_setup = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_MONTAJE_MIN'), row && row.setuptime);
   const planned_op_unit = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_OPERACION_MIN_UNIT'), row && row.runrate);
   const planned_quantity = coalesce(getFieldCaseInsensitive(row, 'PLANNED_QUANTITY'), row && row.inputquantity);
-  const source_status = String(
+  const source_status = clampText(
     coalesce(getFieldCaseInsensitive(row, 'SOURCE_STATUS'), row && row.status) ?? ''
-  ).trim() || 'WIP';
+    , 24
+  ) || 'WIP';
 
   if (!ot_number && workorderId) {
     // Fallback: keep something searchable/stable even before enrichment.
-    ot_number = `WO${String(workorderId).trim()}`;
+    ot_number = clampText(`WO${String(workorderId).trim()}`, 64);
   }
 
   let area = resolveAreaFromResource(resource_code);
@@ -108,8 +123,8 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   if (!area || !['ME', 'ES'].includes(area)) {
     return { skip: true, reason: 'area_not_derivable' };
   }
-  const pq = planned_quantity != null && planned_quantity !== '' ? Number(planned_quantity) : null;
-  if (pq != null && (!Number.isFinite(pq) || pq <= 0)) {
+  const pq = toIntOrNull(planned_quantity);
+  if (pq != null && pq <= 0) {
     return { skip: true, reason: 'invalid_planned_quantity' };
   }
 
@@ -122,10 +137,10 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
       operation_name,
       resource_code,
       area,
-      planned_setup_minutes: planned_setup != null && planned_setup !== '' ? Number(planned_setup) : null,
-      planned_operation_minutes: planned_op_unit != null && planned_op_unit !== '' ? Number(planned_op_unit) : null,
+      planned_setup_minutes: toIntOrNull(planned_setup),
+      planned_operation_minutes: toIntOrNull(planned_op_unit),
       planned_quantity: pq,
-      netsuite_operation_id: String(netsuite_operation_id),
+      netsuite_operation_id: clampText(netsuite_operation_id, 64),
       netsuite_work_order_id: null,
       source_status,
       last_synced_at: new Date()
