@@ -5,6 +5,18 @@ const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
 const { buildActualsPayload } = require('../services/netsuite/buildActualsPayload');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
+const fs = require('fs');
+const path = require('path');
+
+function debugLog(payload) {
+  try {
+    const logPath = path.resolve(process.cwd(), '../debug-a425f7.log');
+    const line = JSON.stringify({ sessionId: 'a425f7', timestamp: Date.now(), ...payload }) + '\n';
+    // #region agent log
+    fs.appendFileSync(logPath, line, 'utf8');
+    // #endregion
+  } catch (_) {}
+}
 
 function resolveAreaFromResource(resourceCode) {
   const code = String(resourceCode || '').trim().toUpperCase();
@@ -64,6 +76,17 @@ exports.getConfigStatus = async function getConfigStatus(req, res) {
 };
 
 exports.pullDataset = async function pullDataset(req, res) {
+  const pullStartedAt = Date.now();
+  const runId = `pull_${pullStartedAt}_${Math.random().toString(36).slice(2, 8)}`;
+  // #region agent log
+  debugLog({
+    runId,
+    hypothesisId: 'H3',
+    location: 'backend/src/controllers/netsuiteSync.js:pullDataset:start',
+    message: 'pullDataset request received',
+    data: { query: req.query || {}, origin: req.headers.origin || null }
+  });
+  // #endregion
   if (!isNetsuiteConfigured()) {
     return res.status(503).json({
       message: 'NetSuite no está configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.'
@@ -74,7 +97,17 @@ exports.pullDataset = async function pullDataset(req, res) {
     const maxRowsRaw = String(req.query.maxRows || req.query.max_rows || '').trim();
     const maxRows = maxRowsRaw ? Number(maxRowsRaw) : 0;
     const fetchOptions = Number.isInteger(maxRows) && maxRows > 0 ? { maxRows } : {};
+    fetchOptions.runId = runId;
     const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, fetchOptions);
+    // #region agent log
+    debugLog({
+      runId,
+      hypothesisId: 'H2',
+      location: 'backend/src/controllers/netsuiteSync.js:pullDataset:afterFetch',
+      message: 'fetchFullDataset finished',
+      data: { rows: rows.length, totalRows, maxRowsApplied: fetchOptions.maxRows || null, elapsedMs: Date.now() - pullStartedAt }
+    });
+    // #endregion
     if (rows.length === 0) {
       return res.status(200).json({
         message: 'Dataset sin filas válidas tras mapeo.',
@@ -85,6 +118,15 @@ exports.pullDataset = async function pullDataset(req, res) {
 
     const replace = String(req.query.replace || '').trim() === '1' || String(req.query.replace || '').toLowerCase() === 'true';
     const result = replace ? await replaceAllWipRows(rows) : await persistNetsuiteWipRows(rows);
+    // #region agent log
+    debugLog({
+      runId,
+      hypothesisId: 'H4',
+      location: 'backend/src/controllers/netsuiteSync.js:pullDataset:afterPersist',
+      message: 'database persistence finished',
+      data: { replace, imported: result.imported, elapsedMs: Date.now() - pullStartedAt }
+    });
+    // #endregion
 
     return res.status(200).json({
       message: replace
@@ -95,6 +137,15 @@ exports.pullDataset = async function pullDataset(req, res) {
       maxRowsApplied: fetchOptions.maxRows || null
     });
   } catch (err) {
+    // #region agent log
+    debugLog({
+      runId,
+      hypothesisId: 'H1',
+      location: 'backend/src/controllers/netsuiteSync.js:pullDataset:catch',
+      message: 'pullDataset failed',
+      data: { code: err && err.code ? err.code : null, message: err && err.message ? err.message : String(err), elapsedMs: Date.now() - pullStartedAt }
+    });
+    // #endregion
     if (err && err.code === 'TIMERS_ACTIVE') {
       return res.status(409).json({
         message: err.message,

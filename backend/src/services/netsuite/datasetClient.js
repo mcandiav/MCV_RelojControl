@@ -1,6 +1,18 @@
 const axios = require('axios');
 const { getNetsuiteConfig } = require('./config');
 const { getNetsuiteAccessToken } = require('./oauthToken');
+const fs = require('fs');
+const path = require('path');
+
+function debugLog(payload) {
+  try {
+    const logPath = path.resolve(process.cwd(), '../debug-a425f7.log');
+    const line = JSON.stringify({ sessionId: 'a425f7', timestamp: Date.now(), ...payload }) + '\n';
+    // #region agent log
+    fs.appendFileSync(logPath, line, 'utf8');
+    // #endregion
+  } catch (_) {}
+}
 
 function coalesce(...vals) {
   for (const v of vals) {
@@ -132,6 +144,8 @@ async function fetchDatasetPage(datasetBaseUrl, token, limit, offset) {
  * @see https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156577938018.html
  */
 async function fetchFullDataset(resolveAreaFromResource, options = {}) {
+  const runId = options && options.runId ? String(options.runId) : `dataset_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const startedAt = Date.now();
   const cfg = getNetsuiteConfig();
   if (!cfg.datasetResultUrl) {
     throw new Error('NetSuite dataset URL not derivable; set NETSUITE_ACCOUNT_ID');
@@ -183,8 +197,20 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   let offset = 0;
   const mapped = [];
   let hasMore = true;
+  let pageCount = 0;
+
+  // #region agent log
+  debugLog({
+    runId,
+    hypothesisId: 'H2',
+    location: 'backend/src/services/netsuite/datasetClient.js:fetchFullDataset:start',
+    message: 'dataset pull started',
+    data: { datasetResultUrl: cfg.datasetResultUrl, maxRows, pageLimit: limit }
+  });
+  // #endregion
 
   while (hasMore) {
+    pageCount += 1;
     const page = await fetchDatasetPage(cfg.datasetResultUrl, token, limit, offset);
     const items = Array.isArray(page.items) ? page.items : [];
     for (const raw of items) {
@@ -201,7 +227,26 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     hasMore = Boolean(page.hasMore);
     offset += items.length;
     if (items.length === 0) hasMore = false;
+    // #region agent log
+    debugLog({
+      runId,
+      hypothesisId: 'H2',
+      location: 'backend/src/services/netsuite/datasetClient.js:fetchFullDataset:page',
+      message: 'dataset page processed',
+      data: { pageCount, itemsOnPage: items.length, mappedRows: mapped.length, hasMore, offset, elapsedMs: Date.now() - startedAt }
+    });
+    // #endregion
   }
+
+  // #region agent log
+  debugLog({
+    runId,
+    hypothesisId: 'H2',
+    location: 'backend/src/services/netsuite/datasetClient.js:fetchFullDataset:done',
+    message: 'dataset pull finished',
+    data: { pageCount, mappedRows: mapped.length, elapsedMs: Date.now() - startedAt }
+  });
+  // #endregion
 
   return { rows: mapped, totalRows: mapped.length };
 }
