@@ -333,6 +333,9 @@
                   <v-btn color="primary" outlined :loading="loadingNsPullReplace" :disabled="!isAdmin" @click="netsuitePullReplace">
                     Pull + Replace WIP
                   </v-btn>
+                  <v-btn color="primary" outlined :loading="loadingNsPullReplace500" :disabled="!isAdmin" @click="netsuitePullReplace500">
+                    Pull + Replace 500
+                  </v-btn>
                   <v-btn color="secondary" :loading="loadingNsPush" :disabled="!isAdmin" @click="netsuitePush">
                     Publicar a NetSuite (push)
                   </v-btn>
@@ -457,6 +460,7 @@ export default {
       loadingNsStatus: false,
       loadingNsPull: false,
       loadingNsPullReplace: false,
+      loadingNsPullReplace500: false,
       loadingNsPush: false,
       nsStatus: null,
       nsLastResult: '',
@@ -1094,6 +1098,28 @@ export default {
         this.showSnack(msg, 'error')
       } finally {
         this.loadingNsPullReplace = false
+      }
+    },
+    async netsuitePullReplace500() {
+      if (!confirm('Esto REEMPLAZA toda la tabla WIP con un tope de 500 filas del pull (prueba controlada). Debe no haber cronómetros activos/pausados. ¿Continuar?')) {
+        return
+      }
+      this.loadingNsPullReplace500 = true
+      this.nsLastResult = ''
+      try {
+        const res = await axios.post('/chronometer/netsuite/pull-dataset?replace=1&maxRows=500', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
+        this.nsLastResult = JSON.stringify(res.data, null, 2)
+        this.showSnack('Pull + Replace 500 completado.')
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+      } catch (error) {
+        const d = error.response && error.response.data
+        const fallback = !error.response ? this.netsuiteAxiosErrorPayload(error) : { message: error.message }
+        this.nsLastResult = JSON.stringify(d || fallback, null, 2)
+        const msg = (d && d.message) || (fallback && fallback.message) || 'Error en pull+replace 500 NetSuite.'
+        this.showSnack(msg, 'error')
+      } finally {
+        this.loadingNsPullReplace500 = false
       }
     },
     async netsuitePush() {
