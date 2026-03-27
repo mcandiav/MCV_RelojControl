@@ -330,6 +330,9 @@
                   <v-btn color="primary" :loading="loadingNsPull" :disabled="!isAdmin" @click="netsuitePull">
                     Traer operaciones (pull)
                   </v-btn>
+                  <v-btn color="primary" outlined :loading="loadingNsPullReplace" :disabled="!isAdmin" @click="netsuitePullReplace">
+                    Pull + Replace WIP
+                  </v-btn>
                   <v-btn color="secondary" :loading="loadingNsPush" :disabled="!isAdmin" @click="netsuitePush">
                     Publicar a NetSuite (push)
                   </v-btn>
@@ -453,6 +456,7 @@ export default {
       loadingCorsPing: false,
       loadingNsStatus: false,
       loadingNsPull: false,
+      loadingNsPullReplace: false,
       loadingNsPush: false,
       nsStatus: null,
       nsLastResult: '',
@@ -1068,6 +1072,28 @@ export default {
         this.showSnack(msg, 'error')
       } finally {
         this.loadingNsPull = false
+      }
+    },
+    async netsuitePullReplace() {
+      if (!confirm('Esto REEMPLAZA toda la tabla WIP (work_order_operations) con lo que venga desde NetSuite. Debe no haber cronómetros activos/pausados. ¿Continuar?')) {
+        return
+      }
+      this.loadingNsPullReplace = true
+      this.nsLastResult = ''
+      try {
+        const res = await axios.post('/chronometer/netsuite/pull-dataset?replace=1', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
+        this.nsLastResult = JSON.stringify(res.data, null, 2)
+        this.showSnack('Pull + Replace completado.')
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+      } catch (error) {
+        const d = error.response && error.response.data
+        const fallback = !error.response ? this.netsuiteAxiosErrorPayload(error) : { message: error.message }
+        this.nsLastResult = JSON.stringify(d || fallback, null, 2)
+        const msg = (d && d.message) || (fallback && fallback.message) || 'Error en pull+replace NetSuite.'
+        this.showSnack(msg, 'error')
+      } finally {
+        this.loadingNsPullReplace = false
       }
     },
     async netsuitePush() {
