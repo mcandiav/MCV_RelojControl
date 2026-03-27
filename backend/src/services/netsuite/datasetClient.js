@@ -131,7 +131,7 @@ async function fetchDatasetPage(datasetBaseUrl, token, limit, offset) {
  * Pulls all pages from MCV_cronometro_out via REST dataset execution API.
  * @see https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156577938018.html
  */
-async function fetchFullDataset(resolveAreaFromResource) {
+async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   const cfg = getNetsuiteConfig();
   if (!cfg.datasetResultUrl) {
     throw new Error('NetSuite dataset URL not derivable; set NETSUITE_ACCOUNT_ID');
@@ -176,6 +176,10 @@ async function fetchFullDataset(resolveAreaFromResource) {
   };
 
   const limit = 1000;
+  const maxRows =
+    options && Number.isInteger(Number(options.maxRows)) && Number(options.maxRows) > 0
+      ? Number(options.maxRows)
+      : 0;
   let offset = 0;
   const mapped = [];
   let hasMore = true;
@@ -185,8 +189,15 @@ async function fetchFullDataset(resolveAreaFromResource) {
     const items = Array.isArray(page.items) ? page.items : [];
     for (const raw of items) {
       const out = await mapDatasetRowToWip(raw, resolveAreaFromResource, helpers);
-      if (!out.skip) mapped.push(out.row);
+      if (!out.skip) {
+        mapped.push(out.row);
+        if (maxRows > 0 && mapped.length >= maxRows) {
+          hasMore = false;
+          break;
+        }
+      }
     }
+    if (!hasMore) break;
     hasMore = Boolean(page.hasMore);
     offset += items.length;
     if (items.length === 0) hasMore = false;

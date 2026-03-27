@@ -71,7 +71,10 @@ exports.pullDataset = async function pullDataset(req, res) {
   }
 
   try {
-    const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource);
+    const maxRowsRaw = String(req.query.maxRows || req.query.max_rows || '').trim();
+    const maxRows = maxRowsRaw ? Number(maxRowsRaw) : 0;
+    const fetchOptions = Number.isInteger(maxRows) && maxRows > 0 ? { maxRows } : {};
+    const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, fetchOptions);
     if (rows.length === 0) {
       return res.status(200).json({
         message: 'Dataset sin filas válidas tras mapeo.',
@@ -88,7 +91,8 @@ exports.pullDataset = async function pullDataset(req, res) {
         ? 'Pull MCV_cronometro_out aplicado (replace total de work_order_operations).'
         : 'Pull MCV_cronometro_out aplicado (upsert). completed_quantity local no se sobrescribe en duplicados.',
       imported: result.imported,
-      totalRows
+      totalRows,
+      maxRowsApplied: fetchOptions.maxRows || null
     });
   } catch (err) {
     if (err && err.code === 'TIMERS_ACTIVE') {
