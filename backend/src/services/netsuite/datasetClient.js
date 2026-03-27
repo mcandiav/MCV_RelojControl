@@ -1,18 +1,6 @@
 const axios = require('axios');
 const { getNetsuiteConfig } = require('./config');
 const { getNetsuiteAccessToken } = require('./oauthToken');
-const fs = require('fs');
-const path = require('path');
-
-function debugLog(payload) {
-  try {
-    const logPath = path.resolve(process.cwd(), '../debug-a425f7.log');
-    const line = JSON.stringify({ sessionId: 'a425f7', timestamp: Date.now(), ...payload }) + '\n';
-    // #region agent log
-    fs.appendFileSync(logPath, line, 'utf8');
-    // #endregion
-  } catch (_) {}
-}
 
 function coalesce(...vals) {
   for (const v of vals) {
@@ -200,13 +188,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   let pageCount = 0;
 
   // #region agent log
-  debugLog({
-    runId,
-    hypothesisId: 'H2',
-    location: 'backend/src/services/netsuite/datasetClient.js:fetchFullDataset:start',
-    message: 'dataset pull started',
-    data: { datasetResultUrl: cfg.datasetResultUrl, maxRows, pageLimit: limit }
-  });
+  console.log('[dbg][H2][dataset-start]', runId, JSON.stringify({ datasetResultUrl: cfg.datasetResultUrl, maxRows, pageLimit: limit }));
   // #endregion
 
   while (hasMore) {
@@ -228,24 +210,12 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     offset += items.length;
     if (items.length === 0) hasMore = false;
     // #region agent log
-    debugLog({
-      runId,
-      hypothesisId: 'H2',
-      location: 'backend/src/services/netsuite/datasetClient.js:fetchFullDataset:page',
-      message: 'dataset page processed',
-      data: { pageCount, itemsOnPage: items.length, mappedRows: mapped.length, hasMore, offset, elapsedMs: Date.now() - startedAt }
-    });
+    console.log('[dbg][H2][dataset-page]', runId, JSON.stringify({ pageCount, itemsOnPage: items.length, mappedRows: mapped.length, hasMore, offset, elapsedMs: Date.now() - startedAt }));
     // #endregion
   }
 
   // #region agent log
-  debugLog({
-    runId,
-    hypothesisId: 'H2',
-    location: 'backend/src/services/netsuite/datasetClient.js:fetchFullDataset:done',
-    message: 'dataset pull finished',
-    data: { pageCount, mappedRows: mapped.length, elapsedMs: Date.now() - startedAt }
-  });
+  console.log('[dbg][H2][dataset-done]', runId, JSON.stringify({ pageCount, mappedRows: mapped.length, elapsedMs: Date.now() - startedAt }));
   // #endregion
 
   return { rows: mapped, totalRows: mapped.length };

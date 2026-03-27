@@ -396,14 +396,6 @@ import { mapGetters } from 'vuex'
 
 /** Pull/push NetSuite suele tardar >20s; el timeout global de axios en main.js es corto. */
 const NETSUITE_AXIOS_TIMEOUT_MS = 180000
-const DEBUG_ENDPOINT = 'http://127.0.0.1:7557/ingest/8b1a5268-e7ac-40d0-92f7-1ac4975f9a5e'
-const DEBUG_SESSION_ID = 'a425f7'
-
-function debugLog(payload) {
-  // #region agent log
-  fetch(DEBUG_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':DEBUG_SESSION_ID},body:JSON.stringify({sessionId:DEBUG_SESSION_ID,timestamp:Date.now(),...payload})}).catch(()=>{})
-  // #endregion
-}
 
 export default {
   name: 'Home',
@@ -1112,49 +1104,15 @@ export default {
       if (!confirm('Esto REEMPLAZA toda la tabla WIP con un tope de 500 filas del pull (prueba controlada). Debe no haber cronómetros activos/pausados. ¿Continuar?')) {
         return
       }
-      const runId = `ui_pull_replace500_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      // #region agent log
-      debugLog({
-        runId,
-        hypothesisId: 'H3',
-        location: 'front/src/views/Home.vue:netsuitePullReplace500:start',
-        message: 'starting pull replace 500 request',
-        data: { axiosBaseURL: String((axios.defaults && axios.defaults.baseURL) || ''), timeoutMs: NETSUITE_AXIOS_TIMEOUT_MS }
-      })
-      // #endregion
       this.loadingNsPullReplace500 = true
       this.nsLastResult = ''
       try {
-        const startedAt = Date.now()
         const res = await axios.post('/chronometer/netsuite/pull-dataset?replace=1&maxRows=500', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
-        // #region agent log
-        debugLog({
-          runId,
-          hypothesisId: 'H2',
-          location: 'front/src/views/Home.vue:netsuitePullReplace500:success',
-          message: 'pull replace 500 response received',
-          data: { status: res && res.status, elapsedMs: Date.now() - startedAt, payloadKeys: Object.keys(res && res.data ? res.data : {}) }
-        })
-        // #endregion
         this.nsLastResult = JSON.stringify(res.data, null, 2)
         this.showSnack('Pull + Replace 500 completado.')
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
       } catch (error) {
-        // #region agent log
-        debugLog({
-          runId,
-          hypothesisId: 'H1',
-          location: 'front/src/views/Home.vue:netsuitePullReplace500:error',
-          message: 'pull replace 500 failed',
-          data: {
-            message: error && error.message ? error.message : null,
-            code: error && error.code ? error.code : null,
-            hasResponse: Boolean(error && error.response),
-            status: error && error.response ? error.response.status : null
-          }
-        })
-        // #endregion
         const d = error.response && error.response.data
         const fallback = !error.response ? this.netsuiteAxiosErrorPayload(error) : { message: error.message }
         this.nsLastResult = JSON.stringify(d || fallback, null, 2)
