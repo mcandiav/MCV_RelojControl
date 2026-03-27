@@ -27,6 +27,18 @@ const NS_UPSERT_UPDATE_FIELDS = [
   'updatedAt'
 ];
 
+async function assertNoActiveTimers() {
+  const active = await OperationTimer.count({
+    where: { status: ['ACTIVE', 'PAUSED'] }
+  });
+  if (active > 0) {
+    const err = new Error('Hay cronómetros activos/pausados. Detenelos antes de sincronizar WIP desde NetSuite.');
+    err.code = 'TIMERS_ACTIVE';
+    err.activeTimers = active;
+    throw err;
+  }
+}
+
 async function persistNetsuiteWipRows(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return { imported: 0 };
@@ -40,15 +52,7 @@ async function persistNetsuiteWipRows(rows) {
 async function replaceAllWipRows(rows) {
   if (!Array.isArray(rows)) rows = [];
   // Si hay cronómetros corriendo/pausados, no es seguro pisar el universo WIP.
-  const active = await OperationTimer.count({
-    where: { status: ['ACTIVE', 'PAUSED'] }
-  });
-  if (active > 0) {
-    const err = new Error('Hay cronómetros activos/pausados. Detenelos antes de sincronizar WIP desde NetSuite.');
-    err.code = 'TIMERS_ACTIVE';
-    err.activeTimers = active;
-    throw err;
-  }
+  await assertNoActiveTimers();
 
   return WorkOrderOperation.sequelize.transaction(async (t) => {
     // Universo WIP = verdad NetSuite: reemplazar todo lo local.
@@ -57,6 +61,40 @@ async function replaceAllWipRows(rows) {
     await WorkOrderOperation.bulkCreate(rows, { transaction: t });
     return { imported: rows.length };
   });
+}
+
+async function runOfficialSyncFlow({ operationIds = null, maxRows = 0 } = {}) {
+  if (!isNetsuiteConfigured()) {
+    const err = new Error('NetSuite no esta configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.');
+    err.code = 'NETSUITE_NOT_CONFIGURED';
+    throw err;
+  }
+
+  // Regla oficial: no ejecutar sincronizacion con cronometros activos.
+  await assertNoActiveTimers();
+
+  const { items } = await buildActualsPayload(
+    operationIds && operationIds.length ? { operationIds } : {}
+  );
+
+  let pushResult = null;
+  if (items.length > 0) {
+    pushResult = await pushActualsBatch(items);
+  }
+
+  const fetchOptions = {};
+  if (Number.isInteger(maxRows) && maxRows > 0) fetchOptions.maxRows = maxRows;
+  const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, fetchOptions);
+  const replaceResult = await replaceAllWipRows(rows);
+
+  return {
+    pushed: items.length,
+    pushSkipped: items.length === 0,
+    imported: replaceResult.imported,
+    totalRows,
+    maxRowsApplied: fetchOptions.maxRows || null,
+    netsuitePush: pushResult
+  };
 }
 
 exports.getConfigStatus = async function getConfigStatus(req, res) {
@@ -201,6 +239,43 @@ exports.pushActuals = async function pushActuals(req, res) {
   }
 };
 
+exports.officialSync = async function officialSync(req, res) {
+  const rawIds = req.body && req.body.operation_ids;
+  const operationIds = Array.isArray(rawIds)
+    ? rawIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+    : null;
+  const maxRowsRaw = String(req.query.maxRows || req.query.max_rows || '').trim();
+  const maxRows = maxRowsRaw ? Number(maxRowsRaw) : 0;
+
+  try {
+    const result = await runOfficialSyncFlow({
+      operationIds: operationIds && operationIds.length ? operationIds : null,
+      maxRows: Number.isInteger(maxRows) && maxRows > 0 ? maxRows : 0
+    });
+    return res.status(200).json({
+      message: 'Sincronizacion oficial completada (push confirmado + pull + replace total WIP).',
+      ...result
+    });
+  } catch (err) {
+    if (err && err.code === 'NETSUITE_NOT_CONFIGURED') {
+      return res.status(503).json({ message: err.message });
+    }
+    if (err && err.code === 'TIMERS_ACTIVE') {
+      return res.status(409).json({
+        message: err.message,
+        activeTimers: err.activeTimers
+      });
+    }
+    const detail = err.response && err.response.data ? err.response.data : err.message;
+    return res.status(200).json({
+      ok: false,
+      httpStatus: 502,
+      message: 'Fallo en sincronizacion oficial NetSuite.',
+      error: typeof detail === 'string' ? detail : JSON.stringify(detail)
+    });
+  }
+};
+
 exports.clearOAuthCache = async function clearOAuthCacheController(req, res) {
   clearTokenCache();
   return res.status(200).json({ message: 'Token cache cleared.' });
@@ -276,3 +351,5 @@ exports.peekDataset = async function peekDataset(req, res) {
     });
   }
 };
+
+exports.runOfficialSyncFlow = runOfficialSyncFlow;

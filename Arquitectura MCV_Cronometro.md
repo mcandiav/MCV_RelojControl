@@ -1,10 +1,11 @@
 # Arquitectura MCV_Cronometro
-## Versión 6.0
+## Versión 6.1
 
 ## Bitácora de cambios
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |------|-------------------|--------|---------|------------------|
+| 2026-03-27 | Se agrega la **regla oficial de sincronización WIP local como snapshot reconciliado**, formalizando el orden **stop global -> push -> pull -> reemplazo total de tabla WIP local**, y la materialización bulk del WIP desde NetSuite hacia MariaDB | Se cerró la definición operativa de consistencia entre Cronómetro y NetSuite para evitar reconciliaciones parciales, lentitud por procesamiento fila por fila y ambigüedad sobre la verdad vigente al cierre | Cambian y se precisan la sincronización oficial, la naturaleza de la tabla WIP local, la separación entre persistencia transaccional local y snapshot WIP sincronizado, y la estrategia técnica de carga bulk | Integración con NetSuite, modelo de datos, decisiones vigentes |
 | 2026-03-25 | Se actualiza **Cronómetro** a versión 6.0 y se formaliza el **input oficial desde NetSuite** usando el dataset técnico **`MCV_cronometro_out`** creado en sandbox, junto con el canal oficial de retorno **`MCV_Cronometro_In`** autenticado por **OAuth 2.0 M2M** | Se cerró la definición del contrato de lectura desde NetSuite, el contrato mínimo de escritura hacia NetSuite y la separación explícita entre OUT e IN según el lado del sistema | Cambian y se precisan la lectura desde NetSuite, el naming IN/OUT, el dataset de extracción, el carácter WIP del input, el retorno de 3 datos reales por operación, el destino operativo `manufacturingoperationtask` y la responsabilidad de sincronización completa del lado Cronómetro | Objetivo, principios, integración con NetSuite, modelo de datos, roles, decisiones vigentes |
 | 2026-03-24 | Se actualiza **Cronómetro** a versión 5.1 y se define que **Cronómetro es el dueño del tiempo real consolidado** por operación; NetSuite recibe únicamente ese valor acumulado mediante **overwrite** en cada cierre de turno configurable o cierre manual administrativo | Se cerró la discusión arquitectónica sobre conciliación y sincronización, evitando ambigüedad entre sistema fuente del consolidado y sistema destino publicado | Cambian las reglas de lectura desde NetSuite, escritura hacia NetSuite, cierres de turno, sincronización, consolidación y decisiones vigentes | Objetivo, principios, cierre de turno, integración con NetSuite, roles, decisiones vigentes |
 | 2026-03-22 | Se actualiza **Cronómetro** a versión 5.0 para operar con datos reales, consolidar **tiempo y cantidad** por operación, permitir sincronización administrable con NetSuite y definir **3 cierres de turno** con auto-stop obligatorio | El proyecto ya está operativo con datos seed y requiere pasar a una arquitectura productiva alineada con la operación real y la integración directa con NetSuite | Cambian las reglas de consolidación, sincronización, cierre de turno, API mínima, modelo de datos y decisiones vigentes; RelojControl queda solo como antecedente histórico | Objetivo, núcleo operativo, cierre de turno, integración con NetSuite, modelo de datos, roles, decisiones vigentes |
@@ -101,6 +102,9 @@ La solución se gobierna por los siguientes principios:
 13. **El naming IN/OUT depende del lado del sistema**.
 14. **La sincronización completa queda del lado de Cronómetro**: pull del OUT y push del IN.
 15. **La intervención en NetSuite debe ser mínima**: sin staging persistente ni logging técnico adicional en esta etapa.
+16. **La sincronización oficial debe ejecutarse con cronómetros detenidos y en orden push -> pull**.
+17. **La tabla local WIP debe tratarse como snapshot reconciliado materializado desde NetSuite**.
+18. **La carga del WIP local debe optimizarse como proceso bulk y no como reconciliación fila por fila**.
 
 ---
 
@@ -164,7 +168,8 @@ Un motor estable que siga funcionando aunque cambie completamente la UI.
 - integración con NetSuite,
 - dataset técnico de extracción,
 - autenticación M2M,
-- receptor de escritura en NetSuite.
+- receptor de escritura en NetSuite,
+- materialización local del snapshot WIP reconciliado.
 
 ---
 
@@ -211,6 +216,7 @@ Cronómetro cubre:
 - **Supervisor**
 - **Autorización**
 - **Lote de sincronización NetSuite**
+- **Snapshot WIP reconciliado**
 
 ## 7.2 Definiciones principales
 
@@ -234,6 +240,9 @@ Conjunto de datos que Cronómetro consume desde NetSuite para conocer:
 
 En esta versión, ese input queda formalizado por el dataset `MCV_cronometro_out` del lado NetSuite, que del lado Cronómetro debe tratarse como **input oficial**.
 
+### Snapshot WIP reconciliado
+Universo local de trabajo que Cronómetro materializa después de una sincronización oficial exitosa, reconstruido completamente desde NetSuite una vez publicado el valor vigente de los 3 datos reales por operación.
+
 ---
 
 # 8. Modelo de áreas de fabricación
@@ -251,17 +260,17 @@ En esta versión, ese input queda formalizado por el dataset `MCV_cronometro_out
 
 ## 8.3 Regla de visibilidad de operaciones
 
-- operario `ME` → ve solo operaciones `ME`
-- operario `ES` → ve solo operaciones `ES`
-- operario `Both` → ve operaciones `ME` y `ES`
+- operario `ME` -> ve solo operaciones `ME`
+- operario `ES` -> ve solo operaciones `ES`
+- operario `Both` -> ve operaciones `ME` y `ES`
 
 ## 8.4 Regla de derivación de área desde NetSuite
 
 El área no se materializa dentro del Workbook de NetSuite.  
 Debe derivarse en Cronómetro desde el prefijo del `resource_code`:
 
-- `ME...` → `ME`
-- `ES...` → `ES`
+- `ME...` -> `ME`
+- `ES...` -> `ES`
 
 ---
 
@@ -285,7 +294,7 @@ La arquitectura debe soportar que una sola pantalla física sea usada por varios
 10. La visibilidad de operaciones se filtra por área del operario.
 11. Los datos reales vigentes son únicos por operación y representan el estado histórico acumulado publicado por Cronómetro.
 12. El cierre de turno ejecuta auto-stop, consolidación operativa, **sincronización automática oficial** y realineación con NetSuite.
-    - Orden oficial: **push → pull**
+    - Orden oficial: **push -> pull**
     - **Push**: publicar a NetSuite los 3 datos reales vigentes por operación (overwrite).
     - **Pull**: refrescar el universo WIP desde el dataset OUT oficial.
     - Precondición: la sincronización automática ocurre con cronómetros detenidos (auto-stop).
@@ -293,6 +302,8 @@ La arquitectura debe soportar que una sola pantalla física sea usada por varios
 13. Cronómetro consume solo operaciones no completadas provenientes del input NetSuite.
 14. Cronómetro no depende de `completed_quantity` proveniente de NetSuite.
 15. “Pausa” no equivale automáticamente a setup; la partición exacta setup/run pertenece a la lógica de Cronómetro y no debe inferirse desde NetSuite.
+16. Después de un push exitoso, Cronómetro debe reconstruir completamente su tabla local WIP desde NetSuite.
+17. La tabla local WIP no debe mezclar snapshot NetSuite con estado transaccional propio del cronómetro.
 
 ---
 
@@ -337,7 +348,8 @@ En cada cierre configurado, el sistema debe:
 - detener cronómetros activos,
 - consolidar datos reales pendientes,
 - registrar auditoría,
-- preparar y ejecutar sincronización oficial hacia NetSuite.
+- preparar y ejecutar sincronización oficial hacia NetSuite,
+- reconstruir el universo WIP local desde NetSuite una vez confirmado el push.
 
 También debe existir un cierre manual administrativo total.
 
@@ -361,6 +373,7 @@ También debe existir un cierre manual administrativo total.
 - `supervisor_approval`
 - `planned_time_override`
 - `operator_operation_authorization`
+- `netsuite_wip_current`
 
 ## 15.2 Input mínimo requerido desde NetSuite
 
@@ -555,6 +568,83 @@ Debe mantenerse un apartado específico para el **Configurador NetSuite**, quien
 
 No se implementa staging persistente ni logging técnico adicional en NetSuite en esta etapa.
 
+## 16.11 Regla oficial de sincronización WIP local (snapshot reconciliado)
+
+A partir de esta decisión, la sincronización oficial entre Cronómetro y NetSuite se ejecuta con el siguiente principio:
+
+- durante la operación, Cronómetro mantiene localmente el estado transaccional de cronómetros, eventos y acumulados;
+- en el punto oficial de sincronización, la verdad publicada y reconciliada pasa a ser NetSuite;
+- la tabla local WIP de trabajo debe reconstruirse completamente desde NetSuite después del push oficial.
+
+### Orden obligatorio de sincronización
+
+La sincronización oficial se ejecuta con todos los cronómetros detenidos y en este orden estricto:
+
+1. **stop global** de cronómetros activos
+2. consolidación local final de datos reales vigentes
+3. **push** hacia NetSuite de los valores vigentes por operación
+4. confirmación de éxito del push
+5. **pull** completo del dataset OUT desde NetSuite
+6. reemplazo completo de la tabla local WIP con el snapshot recién leído
+7. reanudación operativa sobre el nuevo universo local reconciliado
+
+### Regla de verdad
+
+- Mientras los cronómetros están corriendo, Cronómetro mantiene el estado operativo transaccional local.
+- En el punto de sincronización oficial, después del push exitoso, **NetSuite se considera la verdad reconciliada**.
+- El pull posterior debe reconstruir íntegramente la tabla local de trabajo para evitar reconciliaciones parciales o mezcla de dos verdades.
+
+### Implicancia sobre la tabla local WIP
+
+La tabla local WIP debe tratarse como:
+
+- una **copia materializada del universo WIP reconciliado en NetSuite**
+- no como fuente maestra independiente
+- no como tabla de acumulación de lógica transaccional del cronómetro
+
+Por lo tanto, esta tabla puede ser reemplazada completamente en cada sincronización oficial, siempre que no mezcle estado interno del cronómetro.
+
+### Separación de responsabilidades de persistencia
+
+#### Persistencia transaccional local de Cronómetro
+Debe vivir en tablas separadas para:
+- cronómetros activos
+- eventos de cronometraje
+- acumulados locales por operación
+- sesiones y cierres
+
+#### Persistencia WIP sincronizada
+Debe existir una tabla local específica para el snapshot WIP reconciliado proveniente de NetSuite.
+
+Esta tabla:
+- puede cargarse masivamente
+- puede vaciarse y reconstruirse
+- puede ser reemplazada por snapshot completo
+- no debe almacenar estado transaccional propio de Cronómetro
+
+### Estrategia de carga recomendada
+
+El pull desde NetSuite debe tratarse como **snapshot bulk** y no como ingestión fila por fila.
+
+Flujo recomendado:
+
+1. lectura completa del dataset oficial OUT
+2. serialización temporal a CSV u otro formato de carga masiva
+3. carga masiva en MariaDB
+4. publicación del snapshot completo como nueva tabla WIP vigente
+
+### Restricciones obligatorias
+
+- No hacer pull oficial con cronómetros activos.
+- No reconstruir la tabla WIP local si el push a NetSuite no fue confirmado como exitoso.
+- No hacer reconciliación fila por fila como estrategia principal.
+- No mezclar en la tabla WIP campos de snapshot NetSuite con estado interno del cronómetro.
+- El reemplazo del snapshot local debe ser completo y consistente.
+
+### Objetivo técnico
+
+La sincronización de lectura debe optimizarse como carga masiva. El objetivo es que el snapshot WIP completo proveniente de NetSuite pueda ser materializado localmente con rendimiento compatible con el flujo manual validado por negocio.
+
 ---
 
 # 17. Estrategia de implementación
@@ -566,7 +656,8 @@ La estrategia oficial es:
 - mantener la plataforma,
 - operar Cronómetro con datos reales consolidados,
 - consumir como input el dataset técnico proveniente de NetSuite,
-- integrar NetSuite mediante cierres configurables y canales desacoplados de lectura/escritura.
+- integrar NetSuite mediante cierres configurables y canales desacoplados de lectura/escritura,
+- y materializar localmente el WIP reconciliado como snapshot bulk.
 
 ---
 
@@ -592,7 +683,9 @@ El Programador debe implementar o refactorizar:
 - la consolidación de los 3 datos reales por operación,
 - la lectura del input oficial proveniente de NetSuite,
 - la generación de lotes de sincronización,
-- y la trazabilidad de lotes e integraciones del lado Cronómetro.
+- la trazabilidad de lotes e integraciones del lado Cronómetro,
+- el reemplazo completo de la tabla WIP local después del push exitoso,
+- y la carga masiva del snapshot reconciliado hacia MariaDB.
 
 ## 18.2 Rol Configurador NetSuite
 
@@ -635,6 +728,10 @@ El Configurador NetSuite debe preparar, cuando corresponda:
 22. La sincronización completa queda orquestada por Cronómetro como pull + push.
 23. La autenticación del canal de escritura es OAuth 2.0 M2M.
 24. La intervención en NetSuite debe ser mínima, sin staging persistente ni logging técnico adicional en esta etapa.
+25. La sincronización oficial se ejecuta con cronómetros detenidos y en orden **push -> pull**.
+26. Después del push exitoso, Cronómetro reconstruye completamente la tabla local WIP desde NetSuite.
+27. La tabla WIP local debe representar un snapshot reconciliado y no debe mezclar estado transaccional interno del cronómetro.
+28. La materialización local del WIP debe optimizarse como carga bulk hacia MariaDB, no como procesamiento fila por fila.
 
 ---
 
@@ -672,6 +769,8 @@ A la fecha de esta versión:
 - `area` se deriva desde `resource_code` fuera del Workbook;
 - la autenticación del canal de escritura quedó definida como OAuth 2.0 M2M;
 - el destino operativo del retorno es `manufacturingoperationtask`;
-- y la sincronización completa queda gobernada del lado de Cronómetro.
+- la sincronización completa queda gobernada del lado de Cronómetro;
+- la sincronización oficial se ejecuta en orden push -> pull con cronómetros detenidos;
+- y el WIP local se materializa como snapshot reconciliado reconstruido desde NetSuite.
 
 ---

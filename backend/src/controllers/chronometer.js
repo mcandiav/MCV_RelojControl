@@ -145,23 +145,27 @@ async function runShiftClose(trigger = 'manual') {
     await consolidateShiftForOperation(operationId, shiftDate);
   }
 
-  if (config.NETSUITE_PUSH_ON_SHIFT_CLOSE) {
-    setImmediate(async () => {
-      try {
-        const { tryPushAfterShiftClose } = require('../services/netsuite/shiftPushHook');
-        const pushResult = await tryPushAfterShiftClose();
-        console.log('NetSuite push after shift close:', pushResult);
-      } catch (error) {
-        console.error('NetSuite push after shift close failed:', error.message || error);
-      }
-    });
-  }
-
-  return {
+  const result = {
     shiftDate,
     stoppedTimers: activeOrPausedTimers.length,
     consolidatedOperations: affectedOperationIds.size
   };
+
+  if (config.NETSUITE_PUSH_ON_SHIFT_CLOSE) {
+    try {
+      const { runOfficialSyncFlow } = require('./netsuiteSync');
+      result.netsuiteSync = await runOfficialSyncFlow();
+      result.netsuiteSyncEnabled = true;
+    } catch (error) {
+      result.netsuiteSyncEnabled = true;
+      result.netsuiteSyncError = error.message || String(error);
+      console.error('NetSuite official sync after shift close failed:', error.message || error);
+    }
+  } else {
+    result.netsuiteSyncEnabled = false;
+  }
+
+  return result;
 }
 
 function resolveAreaFromResource(resourceCode) {

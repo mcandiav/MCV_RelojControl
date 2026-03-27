@@ -80,12 +80,13 @@ Endpoints (cabecera JWT de **admin**):
 | GET | `/chronometer/netsuite/peek-dataset` | Muestra columnas y primeras filas del OUT |
 | POST | `/chronometer/netsuite/pull-dataset` | Pull + upsert local desde `MCV_cronometro_out` |
 | POST | `/chronometer/netsuite/push-actuals` | Push de los 3 datos vigentes hacia NetSuite |
+| POST | `/chronometer/netsuite/sync-official` | Flujo oficial: push confirmado + pull + replace total WIP |
 | POST | `/chronometer/netsuite/oauth/clear-cache` | Invalida token en memoria |
 
 | GET | `/chronometer/admin/shift-schedule` | Tres horarios de cierre (admin) |
 | PUT | `/chronometer/admin/shift-schedule` | Body `{ "slots": [{ "sequence":1,"hhmm":"07:00","enabled":true }, …] }` |
 
-Variables: ver `../NETSUITE_ENV_TEMPLATE.md`. Para push automático tras cierre de turno: `NETSUITE_PUSH_ON_SHIFT_CLOSE=true` (por defecto desactivado).
+Variables: ver `../NETSUITE_ENV_TEMPLATE.md`. Para sincronizacion oficial automatica tras cierre de turno: `NETSUITE_PUSH_ON_SHIFT_CLOSE=true` (por defecto desactivado).
 
 Semilla inicial de los 3 horarios (solo si la tabla está vacía): `NS_SHIFT_BATCH_TIMES=06:00,14:00,22:00` o el legado `NS_SHIFT_BATCH_TIME` para el primer slot.
 
