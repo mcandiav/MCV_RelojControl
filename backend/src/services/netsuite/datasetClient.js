@@ -201,6 +201,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   let hasMore = true;
   let pageCount = 0;
   let rowProcessed = 0;
+  const skipReasons = {};
 
   // #region agent log
   console.log('[dbg][H2][dataset-start]', runId, JSON.stringify({ datasetResultUrl: cfg.datasetResultUrl, maxRows, pageLimit: limit }));
@@ -231,6 +232,9 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
           hasMore = false;
           break;
         }
+      } else {
+        const r = out.reason || 'unknown';
+        skipReasons[r] = (skipReasons[r] || 0) + 1;
       }
       rowProcessed += 1;
       if (rowProcessed % 100 === 0) {
@@ -244,12 +248,12 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     offset += items.length;
     if (items.length === 0) hasMore = false;
     // #region agent log
-    console.log('[dbg][H2][dataset-page]', runId, JSON.stringify({ pageCount, itemsOnPage: items.length, mappedRows: mapped.length, hasMore, offset, elapsedMs: Date.now() - startedAt }));
+    console.log('[dbg][H2][dataset-page]', runId, JSON.stringify({ pageCount, itemsOnPage: items.length, mappedRows: mapped.length, skipReasons, hasMore, offset, elapsedMs: Date.now() - startedAt }));
     // #endregion
   }
 
   // #region agent log
-  console.log('[dbg][H2][dataset-done]', runId, JSON.stringify({ pageCount, mappedRows: mapped.length, elapsedMs: Date.now() - startedAt }));
+  console.log('[dbg][H2][dataset-done]', runId, JSON.stringify({ pageCount, mappedRows: mapped.length, skipReasons, elapsedMs: Date.now() - startedAt }));
   // #endregion
 
   return { rows: mapped, totalRows: mapped.length };
