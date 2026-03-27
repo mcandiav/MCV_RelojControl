@@ -53,7 +53,14 @@ async function mapDatasetRowToWip(row, resolveAreaFromResource, helpers) {
 
   let resource_code = String(resourceFromDataset ?? '').trim();
   if (!resource_code && workcenterId && helpers && helpers.getWorkcenterName) {
+    const t0 = Date.now();
+    // #region agent log
+    console.log('[dbg][H2][lookup-workcenter:start]', JSON.stringify({ workcenterId }));
+    // #endregion
     const wcName = await helpers.getWorkcenterName(String(workcenterId));
+    // #region agent log
+    console.log('[dbg][H2][lookup-workcenter:done]', JSON.stringify({ workcenterId, found: Boolean(wcName), ms: Date.now() - t0 }));
+    // #endregion
     if (wcName) resource_code = wcName;
   }
   resource_code = String(resource_code || workcenterId || '').trim().toUpperCase();
@@ -75,7 +82,14 @@ async function mapDatasetRowToWip(row, resolveAreaFromResource, helpers) {
   ).trim() || 'WIP';
 
   if (!ot_number && workorderId && helpers && helpers.getWorkorderTranId) {
+    const t0 = Date.now();
+    // #region agent log
+    console.log('[dbg][H2][lookup-workorder:start]', JSON.stringify({ workorderId }));
+    // #endregion
     const tranId = await helpers.getWorkorderTranId(String(workorderId));
+    // #region agent log
+    console.log('[dbg][H2][lookup-workorder:done]', JSON.stringify({ workorderId, found: Boolean(tranId), ms: Date.now() - t0 }));
+    // #endregion
     if (tranId) ot_number = String(tranId).trim();
   }
   if (!ot_number && workorderId) {
@@ -200,6 +214,16 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     console.log('[dbg][H2][dataset-page-start]', runId, JSON.stringify({ pageCount, itemsOnPage: items.length, offset, elapsedMs: Date.now() - startedAt }));
     // #endregion
     for (const raw of items) {
+      if (rowProcessed < 3) {
+        // #region agent log
+        console.log('[dbg][H2][row-enter]', runId, JSON.stringify({
+          rowProcessed,
+          keys: Object.keys(raw || {}).slice(0, 12),
+          workorder: raw && (raw.workorder || raw.manufacturingworkorder || null),
+          workcenter: raw && (raw.manufacturingworkcenter || raw.workcenter || null)
+        }));
+        // #endregion
+      }
       const out = await mapDatasetRowToWip(raw, resolveAreaFromResource, helpers);
       if (!out.skip) {
         mapped.push(out.row);

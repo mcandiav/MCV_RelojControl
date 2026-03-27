@@ -97,6 +97,14 @@ app.use((req, res, next) => {
     const started = Date.now();
     const origin = req.headers.origin || '';
     console.log('[netsuite][in]', req.method, p, origin ? `origin=${origin}` : '');
+    req.on('aborted', () => {
+        console.log('[netsuite][aborted]', req.method, p, `ms=${Date.now() - started}`);
+    });
+    res.on('close', () => {
+        if (!res.writableEnded) {
+            console.log('[netsuite][close-before-finish]', req.method, p, `ms=${Date.now() - started}`);
+        }
+    });
     res.on('finish', () => {
         const ms = Date.now() - started;
         console.log('[netsuite][out]', req.method, p, `status=${res.statusCode}`, `ms=${ms}`);
