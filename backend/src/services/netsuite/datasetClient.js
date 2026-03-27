@@ -177,11 +177,11 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
     }
   };
 
-  const limit = maxRows > 0 ? Math.min(1000, maxRows) : 1000;
   const maxRows =
     options && Number.isInteger(Number(options.maxRows)) && Number(options.maxRows) > 0
       ? Number(options.maxRows)
       : 0;
+  const limit = maxRows > 0 ? Math.min(1000, maxRows) : 1000;
   let offset = 0;
   const mapped = [];
   let hasMore = true;
