@@ -99,6 +99,18 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   const planned_setup = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_MONTAJE_MIN'), row && row.setuptime);
   const planned_op_unit = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_OPERACION_MIN_UNIT'), row && row.runrate);
   const planned_quantity = coalesce(getFieldCaseInsensitive(row, 'PLANNED_QUANTITY'), row && row.inputquantity);
+  const actual_setup_time = coalesce(
+    getFieldCaseInsensitive(row, 'ACTUAL_SETUP_TIME'),
+    row && row.actualsetuptime
+  );
+  const actual_run_time = coalesce(
+    getFieldCaseInsensitive(row, 'ACTUAL_RUN_TIME'),
+    row && row.actualruntime
+  );
+  const completed_quantity = coalesce(
+    getFieldCaseInsensitive(row, 'COMPLETED_QUANTITY'),
+    row && row.completedquantity
+  );
   const source_status = clampText(
     coalesce(getFieldCaseInsensitive(row, 'SOURCE_STATUS'), row && row.status) ?? ''
     , 24
@@ -149,6 +161,9 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
       planned_setup_minutes: toIntOrNull(planned_setup),
       planned_operation_minutes: toIntOrNull(planned_op_unit),
       planned_quantity: pq,
+      actual_setup_time: Math.max(0, toIntOrNull(actual_setup_time) || 0),
+      actual_run_time: Math.max(0, toIntOrNull(actual_run_time) || 0),
+      completed_quantity: Math.max(0, toIntOrNull(completed_quantity) || 0),
       netsuite_operation_id: clampText(netsuite_operation_id, 64),
       netsuite_work_order_id: null,
       source_status,

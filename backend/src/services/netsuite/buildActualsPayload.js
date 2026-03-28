@@ -29,8 +29,17 @@ async function buildActualsPayload({ operationIds } = {}) {
       order: [['event_at', 'ASC']]
     });
     const totals = computeTotalsFromEvents(events);
-    const actual_run_time = Math.max(0, Math.floor(totals.total_active_seconds / 60));
-    const actual_setup_time = 0;
+    const base_run_time =
+      op.actual_run_time != null && Number.isFinite(Number(op.actual_run_time))
+        ? Math.max(0, Math.floor(Number(op.actual_run_time)))
+        : 0;
+    const base_setup_time =
+      op.actual_setup_time != null && Number.isFinite(Number(op.actual_setup_time))
+        ? Math.max(0, Math.floor(Number(op.actual_setup_time)))
+        : 0;
+    const delta_run_time = Math.max(0, Math.floor(totals.total_active_seconds / 60));
+    const actual_run_time = base_run_time + delta_run_time;
+    const actual_setup_time = base_setup_time;
     const cq = op.completed_quantity;
     const completed_quantity =
       cq != null && cq !== '' && Number.isFinite(Number(cq)) ? Math.max(0, Math.floor(Number(cq))) : 0;

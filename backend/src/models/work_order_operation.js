@@ -46,6 +46,16 @@ const WorkOrderOperation = sequelize.define('WorkOrderOperation', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
+  actual_setup_time: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  actual_run_time: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
   completed_quantity: {
     type: DataTypes.INTEGER,
     allowNull: true

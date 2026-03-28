@@ -490,7 +490,10 @@ exports.stopTimer = async function stopTimer(req, res) {
   if (completedQtyToStore !== null) {
     const operation = await WorkOrderOperation.findByPk(timer.work_order_operation_id);
     if (operation) {
-      operation.completed_quantity = completedQtyToStore;
+      const previous = Number.isFinite(Number(operation.completed_quantity))
+        ? Math.max(0, Math.floor(Number(operation.completed_quantity)))
+        : 0;
+      operation.completed_quantity = previous + completedQtyToStore;
       await operation.save();
     }
   }
@@ -541,6 +544,8 @@ exports.upsertWipOperations = async function upsertWipOperations(req, res) {
       planned_setup_minutes: op.planned_setup_minutes ?? null,
       planned_operation_minutes: op.planned_operation_minutes ?? null,
       planned_quantity: op.planned_quantity ?? null,
+      actual_setup_time: op.actual_setup_time ?? 0,
+      actual_run_time: op.actual_run_time ?? 0,
       completed_quantity: op.completed_quantity ?? null,
       netsuite_work_order_id: op.netsuite_work_order_id || null,
       netsuite_operation_id: op.netsuite_operation_id || null,
@@ -557,6 +562,8 @@ exports.upsertWipOperations = async function upsertWipOperations(req, res) {
       'planned_setup_minutes',
       'planned_operation_minutes',
       'planned_quantity',
+      'actual_setup_time',
+      'actual_run_time',
       'completed_quantity',
       'netsuite_work_order_id',
       'netsuite_operation_id',
