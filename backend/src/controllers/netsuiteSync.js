@@ -29,6 +29,29 @@ const NS_UPSERT_UPDATE_FIELDS = [
   'updatedAt'
 ];
 
+function dedupeWipRows(rows) {
+  const byKey = new Map();
+  for (const row of rows || []) {
+    if (!row) continue;
+    const key = `${row.ot_number || ''}__${row.operation_sequence || ''}__${row.resource_code || ''}`;
+    byKey.set(key, row);
+  }
+  return Array.from(byKey.values());
+}
+
+function explainSequelizeError(err) {
+  if (!err) return 'unknown_error';
+  if (Array.isArray(err.errors) && err.errors.length > 0) {
+    const first = err.errors[0];
+    const path = first && first.path ? String(first.path) : '';
+    const msg = first && first.message ? String(first.message) : String(err.message || err);
+    return path ? `${path}: ${msg}` : msg;
+  }
+  if (err.parent && err.parent.sqlMessage) return String(err.parent.sqlMessage);
+  if (err.original && err.original.sqlMessage) return String(err.original.sqlMessage);
+  return String(err.message || err);
+}
+
 async function assertNoActiveTimers() {
   const active = await OperationTimer.count({
     where: { status: ['ACTIVE', 'PAUSED'] }
@@ -45,14 +68,16 @@ async function persistNetsuiteWipRows(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return { imported: 0 };
   }
-  await WorkOrderOperation.bulkCreate(rows, {
+  const deduped = dedupeWipRows(rows);
+  await WorkOrderOperation.bulkCreate(deduped, {
     updateOnDuplicate: NS_UPSERT_UPDATE_FIELDS
   });
-  return { imported: rows.length };
+  return { imported: deduped.length };
 }
 
 async function replaceAllWipRows(rows) {
   if (!Array.isArray(rows)) rows = [];
+  const deduped = dedupeWipRows(rows);
   // Si hay cronómetros corriendo/pausados, no es seguro pisar el universo WIP.
   await assertNoActiveTimers();
 
@@ -66,9 +91,9 @@ async function replaceAllWipRows(rows) {
     await OperationTimer.destroy({ where: {}, transaction: t });
     await WorkOrderOperation.destroy({ where: {}, transaction: t });
 
-    if (rows.length === 0) return { imported: 0 };
-    await WorkOrderOperation.bulkCreate(rows, { transaction: t });
-    return { imported: rows.length };
+    if (deduped.length === 0) return { imported: 0 };
+    await WorkOrderOperation.bulkCreate(deduped, { transaction: t });
+    return { imported: deduped.length };
   });
 }
 
@@ -275,7 +300,7 @@ exports.officialSync = async function officialSync(req, res) {
         activeTimers: err.activeTimers
       });
     }
-    const detail = err.response && err.response.data ? err.response.data : err.message;
+    const detail = err.response && err.response.data ? err.response.data : explainSequelizeError(err);
     return res.status(200).json({
       ok: false,
       httpStatus: 502,

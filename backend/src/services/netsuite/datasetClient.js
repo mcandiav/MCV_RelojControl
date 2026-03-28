@@ -103,13 +103,22 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
     coalesce(getFieldCaseInsensitive(row, 'SOURCE_STATUS'), row && row.status) ?? ''
     , 24
   ) || 'WIP';
+  const areaFromDataset = clampText(
+    coalesce(
+      getFieldCaseInsensitive(row, 'AREA'),
+      getFieldCaseInsensitive(row, 'FORMULA_1'),
+      row && row.formula_1
+    ),
+    8
+  ).toUpperCase();
 
   if (!ot_number && workorderId) {
     // Fallback: keep something searchable/stable even before enrichment.
     ot_number = clampText(`WO${String(workorderId).trim()}`, 64);
   }
 
-  let area = resolveAreaFromResource(resource_code);
+  let area = ['ME', 'ES'].includes(areaFromDataset) ? areaFromDataset : null;
+  if (!area) area = resolveAreaFromResource(resource_code);
   if (!area) area = inferAreaFromText(operation_name);
   if (!area && workcenterId && options.workcenterAreaMap) {
     area = options.workcenterAreaMap.get(String(workcenterId)) || null;
