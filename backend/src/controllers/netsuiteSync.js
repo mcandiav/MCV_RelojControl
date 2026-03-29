@@ -358,12 +358,27 @@ exports.peekDataset = async function peekDataset(req, res) {
     return res.status(503).json({ message: 'NetSuite no está configurado.' });
   }
   try {
-    const axios = require('axios');
     const { getNetsuiteConfig } = require('../services/netsuite/config');
-    const { getNetsuiteAccessToken } = require('../services/netsuite/oauthToken');
     const cfg = getNetsuiteConfig();
-    const token = await getNetsuiteAccessToken();
     const limit = Math.min(20, Math.max(1, parseInt(String(req.query.limit || '5'), 10) || 5));
+
+    if (cfg.outSourceType === 'savedsearch') {
+      const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, { maxRows: limit });
+      const sampleKeys = rows[0] ? Object.keys(rows[0]) : [];
+      return res.status(200).json({
+        sourceType: 'savedsearch',
+        sourceId: cfg.outSavedSearchId || null,
+        count: rows.length,
+        hasMore: totalRows > rows.length,
+        totalResults: totalRows,
+        sampleFieldNames: sampleKeys,
+        firstItems: rows
+      });
+    }
+
+    const axios = require('axios');
+    const { getNetsuiteAccessToken } = require('../services/netsuite/oauthToken');
+    const token = await getNetsuiteAccessToken();
     const { data } = await axios.get(cfg.datasetResultUrl, {
       params: { limit, offset: 0 },
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -383,7 +398,7 @@ exports.peekDataset = async function peekDataset(req, res) {
     return res.status(200).json({
       ok: false,
       httpStatus: 502,
-      message: 'No se pudo leer el dataset.',
+      message: 'No se pudo leer el origen OUT.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
   }

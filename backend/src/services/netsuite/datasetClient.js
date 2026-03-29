@@ -229,6 +229,45 @@ async function fetchDatasetPage(datasetBaseUrl, token, limit, offset) {
   return data;
 }
 
+function buildOutSuiteQlQuery(outOnlyInProgress) {
+  const where = outOnlyInProgress ? "WHERE status = 'PROGRESS'" : '';
+  return [
+    'SELECT',
+    '  id AS NETSUITE_OPERATION_ID,',
+    '  BUILTIN.DF(workorder) AS OT_NUMBER,',
+    '  operationsequence AS OPERATION_SEQUENCE,',
+    '  title AS OPERATION_NAME,',
+    '  BUILTIN.DF(manufacturingworkcenter) AS RESOURCE_CODE,',
+    '  setuptime AS TIEMPO_MONTAJE_MIN,',
+    '  runrate AS TIEMPO_OPERACION_MIN_UNIT,',
+    '  inputquantity AS PLANNED_QUANTITY,',
+    '  status AS SOURCE_STATUS,',
+    "  CASE WHEN UPPER(BUILTIN.DF(manufacturingworkcenter)) LIKE 'ES%' THEN 'ES'",
+    "       WHEN UPPER(BUILTIN.DF(manufacturingworkcenter)) LIKE 'ME%' THEN 'ME'",
+    '       ELSE NULL END AS AREA',
+    'FROM manufacturingoperationtask',
+    where,
+    'ORDER BY id'
+  ].filter(Boolean).join(' ');
+}
+
+async function fetchSuiteQlPage(suiteqlUrl, token, query, limit, offset) {
+  const { data } = await axios.post(
+    suiteqlUrl,
+    { q: query },
+    {
+      params: { limit, offset },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      timeout: 120000
+    }
+  );
+  return data;
+}
+
 /**
  * Pulls all pages from MCV_cronometro_out via REST dataset execution API.
  * @see https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156577938018.html
@@ -237,7 +276,10 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   const runId = options && options.runId ? String(options.runId) : `dataset_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const startedAt = Date.now();
   const cfg = getNetsuiteConfig();
-  if (!cfg.datasetResultUrl) {
+  if (cfg.outSourceType === 'savedsearch' && !cfg.suiteqlUrl) {
+    throw new Error('NetSuite suiteql URL not derivable; set NETSUITE_ACCOUNT_ID');
+  }
+  if (cfg.outSourceType !== 'savedsearch' && !cfg.datasetResultUrl) {
     throw new Error('NetSuite dataset URL not derivable; set NETSUITE_ACCOUNT_ID');
   }
 
@@ -256,6 +298,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   let pageCount = 0;
   let rowProcessed = 0;
   const skipReasons = {};
+  const suiteqlQuery = buildOutSuiteQlQuery(Boolean(cfg.outOnlyInProgress));
 
   // #region agent log
   console.log('[dbg][H2][dataset-start]', runId, JSON.stringify({ datasetResultUrl: cfg.datasetResultUrl, maxRows, pageLimit: limit }));
@@ -263,7 +306,10 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
 
   while (hasMore) {
     pageCount += 1;
-    const page = await fetchDatasetPage(cfg.datasetResultUrl, token, limit, offset);
+    const page =
+      cfg.outSourceType === 'savedsearch'
+        ? await fetchSuiteQlPage(cfg.suiteqlUrl, token, suiteqlQuery, limit, offset)
+        : await fetchDatasetPage(cfg.datasetResultUrl, token, limit, offset);
     const items = Array.isArray(page.items) ? page.items : [];
     // #region agent log
     console.log('[dbg][H2][dataset-page-start]', runId, JSON.stringify({ pageCount, itemsOnPage: items.length, offset, elapsedMs: Date.now() - startedAt }));
