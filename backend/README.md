@@ -37,9 +37,10 @@ Si alguna referencia heredada habla de un solo consolidado ambiguo, debe conside
 
 ### Entrada: NetSuite -> Cronómetro
 
-La lectura oficial desde NetSuite se basa en el dataset:
+La lectura oficial desde NetSuite se basa en una Saved Search:
 
-- `MCV_cronometro_out`
+- `customsearch_mcv_cronometro_out` (Saved Search 823)
+- Referencia documental: `../NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md`
 
 Campos funcionales principales:
 
@@ -70,15 +71,15 @@ Reglas:
 
 ### Implementación en este repo (capa 3)
 
-Módulos en `src/services/netsuite/`: OAuth 2.0 M2M (JWT **PS256** con *fallback* **RS256**), cliente del dataset REST (`/services/rest/query/v1/dataset/{id}/result`), y POST al RESTlet IN.
+Módulos en `src/services/netsuite/`: OAuth 2.0 M2M (JWT **PS256** con *fallback* **RS256**), cliente de extracción OUT (ahora Saved Search), y POST al RESTlet IN.
 
 Endpoints (cabecera JWT de **admin**):
 
 | Método | Ruta | Uso |
 |--------|------|-----|
 | GET | `/chronometer/netsuite/status` | Comprobación de entorno |
-| GET | `/chronometer/netsuite/peek-dataset` | Muestra columnas y primeras filas del OUT |
-| POST | `/chronometer/netsuite/pull-dataset` | Pull + upsert local desde `MCV_cronometro_out` |
+| GET | `/chronometer/netsuite/peek-dataset` | Nombre legado; hoy inspecciona el OUT de Saved Search |
+| POST | `/chronometer/netsuite/pull-dataset` | Nombre legado; hoy ejecuta pull + upsert desde Saved Search OUT |
 | POST | `/chronometer/netsuite/push-actuals` | Push de los 3 datos vigentes hacia NetSuite |
 | POST | `/chronometer/netsuite/sync-official` | Flujo oficial: push confirmado + pull + replace total WIP |
 | POST | `/chronometer/netsuite/oauth/clear-cache` | Invalida token en memoria |
@@ -92,7 +93,7 @@ Semilla inicial de los 3 horarios (solo si la tabla está vacía): `NS_SHIFT_BAT
 
 ### Pull NetSuite fuera de Docker (host)
 
-Si la lectura del dataset debe hacerse **desde la máquina anfitriona** (sin salir al NetSuite desde el contenedor), usá el script:
+Si la lectura OUT debe hacerse **desde la máquina anfitriona** (sin salir al NetSuite desde el contenedor), usá el script:
 
 ```bash
 cd backend
@@ -176,4 +177,4 @@ CORS: cabeceras explícitas para `x-access-token`. Diagnóstico extremo: `CORS_A
 1. La arquitectura vigente no se define por este README aislado.
 2. El retorno correcto hacia NetSuite incluye 3 datos reales por operación.
 3. `completed_quantity` no pertenece al input desde NetSuite; pertenece al retorno desde Cronómetro.
-4. El dataset oficial de lectura es `MCV_cronometro_out`.
+4. La fuente oficial de lectura OUT es la Saved Search `customsearch_mcv_cronometro_out` (solo `En curso`).

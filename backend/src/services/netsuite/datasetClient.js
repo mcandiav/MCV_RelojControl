@@ -57,6 +57,19 @@ function clampText(value, maxLen) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
+function normalizeStatusCode(value) {
+  const raw = String(value == null ? '' : value).trim().toUpperCase();
+  if (!raw) return '';
+  if (raw === 'PROGRESS' || raw === 'IN PROGRESS' || raw === 'EN CURSO') return 'PROGRESS';
+  if (raw === 'NOTSTART' || raw === 'NOT START' || raw === 'SIN EMPEZAR') return 'NOTSTART';
+  if (raw === 'COMPLETE' || raw === 'COMPLETADO') return 'COMPLETE';
+  return raw;
+}
+
+function isInProgressStatus(value) {
+  return normalizeStatusCode(value) === 'PROGRESS';
+}
+
 /**
  * Maps a SuiteAnalytics dataset row to the internal WIP shape.
  * Column names may vary in casing; see cust.netsuite.md.
@@ -71,7 +84,10 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
 
   // Bulk real: usar solo columnas del dataset (sin lookups record/v1 por fila).
   const workorderId = coalesce(row && row.workorder, row && row.manufacturingworkorder);
-  const otFromDataset = getFieldCaseInsensitive(row, 'OT_NUMBER');
+  const otFromDataset = coalesce(
+    getFieldCaseInsensitive(row, 'OT_NUMBER'),
+    getFieldCaseInsensitive(row, 'Orden de trabajo')
+  );
   let ot_number = clampText(otFromDataset ?? '', 64);
   const digits = ot_number.replace(/[^0-9]/g, '');
   if (digits && !/^OT/i.test(ot_number)) {
@@ -81,24 +97,45 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   }
 
   const resourceFromDataset = getFieldCaseInsensitive(row, 'RESOURCE_CODE');
+  const resourceFromSearch = getFieldCaseInsensitive(row, 'Centro de trabajo de fabricación');
   const workcenterId = coalesce(row && row.manufacturingworkcenter, row && row.workcenter);
 
-  let resource_code = String(resourceFromDataset ?? '').trim();
+  let resource_code = String(coalesce(resourceFromDataset, resourceFromSearch) ?? '').trim();
   resource_code = clampText(String(resource_code || workcenterId || '').toUpperCase(), 64);
 
   const operation_name = clampText(
-    coalesce(getFieldCaseInsensitive(row, 'OPERATION_NAME'), row && row.operation_name) ??
+    coalesce(
+      getFieldCaseInsensitive(row, 'OPERATION_NAME'),
+      getFieldCaseInsensitive(row, 'Nombre de la operación'),
+      row && row.operation_name
+    ) ??
       `NS OP ${netsuite_operation_id || ''}`,
     255
   );
 
   const operation_sequence = toIntOrNull(
-    coalesce(getFieldCaseInsensitive(row, 'OPERATION_SEQUENCE'), row && row.operationsequence)
+    coalesce(
+      getFieldCaseInsensitive(row, 'OPERATION_SEQUENCE'),
+      getFieldCaseInsensitive(row, 'Secuencia de operaciones'),
+      row && row.operationsequence
+    )
   );
 
-  const planned_setup = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_MONTAJE_MIN'), row && row.setuptime);
-  const planned_op_unit = coalesce(getFieldCaseInsensitive(row, 'TIEMPO_OPERACION_MIN_UNIT'), row && row.runrate);
-  const planned_quantity = coalesce(getFieldCaseInsensitive(row, 'PLANNED_QUANTITY'), row && row.inputquantity);
+  const planned_setup = coalesce(
+    getFieldCaseInsensitive(row, 'TIEMPO_MONTAJE_MIN'),
+    getFieldCaseInsensitive(row, 'CONFIGURACION RUTA'),
+    row && row.setuptime
+  );
+  const planned_op_unit = coalesce(
+    getFieldCaseInsensitive(row, 'TIEMPO_OPERACION_MIN_UNIT'),
+    getFieldCaseInsensitive(row, 'EJECUCION RUTA'),
+    row && row.runrate
+  );
+  const planned_quantity = coalesce(
+    getFieldCaseInsensitive(row, 'PLANNED_QUANTITY'),
+    getFieldCaseInsensitive(row, 'Cantidad de entrada'),
+    row && row.inputquantity
+  );
   const actual_setup_time = coalesce(
     getFieldCaseInsensitive(row, 'ACTUAL_SETUP_TIME'),
     row && row.actualsetuptime
@@ -111,10 +148,15 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
     getFieldCaseInsensitive(row, 'COMPLETED_QUANTITY'),
     row && row.completedquantity
   );
-  const source_status = clampText(
-    coalesce(getFieldCaseInsensitive(row, 'SOURCE_STATUS'), row && row.status) ?? ''
-    , 24
+  const source_status_raw = clampText(
+    coalesce(
+      getFieldCaseInsensitive(row, 'SOURCE_STATUS'),
+      getFieldCaseInsensitive(row, 'Estado'),
+      row && row.status
+    ) ?? '',
+    24
   ) || 'WIP';
+  const source_status = normalizeStatusCode(source_status_raw) || source_status_raw;
   const areaFromDataset = clampText(
     coalesce(
       getFieldCaseInsensitive(row, 'AREA'),
@@ -140,6 +182,9 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   }
   if (!netsuite_operation_id || !ot_number || !resource_code || !operation_name || !Number.isFinite(operation_sequence)) {
     return { skip: true, reason: 'missing_required_fields' };
+  }
+  if (options.outOnlyInProgress && !isInProgressStatus(source_status)) {
+    return { skip: true, reason: 'status_filtered_out' };
   }
   if (!area || !['ME', 'ES'].includes(area)) {
     return { skip: true, reason: 'area_not_derivable' };
@@ -234,7 +279,11 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
         }));
         // #endregion
       }
-      const out = mapDatasetRowToWip(raw, resolveAreaFromResource, { workcenterAreaMap, defaultArea });
+      const out = mapDatasetRowToWip(raw, resolveAreaFromResource, {
+        workcenterAreaMap,
+        defaultArea,
+        outOnlyInProgress: Boolean(cfg.outOnlyInProgress)
+      });
       if (!out.skip) {
         mapped.push(out.row);
         if (maxRows > 0 && mapped.length >= maxRows) {

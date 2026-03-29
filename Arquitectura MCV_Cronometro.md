@@ -1,10 +1,12 @@
 # Arquitectura MCV_Cronometro
-## Versión 6.1
+## Versión 6.2
 
 ## Bitácora de cambios
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |------|-------------------|--------|---------|------------------|
+| 2026-03-28 | Se reemplaza oficialmente la fuente OUT desde Dataset a Saved Search técnica operativa, quedando el Dataset anterior como histórico/no vigente para extracción | La validación funcional cerrada en sandbox confirmó que la extracción correcta para Cronómetro se debe consumir desde Saved Search ya operativa | Cambia el contrato técnico de extracción OUT, variables de integración y documentación de mapeo de campos; se mantiene el contrato interno y el canal IN por RESTlet | Integración con NetSuite, contrato de datos OUT, documentación operativa |
+| 2026-03-27 | Se invalida la raíz `Tiempo planificado de fabricación` para el dataset OUT y se deja formalizado que el dataset oficial de lectura debe rehacerse sobre una base a nivel operación que garantice **1 operación lógica = 1 fila** | Se validó en sandbox que la saved search funcional y `manufacturingoperationtask` representan una sola fila por operación, mientras que el dataset con la raíz anterior multiplica una misma operación en varias filas físicas idénticas | Cambian y se precisan la definición del input oficial desde NetSuite, la validez del dataset actual y el criterio obligatorio de granularidad del nuevo dataset OUT | Integración con NetSuite, decisiones vigentes, estado arquitectónico |
 | 2026-03-27 | Se agrega la **regla oficial de sincronización WIP local como snapshot reconciliado**, formalizando el orden **stop global -> push -> pull -> reemplazo total de tabla WIP local**, y la materialización bulk del WIP desde NetSuite hacia MariaDB | Se cerró la definición operativa de consistencia entre Cronómetro y NetSuite para evitar reconciliaciones parciales, lentitud por procesamiento fila por fila y ambigüedad sobre la verdad vigente al cierre | Cambian y se precisan la sincronización oficial, la naturaleza de la tabla WIP local, la separación entre persistencia transaccional local y snapshot WIP sincronizado, y la estrategia técnica de carga bulk | Integración con NetSuite, modelo de datos, decisiones vigentes |
 | 2026-03-25 | Se actualiza **Cronómetro** a versión 6.0 y se formaliza el **input oficial desde NetSuite** usando el dataset técnico **`MCV_cronometro_out`** creado en sandbox, junto con el canal oficial de retorno **`MCV_Cronometro_In`** autenticado por **OAuth 2.0 M2M** | Se cerró la definición del contrato de lectura desde NetSuite, el contrato mínimo de escritura hacia NetSuite y la separación explícita entre OUT e IN según el lado del sistema | Cambian y se precisan la lectura desde NetSuite, el naming IN/OUT, el dataset de extracción, el carácter WIP del input, el retorno de 3 datos reales por operación, el destino operativo `manufacturingoperationtask` y la responsabilidad de sincronización completa del lado Cronómetro | Objetivo, principios, integración con NetSuite, modelo de datos, roles, decisiones vigentes |
 | 2026-03-24 | Se actualiza **Cronómetro** a versión 5.1 y se define que **Cronómetro es el dueño del tiempo real consolidado** por operación; NetSuite recibe únicamente ese valor acumulado mediante **overwrite** en cada cierre de turno configurable o cierre manual administrativo | Se cerró la discusión arquitectónica sobre conciliación y sincronización, evitando ambigüedad entre sistema fuente del consolidado y sistema destino publicado | Cambian las reglas de lectura desde NetSuite, escritura hacia NetSuite, cierres de turno, sincronización, consolidación y decisiones vigentes | Objetivo, principios, cierre de turno, integración con NetSuite, roles, decisiones vigentes |
@@ -60,7 +62,7 @@ La lógica del sistema debe responder al hecho de que:
 - el tiempo real relevante para el negocio se entiende a nivel de **operación**, no solo a nivel de cabecera de OT,
 - y la **conciliación de los datos reales vigentes** pertenece a Cronómetro, no a NetSuite.
 
-En esta versión queda además definido que el **input oficial proveniente desde NetSuite** debe aportar solo datos **estructurales y planificados** de la operación; Cronómetro no depende de NetSuite para cantidad completada ni para tiempo real real consolidado.
+En esta versión queda además definido que el **input oficial proveniente desde NetSuite** debe aportar solo datos **estructurales y planificados** de la operación y con granularidad correcta de una sola fila por operación lógica; Cronómetro no depende de NetSuite para cantidad completada ni para tiempo real real consolidado.
 
 ---
 
@@ -105,6 +107,8 @@ La solución se gobierna por los siguientes principios:
 16. **La sincronización oficial debe ejecutarse con cronómetros detenidos y en orden push -> pull**.
 17. **La tabla local WIP debe tratarse como snapshot reconciliado materializado desde NetSuite**.
 18. **La carga del WIP local debe optimizarse como proceso bulk y no como reconciliación fila por fila**.
+19. **La fuente oficial OUT (Saved Search) debe respetar granularidad de una sola fila por operación lógica**.
+20. **El contrato anterior por dataset queda invalidado para OUT del proyecto**.
 
 ---
 
@@ -238,7 +242,7 @@ Conjunto de datos que Cronómetro consume desde NetSuite para conocer:
 - cantidad planificada,
 - estado de la operación.
 
-En esta versión, ese input queda formalizado por el dataset `MCV_cronometro_out` del lado NetSuite, que del lado Cronómetro debe tratarse como **input oficial**.
+En esta versión, ese input queda formalizado por el dataset `MCV_cronometro_out` del lado NetSuite, que del lado Cronómetro debe tratarse como **input oficial**, pero solo si su root y joins respetan la granularidad correcta de una sola fila por operación lógica.
 
 ### Snapshot WIP reconciliado
 Universo local de trabajo que Cronómetro materializa después de una sincronización oficial exitosa, reconstruido completamente desde NetSuite una vez publicado el valor vigente de los 3 datos reales por operación.
@@ -304,6 +308,7 @@ La arquitectura debe soportar que una sola pantalla física sea usada por varios
 15. “Pausa” no equivale automáticamente a setup; la partición exacta setup/run pertenece a la lógica de Cronómetro y no debe inferirse desde NetSuite.
 16. Después de un push exitoso, Cronómetro debe reconstruir completamente su tabla local WIP desde NetSuite.
 17. La tabla local WIP no debe mezclar snapshot NetSuite con estado transaccional propio del cronómetro.
+18. El dataset OUT solo es válido si entrega una sola fila por operación lógica.
 
 ---
 
@@ -451,18 +456,22 @@ Cronómetro **no debe usar NetSuite como fuente normal** de:
 - cantidad completada,
 - cantidad operativa real.
 
-## 16.3 Dataset oficial de lectura
+## 16.3 Fuente oficial de lectura OUT (vigente)
 
 Se formaliza como contrato técnico del lado NetSuite:
 
-- **`MCV_cronometro_out`**
+- **Saved Search OUT**: `customsearch_mcv_cronometro_out` (Saved Search 823)
+- Tipo de búsqueda: `Tarea de operación de fabricación` (`manufacturingoperationtask`)
 
 ### Implementación actual en sandbox
-- dataset id: `17`
-- raíz: `Tiempo planificado de fabricación`
-- filtro: `Operación: Estado` excluyendo `Completado`
+- Search operativa: `customsearch_mcv_cronometro_out`
+- Filtro operativo: operaciones en curso para universo WIP
+- Mapeo de campos documentado en: `NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md`
 
-### Columnas confirmadas en sandbox
+### Estado del contrato anterior
+El contrato OUT basado en Dataset queda **histórico/no vigente** desde 2026-03-28.
+
+### Columnas confirmadas en el contrato objetivo
 - `NETSUITE_OPERATION_ID`
 - `OT_NUMBER`
 - `TIEMPO_MONTAJE_MIN`
@@ -628,7 +637,7 @@ El pull desde NetSuite debe tratarse como **snapshot bulk** y no como ingestión
 
 Flujo recomendado:
 
-1. lectura completa del dataset oficial OUT
+1. lectura completa de la Saved Search oficial OUT
 2. serialización temporal a CSV u otro formato de carga masiva
 3. carga masiva en MariaDB
 4. publicación del snapshot completo como nueva tabla WIP vigente
@@ -657,7 +666,8 @@ La estrategia oficial es:
 - operar Cronómetro con datos reales consolidados,
 - consumir como input el dataset técnico proveniente de NetSuite,
 - integrar NetSuite mediante cierres configurables y canales desacoplados de lectura/escritura,
-- y materializar localmente el WIP reconciliado como snapshot bulk.
+- y materializar localmente el WIP reconciliado como snapshot bulk,
+- rehacer el dataset OUT sobre un root correcto a nivel operación.
 
 ---
 
@@ -698,7 +708,8 @@ El Configurador NetSuite debe preparar, cuando corresponda:
 - permisos,
 - mapeo de OT, operaciones y tiempos,
 - batch de integración,
-- validaciones mínimas del lado NetSuite.
+- validaciones mínimas del lado NetSuite,
+- y la reconstrucción del dataset OUT sobre un root que garantice 1 operación = 1 fila.
 
 ---
 
@@ -715,7 +726,7 @@ El Configurador NetSuite debe preparar, cuando corresponda:
 9. El tiempo real de negocio se consolida por operación.
 10. Cronómetro es el dueño de los datos reales vigentes por operación.
 11. NetSuite provee datos estructurales y planificados que Cronómetro no modifica.
-12. El input oficial actual desde NetSuite es el dataset `MCV_cronometro_out`.
+12. El input oficial actual desde NetSuite es una Saved Search técnica operativa.
 13. El lado NetSuite lo trata como `out`, pero el lado Cronómetro lo trata como `in`.
 14. El canal oficial de retorno es el RESTlet `MCV_Cronometro_In`.
 15. La actualización hacia NetSuite se realiza automáticamente al cierre de turno o al cierre manual administrativo, y puede además ejecutarse en volcados manuales/programados intermedios.
@@ -732,6 +743,8 @@ El Configurador NetSuite debe preparar, cuando corresponda:
 26. Después del push exitoso, Cronómetro reconstruye completamente la tabla local WIP desde NetSuite.
 27. La tabla WIP local debe representar un snapshot reconciliado y no debe mezclar estado transaccional interno del cronómetro.
 28. La materialización local del WIP debe optimizarse como carga bulk hacia MariaDB, no como procesamiento fila por fila.
+29. La raíz `Tiempo planificado de fabricación` queda descartada para el dataset OUT del proyecto.
+30. El dataset OUT debe rehacerse sobre una base a nivel operación que garantice una sola fila por operación lógica.
 
 ---
 
@@ -762,8 +775,8 @@ A la fecha de esta versión:
 - la sincronización oficial con NetSuite ocurre al cierre de turno y al cierre manual administrativo;
 - pueden existir también volcados manuales o programados intermedios, sin romper la arquitectura, siempre por overwrite del valor vigente;
 - existen **3 cierres de turno** configurables con auto-stop obligatorio;
-- el input oficial desde NetSuite quedó formalizado mediante el dataset `MCV_cronometro_out`;
-- ese dataset se consume del lado Cronómetro como input estructural/planificado;
+- el input oficial desde NetSuite quedó formalizado mediante Saved Search técnica;
+- esa Saved Search se consume del lado Cronómetro como input estructural/planificado;
 - el retorno oficial hacia NetSuite quedó formalizado mediante el RESTlet `MCV_Cronometro_In`;
 - `completed_quantity` ya no pertenece al input NetSuite;
 - `area` se deriva desde `resource_code` fuera del Workbook;
@@ -771,6 +784,7 @@ A la fecha de esta versión:
 - el destino operativo del retorno es `manufacturingoperationtask`;
 - la sincronización completa queda gobernada del lado de Cronómetro;
 - la sincronización oficial se ejecuta en orden push -> pull con cronómetros detenidos;
-- y el WIP local se materializa como snapshot reconciliado reconstruido desde NetSuite.
+- el WIP local se materializa como snapshot reconciliado reconstruido desde NetSuite;
+- y la raíz anterior del dataset OUT quedó invalidada, quedando pendiente reconstruirlo sobre una base a nivel operación.
 
 ---

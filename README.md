@@ -1,50 +1,52 @@
-# MCV_RelojControl / Cronómetro - Sandbox de Desarrollo
+﻿# MCV_RelojControl / CronÃ³metro - Sandbox de Desarrollo
 
 > **Este repositorio es el ambiente sandbox/desarrollo.**
-> La arquitectura oficial vigente está documentada en [`Arquitectura MCV_Cronometro.md`](./Arquitectura%20MCV_Cronometro.md).
-> El handoff operativo específico de NetSuite está documentado en [`cust.netsuite.md`](./cust.netsuite.md).
-> Este README resume el entorno sandbox, la plataforma técnica y el flujo de integración actualmente aceptado.
+> La arquitectura oficial vigente estÃ¡ documentada en [`Arquitectura MCV_Cronometro.md`](./Arquitectura%20MCV_Cronometro.md).
+> El handoff operativo especÃ­fico de NetSuite estÃ¡ documentado en [`cust.netsuite.md`](./cust.netsuite.md).
+> **ActualizaciÃ³n crÃ­tica de la fuente OUT (2026-03-28):** la extracciÃ³n NetSuite -> CronÃ³metro **ya no debe implementarse con Dataset**. La decisiÃ³n tÃ©cnica y el diagnÃ³stico quedaron documentados en [`NETSUITE_OUT_SOURCE_CHANGE_2026-03-28.md`](./NETSUITE_OUT_SOURCE_CHANGE_2026-03-28.md).
+> El mapeo oficial de campos del Saved Search quedo en [`NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md`](./NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md).
+> Este README resume el entorno sandbox, la plataforma tÃ©cnica y el flujo de integraciÃ³n actualmente aceptado.
 
-> **Corrección importante para evitar ambigüedad en nuevos hilos**
+> **CorrecciÃ³n importante para evitar ambigÃ¼edad en nuevos hilos**
 >
-> El contrato correcto de retorno **Cronómetro → NetSuite** no es un único valor genérico de “tiempo consolidado”.
+> El contrato correcto de retorno **CronÃ³metro â†’ NetSuite** no es un Ãºnico valor genÃ©rico de â€œtiempo consolidadoâ€.
 >
-> El retorno correcto por operación está compuesto por **3 datos reales**:
+> El retorno correcto por operaciÃ³n estÃ¡ compuesto por **3 datos reales**:
 >
-> 1. **tiempo real de configuración**
-> 2. **tiempo real de trabajo / ejecución**
+> 1. **tiempo real de configuraciÃ³n**
+> 2. **tiempo real de trabajo / ejecuciÃ³n**
 > 3. **cantidad terminada**
 >
-> Estos 3 datos son la contraparte real de los 3 datos planificados que NetSuite entrega a Cronómetro:
+> Estos 3 datos son la contraparte real de los 3 datos planificados que NetSuite entrega a CronÃ³metro:
 >
 > 1. **tiempo de montaje planificado**
-> 2. **tiempo de ejecución planificado**
+> 2. **tiempo de ejecuciÃ³n planificado**
 > 3. **cantidad planificada**
 >
-> Si otro documento o hilo habla de “un único tiempo consolidado” como retorno mínimo, debe considerarse desactualizado o incompleto para efectos de integración.
+> Si otro documento o hilo habla de â€œun Ãºnico tiempo consolidadoâ€ como retorno mÃ­nimo, debe considerarse desactualizado o incompleto para efectos de integraciÃ³n.
 
 ---
 
-## Diferencias clave con Producción
+## Diferencias clave con ProducciÃ³n
 
-| Aspecto | Producción | Sandbox (este repo) |
+| Aspecto | ProducciÃ³n | Sandbox (este repo) |
 |---------|-----------|---------------------|
 | Base de datos | **MSSQL** (SQL Server) | **MariaDB** |
 | Despliegue frontend | IIS en Windows (`C:\inetpub\wwwroot`) | Nginx en Docker + EasyPanel |
 | Despliegue backend | Windows + PM2 | Docker + EasyPanel |
-| Configuración | Credenciales en `config.js` | Variables de entorno |
+| ConfiguraciÃ³n | Credenciales en `config.js` | Variables de entorno |
 | CI/CD | Manual (reemplazo de archivos) | GitHub -> EasyPanel rebuild |
 
 ---
 
-## Stack tecnológico
+## Stack tecnolÃ³gico
 
-| Capa | Tecnología |
+| Capa | TecnologÃ­a |
 |------|-----------|
 | Frontend | Vue.js 2, Vuetify 2, Vuex, Axios |
 | Backend | Node.js 16, Express.js, Sequelize ORM |
 | Base de datos | MariaDB (dialecto configurable via `DB_DIALECT`) |
-| Autenticación | JWT (`x-access-token`), bcrypt-nodejs |
+| AutenticaciÃ³n | JWT (`x-access-token`), bcrypt-nodejs |
 | Servidor web | Nginx (sirve la SPA compilada) |
 | Contenedores | Docker (Dockerfile en backend/ y front/) |
 | PaaS | EasyPanel (proyecto: `bignotti`) |
@@ -56,16 +58,16 @@
 
 ### Backend (`reloj-api`)
 
-| Variable | Descripción | Valor sandbox |
+| Variable | DescripciÃ³n | Valor sandbox |
 |----------|-------------|--------------|
 | `DB_HOST` | Host de la base de datos | `mariadb` |
 | `DB_PORT` | Puerto | `3306` |
 | `DB_USER` | Usuario DB | `relojcontrol` |
-| `DB_PASSWORD` | Contraseña DB | _(ver bitácora privada)_ |
+| `DB_PASSWORD` | ContraseÃ±a DB | _(ver bitÃ¡cora privada)_ |
 | `DB_NAME` | Nombre de la DB | `relojcontrol` |
 | `DB_DIALECT` | Dialecto Sequelize | `mariadb` |
-| `JWT_SECRET` | Secreto JWT | _(ver bitácora privada)_ |
-| `DELETE_SECRET` | Clave para borrado masivo | _(ver bitácora privada)_ |
+| `JWT_SECRET` | Secreto JWT | _(ver bitÃ¡cora privada)_ |
+| `DELETE_SECRET` | Clave para borrado masivo | _(ver bitÃ¡cora privada)_ |
 
 ### Frontend (`reloj-front`)
 
@@ -75,7 +77,7 @@ Configurado en `front/.env.production`:
 VUE_APP_API_URL=https://reloj-api.at-once.cl/
 ```
 
-Vue CLI lee este archivo automáticamente en `npm run build`.
+Vue CLI lee este archivo automÃ¡ticamente en `npm run build`.
 
 ---
 
@@ -91,22 +93,22 @@ Vue CLI lee este archivo automáticamente en `npm run build`.
 ### Notas operativas EasyPanel
 
 - El proxy del dominio `reloj-api.at-once.cl` debe apuntar al puerto **8000**.
-- La conexión a MariaDB desde el backend usa `DB_HOST=mariadb`, no `localhost`.
+- La conexiÃ³n a MariaDB desde el backend usa `DB_HOST=mariadb`, no `localhost`.
 
-### Build path `test` (diagnóstico NetSuite)
+### Build path `test` (diagnÃ³stico NetSuite)
 
-Se agregó `test/Dockerfile` para levantar un front de diagnóstico separado del front operativo:
+Se agregÃ³ `test/Dockerfile` para levantar un front de diagnÃ³stico separado del front operativo:
 
 - Login igual que el front normal.
 - Si `VUE_APP_BUILD_PATH=test`, al autenticar redirige a `/diagnostic`.
-- La vista `/diagnostic` permite correr `cors-ping`, `netsuite/status`, `peek-dataset`, `pull-dataset`, `push-actuals` y limpiar caché OAuth.
-  - Además incluye “listar datasets” para obtener el `dataset_id` real que usa REST (tipo `custdatasetXX`) y evitar confundirlo con IDs numéricos de pantallas UI.
+- La vista `/diagnostic` permite correr `cors-ping`, `netsuite/status`, pruebas de sincronizacion y `push-actuals`.
+- Nota: las rutas historicas `peek-dataset`, `pull-dataset` y `list-datasets` quedan deprecadas para OUT desde 2026-03-28; la fuente oficial OUT es Saved Search.
 
 Build args recomendados para ese servicio:
 
 - `VUE_APP_API_URL=https://reloj-api.at-once.cl/`
 - `VUE_APP_BUILD_PATH=test`
-- Si al crear un nuevo servicio App desde GitHub aparece `no actions found`, refrescar el token de GitHub en configuración para disparar el primer build.
+- Si al crear un nuevo servicio App desde GitHub aparece `no actions found`, refrescar el token de GitHub en configuraciÃ³n para disparar el primer build.
 - Al hacer cambios, rebuild solo del servicio afectado.
 
 ---
@@ -125,7 +127,7 @@ npm install
 npm run dev
 ```
 
-Crear archivo `.env` en la raíz de `backend/` con las variables listadas arriba. El servidor escucha en `http://localhost:8000`.
+Crear archivo `.env` en la raÃ­z de `backend/` con las variables listadas arriba. El servidor escucha en `http://localhost:8000`.
 
 ### Frontend
 
@@ -141,7 +143,7 @@ Crear `front/.env.development.local`:
 VUE_APP_API_URL=http://localhost:8000/
 ```
 
-La app estará disponible en `http://localhost:8080`.
+La app estarÃ¡ disponible en `http://localhost:8080`.
 
 ---
 
@@ -149,7 +151,7 @@ La app estará disponible en `http://localhost:8080`.
 
 ### Infraestructura
 
-- Migración MSSQL -> MariaDB: `backend/src/config/config.js` y `db.js` usan `process.env.DB_DIALECT` (default `mariadb`).
+- MigraciÃ³n MSSQL -> MariaDB: `backend/src/config/config.js` y `db.js` usan `process.env.DB_DIALECT` (default `mariadb`).
 - Todas las credenciales movidas a variables de entorno.
 - Creados `Dockerfile` para backend y frontend.
 - `front/nginx.conf` para servir la SPA con `try_files` y gzip.
@@ -158,77 +160,99 @@ La app estará disponible en `http://localhost:8080`.
 ### Backend
 
 - `initialSetup.js`: exporta funciones en vez de ejecutarlas al importar. Se ejecutan en el `.then()` de `db.sync()` para evitar race conditions.
-- Modelo `Discharged`: eliminado `indexes` explícito. Usa solo `unique: true` en el campo `key`.
-- Endpoint `GET /auth/operarios`: público, retorna lista de operarios para la pantalla de login.
-- `auth.js` -> `updateUser`: usa `instance.save()` en vez de `Model.update()` para garantizar el hasheo de contraseñas.
+- Modelo `Discharged`: eliminado `indexes` explÃ­cito. Usa solo `unique: true` en el campo `key`.
+- Endpoint `GET /auth/operarios`: pÃºblico, retorna lista de operarios para la pantalla de login.
+- `auth.js` -> `updateUser`: usa `instance.save()` en vez de `Model.update()` para garantizar el hasheo de contraseÃ±as.
 
 ### Frontend
 
 - `Login.vue`: login dual Operario / Administrador.
-- `createUser.vue`: campos explícitos de contraseña y confirmación.
-- `editButton.vue`: corrección de `data()` en Vue 2.
+- `createUser.vue`: campos explÃ­citos de contraseÃ±a y confirmaciÃ³n.
+- `editButton.vue`: correcciÃ³n de `data()` en Vue 2.
 - `store/auth.js`: evita llamada innecesaria a `/auth/me` si no hay token.
 - `store/subscriber.js`: elimina header `x-access-token` en logout en vez de dejar string `null`.
-- `App.vue`: validación null antes de leer `user.name`.
+- `App.vue`: validaciÃ³n null antes de leer `user.name`.
 
 ---
 
 ## Flujo de datos con NetSuite
 
-## Entrada: NetSuite -> Cronómetro
+## Entrada: NetSuite -> CronÃ³metro
 
-La fuente funcional validada en NetSuite es la search `710`, pero el contrato técnico de extracción quedó formalizado mediante el dataset:
+La fuente funcional validada en NetSuite sigue siendo la search `710`, pero la **fuente tÃ©cnica OUT aceptada** para CronÃ³metro cambiÃ³.
 
-- **`MCV_cronometro_out`**
+### DecisiÃ³n vigente
+La extracciÃ³n NetSuite -> CronÃ³metro **no debe implementarse con Dataset**.
 
-Ese dataset entrega a Cronómetro, por operación:
+La fuente OUT debe implementarse como una **Saved Search tÃ©cnica** basada en:
 
-- `NETSUITE_OPERATION_ID`
-- `OT_NUMBER`
-- `TIEMPO_MONTAJE_MIN`
-- `OPERATION_NAME`
-- `OPERATION_SEQUENCE`
-- `RESOURCE_CODE`
-- `PLANNED_QUANTITY`
-- `TIEMPO_OPERACION_MIN_UNIT`
-- `SOURCE_STATUS`
+- **Tipo de bÃºsqueda:** `Tarea de operaciÃ³n de fabricaciÃ³n`
+- **Record tÃ©cnico equivalente:** `manufacturingoperationtask`
+- **BÃºsqueda tÃ©cnica nueva:** `MCV_Cronometro_Out_Search`
+- **Script ID operativo:** `customsearch_mcv_cronometro_out` (Saved Search 823)
+- **Filtro operativo:** `Estado = En curso`
+
+### QuÃ© quedÃ³ descartado
+- Dataset con root `Tiempo planificado de fabricaciÃ³n`
+- Dataset con root `Ruta de fabricaciÃ³n`
+- Dataset con root `TransacciÃ³n de fabricaciÃ³n`
+
+Motivos resumidos:
+- no reprodujeron correctamente el universo real de la search `710`;
+- no respetaron de manera confiable la granularidad `1 operaciÃ³n = 1 fila`;
+- no ofrecieron un reemplazo fiel del tipo `Tarea de operaciÃ³n de fabricaciÃ³n`.
+
+### ValidaciÃ³n funcional cerrada
+La nueva fuente tÃ©cnica Saved Search, filtrada a `Estado = En curso`, devolviÃ³ **271 registros** en sandbox, alineÃ¡ndose con el subconjunto real que se usa para subir a RelojControl.
+
+### Columnas mÃ­nimas esperadas por CronÃ³metro
+La Saved Search tÃ©cnica debe entregar, por operaciÃ³n:
+
+- `Orden de trabajo`
+- `Secuencia de operaciones`
+- `Centro de trabajo de fabricaciÃ³n`
+- `CONFIGURACION RUTA`
+- `EJECUCION RUTA`
+- `Cantidad de entrada`
+- `Estado`
+- `Nombre de la operaciÃ³n`
 
 ### Significado funcional de los 3 datos planificados relevantes
 
 | NetSuite entrega | Significado |
 |---|---|
-| `TIEMPO_MONTAJE_MIN` | tiempo de montaje planificado |
-| `TIEMPO_OPERACION_MIN_UNIT` | tiempo de trabajo / ejecución planificado |
-| `PLANNED_QUANTITY` | cantidad planificada |
+| `CONFIGURACION RUTA` | tiempo de montaje planificado |
+| `EJECUCION RUTA` | tiempo de trabajo / ejecuciÃ³n planificado |
+| `Cantidad de entrada` | cantidad planificada |
 
-## Salida: Cronómetro -> NetSuite
+## Salida: CronÃ³metro -> NetSuite
 
-El contrato correcto de retorno hacia NetSuite es **por operación** y devuelve estos **3 datos reales**:
+El contrato correcto de retorno hacia NetSuite es **por operaciÃ³n** y devuelve estos **3 datos reales**:
 
-| Cronómetro devuelve | Significado |
+| CronÃ³metro devuelve | Significado |
 |---|---|
-| tiempo real de configuración | resultado real del montaje |
-| tiempo real de trabajo / ejecución | resultado real del trabajo |
+| tiempo real de configuraciÃ³n | resultado real del montaje |
+| tiempo real de trabajo / ejecuciÃ³n | resultado real del trabajo |
 | cantidad terminada | resultado real del conteo |
 
-### Reglas de integración vigentes
+### Reglas de integraciÃ³n vigentes
 
 - El retorno es por **batch** al cierre de turno o cierre manual administrativo.
-- Lógica oficial de sincronización (mar 2026): con cronómetros detenidos (auto-stop), ejecutar **push → pull**.
-- No se envían eventos `start`, `pause`, `resume`, `stop`.
-- No se envían deltas aislados.
-- NetSuite recibe el valor vigente publicado por Cronómetro.
-- El dataset `MCV_cronometro_out` es solo para **lectura**; no debe usarse para retorno.
+- LÃ³gica oficial de sincronizaciÃ³n (mar 2026): con cronÃ³metros detenidos (auto-stop), ejecutar **push â†’ pull**.
+- No se envÃ­an eventos `start`, `pause`, `resume`, `stop`.
+- No se envÃ­an deltas aislados.
+- NetSuite recibe el valor vigente publicado por CronÃ³metro.
+- La fuente OUT tÃ©cnica ahora es una **Saved Search**, no un Dataset.
 
 ### Nivel correcto del retorno
 
-La granularidad correcta del retorno es **operación**, no solo cabecera de OT.
+La granularidad correcta del retorno es **operaciÃ³n**, no solo cabecera de OT.
 
 El candidato natural en NetSuite para recibir estos 3 datos es:
 
 - `manufacturingoperationtask`
 
-Porque expone campos estándar compatibles con la lógica de negocio:
+Porque expone campos estÃ¡ndar compatibles con la lÃ³gica de negocio:
 - `actualSetupTime`
 - `actualRunTime`
 - `completedQuantity`
@@ -239,5 +263,8 @@ Porque expone campos estándar compatibles con la lógica de negocio:
 
 - Arquitectura general vigente: [`Arquitectura MCV_Cronometro.md`](./Arquitectura%20MCV_Cronometro.md)
 - Handoff operativo NetSuite: [`cust.netsuite.md`](./cust.netsuite.md)
-- Bitácora de configuración del sandbox: [`SANDBOX_CONFIG.md`](./SANDBOX_CONFIG.md)
+- Cambio de fuente OUT: [`NETSUITE_OUT_SOURCE_CHANGE_2026-03-28.md`](./NETSUITE_OUT_SOURCE_CHANGE_2026-03-28.md)
+- Campos oficiales de Saved Search OUT: [`NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md`](./NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md)
+- BitÃ¡cora de configuraciÃ³n del sandbox: [`SANDBOX_CONFIG.md`](./SANDBOX_CONFIG.md)
 - README del backend: [`backend/README.md`](./backend/README.md)
+

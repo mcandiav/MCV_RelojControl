@@ -1,5 +1,9 @@
 # Bitacora Error Sync NetSuite -> MariaDB
 
+> Estado documental (2026-03-28):
+> Esta bitacora describe el periodo de integracion OUT basado en Dataset y debe leerse como historial tecnico.
+> La fuente OUT vigente ahora es Saved Search. Ver `NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md`.
+
 ## Objetivo
 Documentar, en orden cronologico, todas las acciones realizadas para destrabar la sincronizacion desde NetSuite hacia MariaDB (tabla `work_order_operations`), incluyendo cambios de configuracion, codigo, despliegue y resultados observados.
 

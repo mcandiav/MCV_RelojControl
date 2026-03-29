@@ -21,6 +21,33 @@ Documento de handoff operativo consolidado a partir de la documentación del pro
 >
 > Cualquier referencia anterior a “un único tiempo consolidado” debe considerarse simplificación vieja o formulación incompleta. Para integración funcional correcta, otro hilo debe usar siempre este contrato de **3 datos de retorno por operación**.
 
+> **Corrección crítica de dataset OUT (2026-03-27)**
+>
+> La raíz **`Tiempo planificado de fabricación`** queda **invalidada** como base del dataset OUT de Cronómetro.
+>
+> Validación realizada:
+>
+> - la saved search funcional devuelve **1 fila por operación**;
+> - el record real **`manufacturingoperationtask`** también existe **1 vez por operación**;
+> - pero el dataset construido sobre **`Tiempo planificado de fabricación`** multiplica una misma operación lógica en varias filas físicas idénticas.
+>
+> Conclusión:
+>
+> - **`Tiempo planificado de fabricación` no debe seguir usándose como raíz del dataset oficial OUT**;
+> - el dataset OUT debe rehacerse sobre una base a nivel **operación**, alineada con la saved search funcional y con `manufacturingoperationtask`;
+> - el nombre exacto del nuevo root debe definirse y documentarse solo después de validar en NetSuite que una operación lógica aparece **una sola vez**.
+
+> **Actualización crítica de fuente OUT (2026-03-28)**
+>
+> Desde esta fecha, el contrato OUT deja de usar Dataset y pasa a Saved Search operativa.
+>
+> - Fuente OUT vigente: `customsearch_mcv_cronometro_out` (Saved Search 823)
+> - Tipo: `Tarea de operación de fabricación` (`manufacturingoperationtask`)
+> - Los `field_id` y mapeo oficial quedaron documentados en `NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md`
+> - Requerimiento adicional: en la Saved Search 823 agregar columna `AREA` derivada (`ES`/`ME`) para no depender de derivación tardía.
+>
+> Toda referencia en este archivo al dataset `MCV_cronometro_out` debe leerse como **histórica/deprecada** para OUT.
+
 Este archivo debe contener el contexto suficiente para que un hilo nuevo pueda asumir el rol **Configurador NetSuite** y continuar la configuración sin perder decisiones ya cerradas.
 
 ---
@@ -35,8 +62,8 @@ Tratar este archivo como fuente base de contexto.
 ### Decisiones ya cerradas
 1. La fuente funcional actual validada es la **saved search `710`**.
 2. **No se debe modificar la search `710`** para la integración nueva.
-3. La integración de salida NetSuite → Cronómetro debe construirse con un **dataset nuevo** basado en la lógica funcional de la `710`.
-4. El nombre del dataset nuevo es **`MCV_cronometro_out`**.
+3. La integración de salida NetSuite → Cronómetro debe consumirse desde una **Saved Search técnica operativa**.
+4. El `searchId` vigente es **`customsearch_mcv_cronometro_out`**.
 5. La separación por áreas `ME` / `ES` se obtiene desde el prefijo oficial del recurso.
 6. Existen dos tiempos por operación de origen NetSuite:
    - montaje planificado
@@ -50,24 +77,27 @@ Tratar este archivo como fuente base de contexto.
 10. La publicación hacia NetSuite se hace por **batch al cierre de turno** o **cierre manual administrativo**.
 11. El mismo contrato soporta además **volcados manuales intermedios** o programados, siempre por overwrite del valor vigente.
 12. La publicación de los 3 datos se hace por **overwrite del valor vigente**, no por eventos ni deltas.
-13. El dataset `MCV_cronometro_out` es solo de **salida desde NetSuite**; no debe usarse como mecanismo de escritura de retorno desde Cronómetro.
+13. La Saved Search OUT es solo de **salida desde NetSuite**; no debe usarse como mecanismo de escritura de retorno desde Cronómetro.
 14. La columna `area` **no se implementó dentro de Workbook** porque el editor de fórmulas no permitió derivarla desde el display value del centro de trabajo; se derivará fuera del dataset, usando `resource_code`.
 15. **No** se implementará log, staging ni custom records de integración en NetSuite en esta etapa.
 16. Toda la trazabilidad de integración queda del lado de **Cronómetro**.
 17. La intervención en NetSuite debe ser la **mínima estrictamente necesaria**.
 18. La **sincronización completa** queda a cargo de **Cronómetro**.
 19. La sincronización completa tiene dos flujos separados pero coordinados por Cronómetro:
-   - **pull** de lectura desde NetSuite usando el dataset `MCV_cronometro_out`
+   - **pull** de lectura desde NetSuite usando Saved Search OUT (`customsearch_mcv_cronometro_out`)
    - **push** de escritura hacia NetSuite usando el RESTlet `MCV_Cronometro_In`
 20. El programador no debe asumir que el mismo endpoint que recibe el batch devuelve el dataset de operaciones; la lectura y la escritura son flujos distintos.
-21. El dataset oficial OUT debe consumirse **directamente**, no se creará otro RESTlet para OUT.
+21. La Saved Search oficial OUT debe consumirse **directamente**, no se creará otro RESTlet para OUT.
 22. El RESTlet funcional de escritura quedó renombrado como **IN**.
+23. La raíz **`Tiempo planificado de fabricación`** quedó descartada para el dataset OUT por multiplicar una sola operación lógica en varias filas físicas.
+24. El nuevo dataset OUT debe rehacerse desde una base a nivel **operación** que garantice **1 operación = 1 fila**.
 
 ### Temas abiertos a cerrar en configuración
-1. confirmar si se incorpora o no el **ID interno de la OT** dentro del dataset
-2. decidir si en producción se crea un **usuario técnico dedicado** para la integración, en lugar de usar una entidad personal
-3. terminar de documentar las credenciales/secrets que guardará Cronómetro del lado aplicación
-4. validar end-to-end la autenticación M2M + llamado al RESTlet + update de `manufacturingoperationtask`
+1. definir el **nuevo root correcto** del dataset OUT
+2. confirmar si se incorpora o no el **ID interno de la OT** dentro del dataset
+3. decidir si en producción se crea un **usuario técnico dedicado** para la integración, en lugar de usar una entidad personal
+4. terminar de documentar las credenciales/secrets que guardará Cronómetro del lado aplicación
+5. validar end-to-end la autenticación M2M + llamado al RESTlet + update de `manufacturingoperationtask`
 
 ---
 
@@ -89,6 +119,8 @@ Se confirmó contra:
 - ejecución directa vía herramienta NetSuite usando `searchId = "710"`
 
 La `710` debe tratarse como **referencia funcional** y **no debe tocarse** para la integración nueva.
+
+Además, se validó que una operación testigo que en la saved search aparece una sola vez también existe una sola vez en `manufacturingoperationtask`. Por lo tanto, cualquier multiplicación posterior debe tratarse como un problema de construcción del dataset y no de la fuente funcional base.
 
 ---
 
@@ -158,27 +190,26 @@ Para esta cuenta sandbox se validó:
 
 > Cómo obtenerlo de forma robusta: listar datasets por REST `GET /services/rest/query/v1/dataset/` o desde Cronómetro `GET /chronometer/netsuite/list-datasets` (admin/JWT) y tomar el item con `name: MCV_cronometro_out`.
 
-### Registro raíz finalmente utilizado
+### Raíz anteriormente usada y ahora descartada
 Después de probar alternativas como:
 - `Ruta de fabricación`
 - `Transacción de fabricación`
 
-se optó por trabajar sobre:
+se había optado por trabajar sobre:
 - **`Tiempo planificado de fabricación`**
 
-### Motivo del cambio de raíz
-`Ruta de fabricación` multiplicaba filas por estructura de ruta y no servía bien para representar una fila operativa limpia por operación.
+### Estado actual de esa decisión
+Esa elección queda **descartada**.
 
-`Tiempo planificado de fabricación` permitió exponer mejor:
-- operación
-- secuencia
-- centro de trabajo
-- tiempo de configuración planificado
-- velocidad de ejecución planificada
-- cantidad de entrada
-- estado
+### Motivo del descarte
+La validación posterior mostró que:
+- una misma operación lógica puede aparecer varias veces en el dataset;
+- la saved search funcional devuelve una sola fila para esa operación;
+- `manufacturingoperationtask` también existe una sola vez para esa operación;
+- por lo tanto, la raíz `Tiempo planificado de fabricación` no garantiza la granularidad requerida para Cronómetro.
 
-Y además permitió aplicar correctamente filtro para excluir trabajos terminados.
+### Regla vigente
+El dataset oficial OUT debe rehacerse sobre una base a nivel **operación**, no sobre una base que multiplique una operación lógica en varias filas físicas.
 
 ---
 
@@ -221,6 +252,7 @@ Las columnas visibles y ya normalizadas en el dataset quedaron así:
 - `OT_NUMBER` quedó como número visible de la OT.
 - `TIEMPO_MONTAJE_MIN` corresponde al planificado de montaje.
 - `TIEMPO_OPERACION_MIN_UNIT` corresponde al planificado de ejecución por unidad.
+- La presencia de estas columnas no vuelve válida la raíz actual si la granularidad del dataset sigue siendo incorrecta.
 
 ---
 
@@ -263,6 +295,13 @@ Regla de derivación:
 - `ME...` → `ME`
 - `ES...` → `ES`
 
+### `random_id`
+Debe considerarse descartado como experimento previo y **no debe ser usado** para justificar unicidad del dataset.
+
+Motivo:
+- no resolvía la causa del problema;
+- solo hacía visible que la raíz anterior ya estaba expandiendo una operación lógica en varias filas físicas.
+
 ---
 
 ## Dataset oficial de extracción: `MCV_cronometro_out`
@@ -276,21 +315,28 @@ Ser la única fuente técnica oficial para entregar a Cronómetro las operacione
 - no orientado a uso humano manual
 - estable y controlado
 
-### Columnas mínimas del dataset según implementación actual
+### Condición obligatoria de validez
+El dataset oficial OUT debe entregar **una sola fila por operación lógica**.
 
-| Campo dataset | Estado actual | Observación |
+Regla práctica de validación:
+- una misma operación validada en saved search y en `manufacturingoperationtask` no puede aparecer multiplicada en varias filas idénticas dentro del dataset;
+- si una misma combinación funcional aparece repetida, la raíz o los joins del dataset deben considerarse incorrectos.
+
+### Columnas mínimas del dataset según implementación objetivo
+
+| Campo dataset | Estado objetivo | Observación |
 |---|---|---|
-| `NETSUITE_OPERATION_ID` | implementado | clave técnica principal |
-| `OT_NUMBER` | implementado | número visible de OT |
-| `TIEMPO_MONTAJE_MIN` | implementado | planificado |
-| `OPERATION_NAME` | implementado | texto visible |
-| `OPERATION_SEQUENCE` | implementado | secuencia |
-| `RESOURCE_CODE` | implementado | recurso visible |
-| `PLANNED_QUANTITY` | implementado | cantidad planificada |
-| `TIEMPO_OPERACION_MIN_UNIT` | implementado | ejecución planificada por unidad |
-| `SOURCE_STATUS` | implementado | filtrado para excluir completado |
-| `area` | pendiente / derivado fuera | derivar desde `RESOURCE_CODE` |
-| `netsuite_work_order_id` | pendiente | aún no expuesto en el dataset |
+| `NETSUITE_OPERATION_ID` | requerido | clave técnica principal |
+| `OT_NUMBER` | requerido | número visible de OT |
+| `TIEMPO_MONTAJE_MIN` | requerido | planificado |
+| `OPERATION_NAME` | requerido | texto visible |
+| `OPERATION_SEQUENCE` | requerido | secuencia |
+| `RESOURCE_CODE` | requerido | recurso visible |
+| `PLANNED_QUANTITY` | requerido | cantidad planificada |
+| `TIEMPO_OPERACION_MIN_UNIT` | requerido | ejecución planificada por unidad |
+| `SOURCE_STATUS` | requerido | filtrado para excluir completado |
+| `area` | derivado fuera | derivar desde `RESOURCE_CODE` |
+| `netsuite_work_order_id` | pendiente | opcional si se expone correctamente |
 
 ### Campo que no debe formar parte del dataset de extracción
 - `completed_quantity`
@@ -355,6 +401,7 @@ Observación:
 - `PLANNED_QUANTITY > 0`
 - `OPERATION_NAME` no vacío
 - `SOURCE_STATUS != Completado`
+- una operación lógica no puede aparecer repetida por un problema de root o joins
 
 ---
 
@@ -365,6 +412,9 @@ Observación:
 
 ### Clave funcional de respaldo
 - `OT_NUMBER + OPERATION_SEQUENCE + RESOURCE_CODE`
+
+### Regla de unicidad esperada
+El dataset OUT debe ser compatible con una unicidad efectiva por operación lógica. Si `NETSUITE_OPERATION_ID` o la clave funcional de respaldo aparecen repetidos sin diferencia funcional real, el dataset debe considerarse inválido.
 
 ### Pendiente
 - agregar `netsuite_work_order_id` si se logra exponer en el dataset
@@ -513,10 +563,17 @@ Ejemplo validado:
 - `workOrder = 57792`
 - `title = CHAVETERO`
 
+### Confirmación adicional sobre granularidad
+También se validó un caso testigo donde:
+- la saved search funcional devolvía una sola fila por operación;
+- `manufacturingoperationtask` también existía una sola vez para esa operación;
+- pero el dataset basado en la raíz descartada la multiplicaba en varias filas físicas.
+
 ### Conclusión
 - `manufacturingoperationtask` es el destino **operativo correcto**.
 - No hace falta inventar un custom record para la recepción principal.
 - No conviene usar `workorder` como destino operativo principal de estos 3 datos.
+- El dataset OUT futuro debe alinearse con esta misma granularidad operativa.
 
 ### Campo adicional detectado en workorder
 Se identificó el campo custom existente:
@@ -732,6 +789,7 @@ Reglas:
 - Cronómetro debe usar este dataset como fuente oficial de entrada
 - NO crear otro canal OUT
 - NO reutilizar el RESTlet IN para la lectura
+- El dataset OUT debe entregar una sola fila por operación lógica
 
 Resultado esperado del pull:
 - upsert interno de operaciones OT en Cronómetro
@@ -872,6 +930,7 @@ C. Push del batch IN
 - no sumar deltas en NetSuite
 - no asumir que completed_quantity viene desde NetSuite
 - no mover la lógica de consolidación a NetSuite
+- no aceptar un dataset OUT que multiplique una operación lógica en varias filas físicas
 ```
 
 ---
@@ -913,16 +972,19 @@ La `private_key` **no** se sube a NetSuite.
 12. El naming funcional correcto es:
    - OUT = dataset `MCV_cronometro_out`
    - IN = RESTlet `MCV_Cronometro_In`
+13. La raíz `Tiempo planificado de fabricación` quedó invalidada como base del dataset OUT.
+14. La saved search funcional y `manufacturingoperationtask` sí comparten granularidad de una sola fila por operación.
 
 ---
 
 ## Decisiones pendientes del configurador NetSuite
 
-1. confirmar si se agrega `netsuite_work_order_id` al dataset
-2. definir usuario técnico dedicado para producción
-3. probar end-to-end el M2M + token + RESTlet + actualización real
-4. cerrar la documentación exacta del token endpoint y parámetros JWT del lado Cronómetro
-5. ~~documentar definitivamente el mecanismo exacto que usará Cronómetro para leer `MCV_cronometro_out`~~ **Cerrado (mar 2026):** Cronómetro usa la API REST de ejecución de datasets de NetSuite: `GET https://{accountId}.suitetalk.api.netsuite.com/services/rest/query/v1/dataset/{datasetId}/result` con paginación `limit`/`offset`, Bearer token OAuth 2.0 M2M. Referencia Oracle: [Working with SuiteAnalytics Datasets in REST Web Services](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156577938018.html). En sandbox `datasetId` (REST) = **`custdataset17`** (obtenido por listado REST de datasets). Queda validar end-to-end con credenciales reales y permisos de rol.
+1. definir el **nuevo root correcto** del dataset OUT
+2. confirmar si se agrega `netsuite_work_order_id` al dataset
+3. definir usuario técnico dedicado para producción
+4. probar end-to-end el M2M + token + RESTlet + actualización real
+5. cerrar la documentación exacta del token endpoint y parámetros JWT del lado Cronómetro
+6. ~~documentar definitivamente el mecanismo exacto que usará Cronómetro para leer `MCV_cronometro_out`~~ **Cerrado (mar 2026):** Cronómetro usa la API REST de ejecución de datasets de NetSuite: `GET https://{accountId}.suitetalk.api.netsuite.com/services/rest/query/v1/dataset/{datasetId}/result` con paginación `limit`/`offset`, Bearer token OAuth 2.0 M2M. Referencia Oracle: [Working with SuiteAnalytics Datasets in REST Web Services](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156577938018.html). En sandbox `datasetId` (REST) = **`custdataset17`** (obtenido por listado REST de datasets). Queda validar end-to-end con credenciales reales y permisos de rol.
 
 ---
 
@@ -933,7 +995,7 @@ La `private_key` **no** se sube a NetSuite.
 - la `710` no se toca
 - dataset oficial nuevo de extracción: `MCV_cronometro_out`
 - dataset id en sandbox (REST): `custdataset17`
-- registro raíz usado en sandbox: `Tiempo planificado de fabricación`
+- la raíz anterior `Tiempo planificado de fabricación` quedó descartada
 - filtro aplicado: excluir `Completado`
 - dos tiempos planificados por operación:
   - montaje
@@ -959,6 +1021,7 @@ La `private_key` **no** se sube a NetSuite.
 - no habrá log/staging persistente en NetSuite en esta etapa
 
 ### Pendiente
+- definir el nuevo root del dataset OUT
 - `netsuite_work_order_id`
 - usuario técnico dedicado para producción
 - prueba end-to-end con llamada real desde Cronómetro
@@ -978,14 +1041,15 @@ La `private_key` **no** se sube a NetSuite.
 - lectura y escritura como flujos separados
 - OUT directo por dataset
 - IN por RESTlet
+- la raíz `Tiempo planificado de fabricación` no debe reutilizarse
 
 ---
 
 ## Conclusiones operativas
 
 1. La `710` queda como referencia funcional validada, pero no como contrato técnico final.
-2. El contrato técnico de extracción es el dataset **`MCV_cronometro_out`** ya creado en sandbox.
-3. La carga de entrada se basa en operaciones de OT con recurso, tiempos planificados, cantidades planificadas y estado.
+2. El contrato técnico de extracción sigue siendo el dataset **`MCV_cronometro_out`**, pero su raíz anterior quedó descartada.
+3. La carga de entrada debe basarse en operaciones de OT con recurso, tiempos planificados, cantidades planificadas y estado, con **una sola fila por operación lógica**.
 4. La división entre áreas `ME` y `ES` se obtiene oficialmente desde el prefijo del recurso, fuera del Workbook.
 5. Los datos planificados requeridos por operación son:
    - montaje
@@ -999,4 +1063,4 @@ La `private_key` **no** se sube a NetSuite.
 8. La sincronización completa debe implementarse en Cronómetro como:
    - **pull** del dataset `MCV_cronometro_out` (id REST `custdataset17` en sandbox)
    - **push** del batch de 3 datos reales al RESTlet `MCV_Cronometro_In`
-9. El punto más importante pendiente ya no es la arquitectura general, sino dejar completamente operativa la lectura del dataset y probar el flujo end-to-end desde Cronómetro.
+9. El punto más importante pendiente ya no es la arquitectura general, sino rehacer el dataset OUT sobre un root que respete la granularidad correcta y luego probar el flujo end-to-end desde Cronómetro.

@@ -161,7 +161,7 @@ exports.pullDataset = async function pullDataset(req, res) {
     // #endregion
     if (rows.length === 0) {
       return res.status(200).json({
-        message: 'Dataset sin filas válidas tras mapeo.',
+        message: 'OUT sin filas válidas tras mapeo.',
         imported: 0,
         totalRows
       });
@@ -175,8 +175,8 @@ exports.pullDataset = async function pullDataset(req, res) {
 
     return res.status(200).json({
       message: replace
-        ? 'Pull MCV_cronometro_out aplicado (replace total de work_order_operations).'
-        : 'Pull MCV_cronometro_out aplicado (upsert). completed_quantity local no se sobrescribe en duplicados.',
+        ? 'Pull OUT aplicado (replace total de work_order_operations).'
+        : 'Pull OUT aplicado (upsert). completed_quantity local no se sobrescribe en duplicados.',
       imported: result.imported,
       totalRows,
       maxRowsApplied: fetchOptions.maxRows || null

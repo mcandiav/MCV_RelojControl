@@ -37,6 +37,10 @@ function getNetsuiteConfig() {
 
   const datasetId = process.env.NETSUITE_DATASET_OUT_ID || '17';
   const datasetResultPath = `/services/rest/query/v1/dataset/${datasetId}/result`;
+  const outSourceType = String(process.env.NETSUITE_OUT_SOURCE_TYPE || 'savedsearch').trim().toLowerCase();
+  const outSavedSearchId = String(process.env.NETSUITE_OUT_SAVEDSEARCH_ID || 'customsearch_mcv_cronometro_out').trim();
+  const outOnlyInProgressRaw = String(process.env.NETSUITE_OUT_ONLY_IN_PROGRESS || '').trim().toLowerCase();
+  const outOnlyInProgress = outOnlyInProgressRaw ? outOnlyInProgressRaw === 'true' : true;
 
   return {
     clientId: process.env.NETSUITE_CLIENT_ID || '',
@@ -47,6 +51,9 @@ function getNetsuiteConfig() {
     suitetalkHost: host,
     datasetId,
     datasetResultUrl: host ? `https://${host}${datasetResultPath}` : '',
+    outSourceType,
+    outSavedSearchId,
+    outOnlyInProgress,
     restletInUrl: process.env.NETSUITE_RESTLET_IN_URL || '',
     scope: parseScopeList(process.env.NETSUITE_OAUTH_SCOPE)
   };
@@ -75,6 +82,9 @@ function getNetsuiteConfigStatus() {
     dataset_result_url: c.datasetResultUrl || null,
     restlet_in_url_set: Boolean(c.restletInUrl),
     dataset_id: c.datasetId || null,
+    out_source_type: c.outSourceType || null,
+    out_savedsearch_id: c.outSavedSearchId || null,
+    out_only_in_progress: Boolean(c.outOnlyInProgress),
     oauth_scope: c.scope,
     ready: isNetsuiteConfigured()
   };
