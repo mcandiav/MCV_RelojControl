@@ -140,8 +140,10 @@
                   <th>Estado</th>
                   <th>Tiempo planificado montaje (min)</th>
                   <th>Tiempo en uso</th>
+                  <th>Tiempo real montaje (min)</th>
                   <th>Tiempo planificado ejecucion (min)</th>
                   <th>Tiempo en uso</th>
+                  <th>Tiempo real ejecucion (min)</th>
                   <th>Cantidad planificada</th>
                   <th>Cant. terminada</th>
                       <th>Area</th>
@@ -157,8 +159,10 @@
                   <td>{{ op.status || 'STOPPED' }}</td>
                   <td>{{ op.planned_setup_minutes != null ? op.planned_setup_minutes : '-' }}</td>
                   <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
+                  <td>{{ op.actual_setup_time != null ? op.actual_setup_time : '-' }}</td>
                   <td>{{ op.planned_operation_minutes != null ? op.planned_operation_minutes : '-' }}</td>
                   <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
+                  <td>{{ op.actual_run_time != null ? op.actual_run_time : '-' }}</td>
                   <td>{{ op.planned_quantity != null ? op.planned_quantity : '-' }}</td>
                   <td>{{ op.completed_quantity != null ? op.completed_quantity : '-' }}</td>
                   <td>{{ op.area }}</td>
