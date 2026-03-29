@@ -343,6 +343,63 @@
                 <v-alert v-if="nsLastResult" type="info" dense outlined class="mt-3 mb-0 text-left">
                   <pre class="ns-json">{{ nsLastResult }}</pre>
                 </v-alert>
+                <v-divider class="my-4" />
+                <div class="d-flex flex-wrap align-center justify-space-between mb-2" style="gap:8px">
+                  <div class="text-subtitle-2 font-weight-bold">WIP sincronizado en MariaDB (NetSuite OUT)</div>
+                  <v-btn small outlined color="primary" :loading="loadingNsWipRows" @click="loadNsWipRows">
+                    Refrescar listado
+                  </v-btn>
+                </div>
+                <v-text-field
+                  v-model.trim="nsWipFilter"
+                  dense
+                  outlined
+                  hide-details
+                  class="mb-2"
+                  label="Filtrar (OT, operación, recurso, área o status)"
+                />
+                <div class="text-caption grey--text mb-2">
+                  Mostrando {{ filteredNsWipRows.length }} de {{ nsWipRows.length }} filas.
+                </div>
+                <v-alert v-if="nsWipRowsError" type="error" dense outlined class="mb-2">{{ nsWipRowsError }}</v-alert>
+                <div class="ns-wip-table-wrap">
+                  <v-simple-table dense class="compact-table ns-wip-table">
+                    <thead>
+                      <tr>
+                        <th>OT</th>
+                        <th>Seq</th>
+                        <th>Operacion</th>
+                        <th>Recurso</th>
+                        <th>Area</th>
+                        <th>Plan setup</th>
+                        <th>Plan run</th>
+                        <th>Plan qty</th>
+                        <th>Real setup</th>
+                        <th>Real run</th>
+                        <th>Comp qty</th>
+                        <th>NS Op ID</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in filteredNsWipRows" :key="'nswip-' + row.id">
+                        <td>{{ row.ot_number }}</td>
+                        <td>{{ row.operation_sequence }}</td>
+                        <td>{{ row.operation_name }}</td>
+                        <td>{{ row.resource_code }}</td>
+                        <td>{{ row.area }}</td>
+                        <td>{{ row.planned_setup_minutes != null ? row.planned_setup_minutes : '-' }}</td>
+                        <td>{{ row.planned_operation_minutes != null ? row.planned_operation_minutes : '-' }}</td>
+                        <td>{{ row.planned_quantity != null ? row.planned_quantity : '-' }}</td>
+                        <td>{{ row.actual_setup_time != null ? row.actual_setup_time : '-' }}</td>
+                        <td>{{ row.actual_run_time != null ? row.actual_run_time : '-' }}</td>
+                        <td>{{ row.completed_quantity != null ? row.completed_quantity : '-' }}</td>
+                        <td>{{ row.netsuite_operation_id || '-' }}</td>
+                        <td>{{ row.source_status || '-' }}</td>
+                      </tr>
+                    </tbody>
+                  </v-simple-table>
+                </div>
               </v-card>
             </v-col>
           </v-row>
@@ -462,8 +519,12 @@ export default {
       loadingNsPullReplace: false,
       loadingNsPullReplace500: false,
       loadingNsPush: false,
+      loadingNsWipRows: false,
       nsStatus: null,
       nsLastResult: '',
+      nsWipRows: [],
+      nsWipRowsError: '',
+      nsWipFilter: '',
       snackbar: false,
       snackbarText: '',
       snackbarColor: 'success'
@@ -499,6 +560,7 @@ export default {
         if (val) {
           this.loadAdminCatalogs()
           this.loadShiftSchedule()
+          this.loadNsWipRows()
         }
       }
     },
@@ -597,6 +659,25 @@ export default {
       if (/localhost|127\.0\.0\.1/.test(b)) return true
       if (b.startsWith('http://')) return true
       return false
+    },
+    filteredNsWipRows() {
+      const rows = Array.isArray(this.nsWipRows) ? this.nsWipRows : []
+      const q = String(this.nsWipFilter || '').trim().toLowerCase()
+      if (!q) return rows
+      return rows.filter((r) => {
+        const bag = [
+          r.ot_number,
+          r.operation_name,
+          r.resource_code,
+          r.area,
+          r.source_status,
+          r.netsuite_operation_id,
+          r.operation_sequence
+        ]
+          .map((v) => String(v == null ? '' : v).toLowerCase())
+          .join(' | ')
+        return bag.includes(q)
+      })
     }
   },
   methods: {
@@ -1059,6 +1140,23 @@ export default {
         this.loadingNsStatus = false
       }
     },
+    async loadNsWipRows() {
+      if (!this.isAdmin) return
+      this.loadingNsWipRows = true
+      this.nsWipRowsError = ''
+      try {
+        const res = await axios.get('/chronometer/operations?status=ALL&limit=500', { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
+        const ops = (res.data && Array.isArray(res.data.operations)) ? res.data.operations : []
+        this.nsWipRows = ops
+      } catch (error) {
+        this.nsWipRows = []
+        this.nsWipRowsError =
+          (error.response && error.response.data && error.response.data.message) ||
+          'No se pudo cargar el listado WIP desde MariaDB.'
+      } finally {
+        this.loadingNsWipRows = false
+      }
+    },
     async netsuitePull() {
       this.loadingNsPull = true
       this.nsLastResult = ''
@@ -1066,6 +1164,7 @@ export default {
         const res = await axios.post('/chronometer/netsuite/pull-dataset', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
         this.nsLastResult = JSON.stringify(res.data, null, 2)
         this.showSnack('Pull NetSuite completado.')
+        await this.loadNsWipRows()
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
       } catch (error) {
@@ -1088,6 +1187,7 @@ export default {
         const res = await axios.post('/chronometer/netsuite/pull-dataset?replace=1', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
         this.nsLastResult = JSON.stringify(res.data, null, 2)
         this.showSnack('Pull + Replace completado.')
+        await this.loadNsWipRows()
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
       } catch (error) {
@@ -1110,6 +1210,7 @@ export default {
         const res = await axios.post('/chronometer/netsuite/pull-dataset?replace=1&maxRows=500', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
         this.nsLastResult = JSON.stringify(res.data, null, 2)
         this.showSnack('Pull + Replace 500 completado.')
+        await this.loadNsWipRows()
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
       } catch (error) {
@@ -1391,5 +1492,18 @@ export default {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.ns-wip-table-wrap {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.ns-wip-table table th,
+.ns-wip-table table td {
+  font-size: 11px !important;
+  white-space: nowrap;
 }
 </style>
