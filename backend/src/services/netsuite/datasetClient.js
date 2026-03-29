@@ -260,7 +260,8 @@ async function fetchSuiteQlPage(suiteqlUrl, token, query, limit, offset) {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        Prefer: 'transient'
       },
       timeout: 120000
     }
