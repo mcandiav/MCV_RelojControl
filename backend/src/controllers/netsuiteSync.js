@@ -255,7 +255,7 @@ exports.pushActuals = async function pushActuals(req, res) {
     );
     if (items.length === 0) {
       return res.status(400).json({
-        message: 'No hay operaciones con netsuite_operation_id para publicar.'
+        message: 'No hay operaciones con tiempo cronometrado para publicar en NetSuite.'
       });
     }
 

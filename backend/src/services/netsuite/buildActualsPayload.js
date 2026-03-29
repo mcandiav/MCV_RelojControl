@@ -18,16 +18,28 @@ async function buildActualsPayload({ operationIds } = {}) {
   }
 
   const ops = await WorkOrderOperation.findAll({ where });
+  const opIds = ops.map((op) => op.id).filter((id) => Number.isInteger(id));
+  const eventsByOp = new Map();
+
+  if (opIds.length > 0) {
+    const allEvents = await TimerEvent.findAll({
+      where: { work_order_operation_id: { [Op.in]: opIds } },
+      order: [['work_order_operation_id', 'ASC'], ['event_at', 'ASC']]
+    });
+    for (const ev of allEvents) {
+      const key = ev.work_order_operation_id;
+      if (!eventsByOp.has(key)) eventsByOp.set(key, []);
+      eventsByOp.get(key).push(ev);
+    }
+  }
+
   const items = [];
 
   for (const op of ops) {
     const nsId = Number(op.netsuite_operation_id);
     if (!Number.isFinite(nsId)) continue;
 
-    const events = await TimerEvent.findAll({
-      where: { work_order_operation_id: op.id },
-      order: [['event_at', 'ASC']]
-    });
+    const events = eventsByOp.get(op.id) || [];
     const totals = computeTotalsFromEvents(events);
     const base_run_time =
       op.actual_run_time != null && Number.isFinite(Number(op.actual_run_time))
@@ -43,6 +55,11 @@ async function buildActualsPayload({ operationIds } = {}) {
     const cq = op.completed_quantity;
     const completed_quantity =
       cq != null && cq !== '' && Number.isFinite(Number(cq)) ? Math.max(0, Math.floor(Number(cq))) : 0;
+
+    // Regla definitiva: solo enviar operaciones con tiempo real cronometrado.
+    if ((actual_run_time + actual_setup_time) <= 0) {
+      continue;
+    }
 
     items.push({
       netsuite_operation_id: nsId,
