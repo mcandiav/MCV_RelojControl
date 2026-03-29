@@ -331,14 +331,8 @@
                   </tbody>
                 </v-simple-table>
                 <div class="d-flex flex-wrap" style="gap: 8px">
-                  <v-btn color="primary" :loading="loadingNsPull" :disabled="!isAdmin" @click="netsuitePull">
-                    Traer operaciones (pull)
-                  </v-btn>
                   <v-btn color="primary" outlined :loading="loadingNsPullReplace" :disabled="!isAdmin" @click="netsuitePullReplace">
                     Pull + Replace WIP
-                  </v-btn>
-                  <v-btn color="primary" outlined :loading="loadingNsPullReplace500" :disabled="!isAdmin" @click="netsuitePullReplace500">
-                    Pull + Replace 500
                   </v-btn>
                   <v-btn color="secondary" :loading="loadingNsPush" :disabled="!isAdmin" @click="netsuitePush">
                     Publicar a NetSuite (push)
