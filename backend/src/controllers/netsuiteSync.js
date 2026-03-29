@@ -283,6 +283,10 @@ exports.pushActuals = async function pushActuals(req, res) {
   const operationIds = Array.isArray(rawIds)
     ? rawIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
     : null;
+  const dryRun =
+    String(req.query.dryRun || req.query.dry_run || '').trim() === '1' ||
+    String(req.query.dryRun || req.query.dry_run || '').toLowerCase() === 'true' ||
+    Boolean(req.body && req.body.dry_run === true);
 
   try {
     const { items } = await buildActualsPayload(
@@ -291,6 +295,21 @@ exports.pushActuals = async function pushActuals(req, res) {
     if (items.length === 0) {
       return res.status(400).json({
         message: 'No hay operaciones con tiempo cronometrado para publicar en NetSuite.'
+      });
+    }
+
+    if (dryRun) {
+      const payloadPreview = items.map((it) => ({
+        operation_id: it.operation_id,
+        netsuite_operation_id: it.netsuite_operation_id,
+        actual_setup_time: it.actual_setup_time,
+        actual_run_time: it.actual_run_time,
+        completed_quantity: it.completed_quantity
+      }));
+      return res.status(200).json({
+        message: 'Dry run OK: payload preparado, sin envío a NetSuite.',
+        itemCount: payloadPreview.length,
+        items: payloadPreview
       });
     }
 

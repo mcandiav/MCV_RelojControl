@@ -343,6 +343,9 @@
                   <v-btn color="secondary" :loading="loadingNsPush" :disabled="!isAdmin" @click="netsuitePush">
                     Publicar a NetSuite (push)
                   </v-btn>
+                  <v-btn color="secondary" outlined :loading="loadingNsPushDryRun" :disabled="!isAdmin" @click="netsuitePushDryRun">
+                    Dry run push
+                  </v-btn>
                 </div>
                 <v-alert v-if="nsLastResult" type="info" dense outlined class="mt-3 mb-0 text-left">
                   <pre class="ns-json">{{ nsLastResult }}</pre>
@@ -523,6 +526,7 @@ export default {
       loadingNsPullReplace: false,
       loadingNsPullReplace500: false,
       loadingNsPush: false,
+      loadingNsPushDryRun: false,
       loadingNsWipRows: false,
       nsStatus: null,
       nsLastResult: '',
@@ -1242,6 +1246,23 @@ export default {
         this.showSnack(msg, 'error')
       } finally {
         this.loadingNsPush = false
+      }
+    },
+    async netsuitePushDryRun() {
+      this.loadingNsPushDryRun = true
+      this.nsLastResult = ''
+      try {
+        const res = await axios.post('/chronometer/netsuite/push-actuals?dryRun=1', {}, { timeout: NETSUITE_AXIOS_TIMEOUT_MS })
+        this.nsLastResult = JSON.stringify(res.data, null, 2)
+        this.showSnack('Dry run generado (sin enviar a NetSuite).')
+      } catch (error) {
+        const d = error.response && error.response.data
+        const fallback = !error.response ? this.netsuiteAxiosErrorPayload(error) : { message: error.message }
+        this.nsLastResult = JSON.stringify(d || fallback, null, 2)
+        const msg = (d && d.message) || (fallback && fallback.message) || 'Error en dry run.'
+        this.showSnack(msg, 'error')
+      } finally {
+        this.loadingNsPushDryRun = false
       }
     }
   }
