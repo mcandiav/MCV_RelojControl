@@ -55,13 +55,26 @@ async function buildActualsPayload({ operationIds } = {}) {
     const cq = op.completed_quantity;
     const completed_quantity =
       cq != null && cq !== '' && Number.isFinite(Number(cq)) ? Math.max(0, Math.floor(Number(cq))) : 0;
+    const lastPushedRun =
+      op.last_pushed_actual_run_time != null && Number.isFinite(Number(op.last_pushed_actual_run_time))
+        ? Math.max(0, Math.floor(Number(op.last_pushed_actual_run_time)))
+        : base_run_time;
+    const lastPushedQty =
+      op.last_pushed_completed_quantity != null && Number.isFinite(Number(op.last_pushed_completed_quantity))
+        ? Math.max(0, Math.floor(Number(op.last_pushed_completed_quantity)))
+        : completed_quantity;
 
     // Regla definitiva: solo enviar operaciones con tiempo real cronometrado.
     if ((actual_run_time + actual_setup_time) <= 0) {
       continue;
     }
+    // Solo enviar cambios pendientes reales contra el último push exitoso.
+    if (actual_run_time <= lastPushedRun && completed_quantity <= lastPushedQty) {
+      continue;
+    }
 
     items.push({
+      operation_id: op.id,
       netsuite_operation_id: nsId,
       actual_setup_time,
       actual_run_time,

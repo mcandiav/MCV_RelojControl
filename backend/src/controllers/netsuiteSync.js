@@ -25,6 +25,8 @@ const NS_UPSERT_UPDATE_FIELDS = [
   'actual_setup_time',
   'actual_run_time',
   'completed_quantity',
+  'last_pushed_actual_run_time',
+  'last_pushed_completed_quantity',
   'netsuite_work_order_id',
   'netsuite_operation_id',
   'source_status',
@@ -40,6 +42,32 @@ function dedupeWipRows(rows) {
     byKey.set(key, row);
   }
   return Array.from(byKey.values());
+}
+
+async function markSuccessfulPushes(payloadItems, netsuiteResult) {
+  if (!Array.isArray(payloadItems) || payloadItems.length === 0) return 0;
+  const byNsId = new Map();
+  for (const item of payloadItems) {
+    byNsId.set(String(item.netsuite_operation_id), item);
+  }
+  const results = Array.isArray(netsuiteResult && netsuiteResult.results) ? netsuiteResult.results : [];
+  const updates = [];
+  for (const r of results) {
+    if (!r || r.success !== true) continue;
+    const key = String(r.netsuite_operation_id || '');
+    const src = byNsId.get(key);
+    if (!src || !Number.isInteger(src.operation_id)) continue;
+    updates.push({
+      id: src.operation_id,
+      last_pushed_actual_run_time: Math.max(0, Math.floor(Number(src.actual_run_time) || 0)),
+      last_pushed_completed_quantity: Math.max(0, Math.floor(Number(src.completed_quantity) || 0))
+    });
+  }
+  if (updates.length === 0) return 0;
+  await WorkOrderOperation.bulkCreate(updates, {
+    updateOnDuplicate: ['last_pushed_actual_run_time', 'last_pushed_completed_quantity', 'updatedAt']
+  });
+  return updates.length;
 }
 
 function explainSequelizeError(err) {
@@ -116,7 +144,14 @@ async function runOfficialSyncFlow({ operationIds = null, maxRows = 0 } = {}) {
 
   let pushResult = null;
   if (items.length > 0) {
-    pushResult = await pushActualsBatch(items);
+    const restletItems = items.map((it) => ({
+      netsuite_operation_id: it.netsuite_operation_id,
+      actual_setup_time: it.actual_setup_time,
+      actual_run_time: it.actual_run_time,
+      completed_quantity: it.completed_quantity
+    }));
+    pushResult = await pushActualsBatch(restletItems);
+    await markSuccessfulPushes(items, pushResult);
   }
 
   const fetchOptions = {};
@@ -259,10 +294,18 @@ exports.pushActuals = async function pushActuals(req, res) {
       });
     }
 
-    const netsuite = await pushActualsBatch(items);
+    const restletItems = items.map((it) => ({
+      netsuite_operation_id: it.netsuite_operation_id,
+      actual_setup_time: it.actual_setup_time,
+      actual_run_time: it.actual_run_time,
+      completed_quantity: it.completed_quantity
+    }));
+    const netsuite = await pushActualsBatch(restletItems);
+    const marked = await markSuccessfulPushes(items, netsuite);
     return res.status(200).json({
       message: 'Batch enviado a MCV_Cronometro_In.',
       itemCount: items.length,
+      markedSuccessfulPushes: marked,
       netsuite
     });
   } catch (err) {
