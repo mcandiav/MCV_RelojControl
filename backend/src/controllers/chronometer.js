@@ -372,6 +372,10 @@ exports.startTimer = async function startTimer(req, res) {
     if (timer.status === 'PAUSED') {
       if (!(await assertTimerControlOrRespond(req, timer, res))) return;
     }
+    // Nuevo ciclo de cronometraje tras STOP: iniciar desde cero para UX operario.
+    if (timer.status === 'STOPPED') {
+      timer.total_elapsed_seconds = 0;
+    }
     timer.current_user_id = currentUser.id;
     if (req.stationId) timer.station_id = req.stationId;
     timer.status = 'ACTIVE';
