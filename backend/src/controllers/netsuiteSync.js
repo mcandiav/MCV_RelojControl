@@ -114,6 +114,65 @@ async function persistNetsuiteWipRows(rows) {
   return { imported: deduped.length };
 }
 
+async function resetChronometersForPulledRows(rows) {
+  const deduped = dedupeWipRows(rows);
+  if (deduped.length === 0) {
+    return { operations: 0, timersDeleted: 0, eventsDeleted: 0, totalsDeleted: 0 };
+  }
+
+  const nsIds = Array.from(
+    new Set(
+      deduped
+        .map((r) => (r && r.netsuite_operation_id != null ? String(r.netsuite_operation_id).trim() : ''))
+        .filter(Boolean)
+    )
+  );
+
+  const whereClauses = [];
+  if (nsIds.length > 0) {
+    whereClauses.push({ netsuite_operation_id: { [Op.in]: nsIds } });
+  }
+
+  for (const r of deduped) {
+    if (!r) continue;
+    whereClauses.push({
+      ot_number: r.ot_number,
+      operation_sequence: r.operation_sequence,
+      resource_code: r.resource_code
+    });
+  }
+
+  if (whereClauses.length === 0) {
+    return { operations: 0, timersDeleted: 0, eventsDeleted: 0, totalsDeleted: 0 };
+  }
+
+  const ops = await WorkOrderOperation.findAll({
+    attributes: ['id'],
+    where: whereClauses.length === 1 ? whereClauses[0] : { [Op.or]: whereClauses }
+  });
+  const opIds = ops.map((o) => o.id).filter((id) => Number.isInteger(id));
+  if (opIds.length === 0) {
+    return { operations: 0, timersDeleted: 0, eventsDeleted: 0, totalsDeleted: 0 };
+  }
+
+  const eventsDeleted = await TimerEvent.destroy({
+    where: { work_order_operation_id: { [Op.in]: opIds } }
+  });
+  const totalsDeleted = await OperationTimeTotal.destroy({
+    where: { work_order_operation_id: { [Op.in]: opIds } }
+  });
+  const timersDeleted = await OperationTimer.destroy({
+    where: { work_order_operation_id: { [Op.in]: opIds } }
+  });
+
+  return {
+    operations: opIds.length,
+    timersDeleted,
+    eventsDeleted,
+    totalsDeleted
+  };
+}
+
 async function replaceAllWipRows(rows) {
   if (!Array.isArray(rows)) rows = [];
   const deduped = dedupeWipRows(rows);
@@ -206,6 +265,9 @@ exports.pullDataset = async function pullDataset(req, res) {
 
     const replace = String(req.query.replace || '').trim() === '1' || String(req.query.replace || '').toLowerCase() === 'true';
     const result = replace ? await replaceAllWipRows(rows) : await persistNetsuiteWipRows(rows);
+    const resetResult = replace
+      ? { operations: 'all', timersDeleted: 'all', eventsDeleted: 'all', totalsDeleted: 'all' }
+      : await resetChronometersForPulledRows(rows);
     // #region agent log
     console.log('[dbg][H4][after-persist]', runId, JSON.stringify({ replace, imported: result.imported, elapsedMs: Date.now() - pullStartedAt }));
     // #endregion
@@ -213,10 +275,11 @@ exports.pullDataset = async function pullDataset(req, res) {
     return res.status(200).json({
       message: replace
         ? 'Pull OUT aplicado (replace total de work_order_operations).'
-        : 'Pull OUT aplicado (upsert). completed_quantity local no se sobrescribe en duplicados.',
+        : 'Pull OUT aplicado (upsert) y cronometros reseteados para operaciones sincronizadas.',
       imported: result.imported,
       totalRows,
-      maxRowsApplied: fetchOptions.maxRows || null
+      maxRowsApplied: fetchOptions.maxRows || null,
+      reset: resetResult
     });
   } catch (err) {
     // #region agent log
