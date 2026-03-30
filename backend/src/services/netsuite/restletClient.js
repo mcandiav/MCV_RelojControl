@@ -172,6 +172,59 @@ async function patchOperationWithFallback(cfg, token, patchUrl, op) {
   return { success: false, error: lastErr };
 }
 
+function extractOperationRange(ops) {
+  const seqs = (ops || [])
+    .map((x) => Number(x && x.operation_sequence))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  if (seqs.length === 0) return { start: 1, end: 1 };
+  return { start: seqs[0], end: seqs[seqs.length - 1] };
+}
+
+function buildTransformBodiesForOperationRange(ops) {
+  const { start, end } = extractOperationRange(ops);
+  const bodies = [
+    {},
+    { startOperation: start, endOperation: end },
+    { startOperation: { id: String(start) }, endOperation: { id: String(end) } },
+    { startoperation: start, endoperation: end },
+    { startoperation: { id: String(start) }, endoperation: { id: String(end) } },
+    { operationStart: start, operationEnd: end },
+    { operationStart: { id: String(start) }, operationEnd: { id: String(end) } }
+  ];
+  const seen = new Set();
+  return bodies.filter((b) => {
+    const k = JSON.stringify(b);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+async function createWorkOrderCompletionWithFallback(cfg, token, woId, ops) {
+  const transformUrl = `${cfg.recordApiBaseUrl}/workOrder/${woId}/!transform/workOrderCompletion`;
+  const bodies = buildTransformBodiesForOperationRange(ops);
+  let lastErr = null;
+
+  for (const body of bodies) {
+    try {
+      const res = await recordPost(transformUrl, token, body);
+      const completionId = extractCompletionId(res);
+      if (!Number.isInteger(completionId) || completionId <= 0) {
+        throw new Error(`No se pudo obtener id de workOrderCompletion para WO ${woId}`);
+      }
+      return completionId;
+    } catch (err) {
+      lastErr = err;
+      const detail = err.response && err.response.data ? JSON.stringify(err.response.data) : String(err.message || err);
+      if (!/Operaci.n de inicio|Operaci.n de finalizaci.n|startOperation|endOperation|USER_ERROR/i.test(detail)) {
+        break;
+      }
+    }
+  }
+  throw lastErr || new Error(`No se pudo transformar Work Order ${woId} a Work Order Completion`);
+}
+
 async function pushViaWorkOrderCompletion(cfg, token, items) {
   if (!cfg.recordApiBaseUrl) throw new Error('record API base URL is not available; check NETSUITE_ACCOUNT_ID');
 
@@ -207,12 +260,7 @@ async function pushViaWorkOrderCompletion(cfg, token, items) {
     }
 
     try {
-      const transformUrl = `${cfg.recordApiBaseUrl}/workOrder/${woId}/!transform/workOrderCompletion`;
-      const transformRes = await recordPost(transformUrl, token, {});
-      const completionId = extractCompletionId(transformRes);
-      if (!Number.isInteger(completionId) || completionId <= 0) {
-        throw new Error(`No se pudo obtener id de workOrderCompletion para OT ${ot}`);
-      }
+      const completionId = await createWorkOrderCompletionWithFallback(cfg, token, woId, ops);
 
       const completionUrl = `${cfg.recordApiBaseUrl}/workOrderCompletion/${completionId}`;
       const completion = await recordGet(completionUrl, token, { expandSubResources: true });
