@@ -64,9 +64,17 @@ async function markSuccessfulPushes(payloadItems, netsuiteResult) {
     });
   }
   if (updates.length === 0) return 0;
-  await WorkOrderOperation.bulkCreate(updates, {
-    updateOnDuplicate: ['last_pushed_actual_run_time', 'last_pushed_completed_quantity', 'updatedAt']
-  });
+  await Promise.all(
+    updates.map((u) =>
+      WorkOrderOperation.update(
+        {
+          last_pushed_actual_run_time: u.last_pushed_actual_run_time,
+          last_pushed_completed_quantity: u.last_pushed_completed_quantity
+        },
+        { where: { id: u.id } }
+      )
+    )
+  );
   return updates.length;
 }
 
