@@ -10,7 +10,6 @@ const ShiftCloseSlot = sequelize.define('ShiftCloseSlot', {
   sequence: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    unique: true,
     validate: { min: 1, max: 3 }
   },
   hhmm: {
