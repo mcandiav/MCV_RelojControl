@@ -93,12 +93,23 @@ function lineSequenceCandidate(line, key) {
   return Number.isFinite(Number(v)) ? Number(v) : null;
 }
 
+function linePatchIdCandidate(line) {
+  if (!line || typeof line !== 'object') return null;
+  const keys = ['timeId', 'timeid', 'id', 'line', 'taskId', 'taskid'];
+  for (const k of keys) {
+    const raw = line[k];
+    const n = Number(raw);
+    if (Number.isInteger(n) && n > 0) return n;
+  }
+  return null;
+}
+
 function findOperationLineIdBySequence(lines, sequence) {
   const target = Number(sequence);
   if (!Number.isFinite(target)) return null;
   const seqKeys = ['operationSequence', 'sequence', 'operationsequence', 'operationSeq', 'operationNumber', 'operation'];
   for (const line of lines || []) {
-    const lineId = Number(line && line.id);
+    const lineId = linePatchIdCandidate(line);
     if (!Number.isInteger(lineId)) continue;
     for (const key of seqKeys) {
       const candidate = lineSequenceCandidate(line, key);
@@ -290,8 +301,27 @@ async function pushViaWorkOrderCompletion(cfg, token, items) {
 
       for (const op of ops) {
         let lineId = findOperationLineIdBySequence(lines, op.operation_sequence);
+        if (!Number.isInteger(lineId)) {
+          const targetTaskId = Number(op.netsuite_operation_id);
+          if (Number.isInteger(targetTaskId)) {
+            for (const line of lines) {
+              const taskId = Number(line && (line.taskId ?? line.taskid));
+              if (Number.isInteger(taskId) && taskId === targetTaskId) {
+                lineId = linePatchIdCandidate(line);
+                if (Number.isInteger(lineId)) break;
+              }
+            }
+          }
+        }
         if (!Number.isInteger(lineId) && ops.length === 1 && lines.length === 1 && Number.isInteger(Number(lines[0].id))) {
           lineId = Number(lines[0].id);
+        }
+        if (!Number.isInteger(lineId) && ops.length === 1 && lines.length === 1) {
+          lineId = linePatchIdCandidate(lines[0]);
+        }
+        if (!Number.isInteger(lineId) && Number.isInteger(Number(op.netsuite_operation_id))) {
+          // Último fallback para cuentas donde el subrecurso operation usa taskId como key.
+          lineId = Number(op.netsuite_operation_id);
         }
         if (!Number.isInteger(lineId)) {
           failed += 1;
