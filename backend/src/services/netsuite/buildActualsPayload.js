@@ -82,6 +82,9 @@ async function buildActualsPayload({ operationIds } = {}) {
 
     items.push({
       operation_id: op.id,
+      ot_number: op.ot_number,
+      operation_sequence: op.operation_sequence,
+      netsuite_work_order_id: op.netsuite_work_order_id || null,
       netsuite_operation_id: nsId,
       actual_setup_time,
       actual_run_time,

@@ -12,6 +12,11 @@ NETSUITE_ACCOUNT_ID=to_be_provided
 NETSUITE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nreplace_with_real_private_key\n-----END PRIVATE KEY-----"
 NETSUITE_TOKEN_URL=to_be_provided
 NETSUITE_RESTLET_IN_URL=https://6099999-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=1271&deploy=1
+NETSUITE_PUSH_MODE=import_ot
+NETSUITE_IMPORT_OT_RECORD_TYPE=customrecord_3k_importacion_ot
+NETSUITE_IMPORT_OT_WORKORDER_FIELD=custrecord_3k_ot_principal
+NETSUITE_IMPORT_OT_JSON_FIELD=custrecord_3k_imp_ot_json
+NETSUITE_IMPORT_OT_DATE_FIELD=custrecord_3k_imp_ot_fecha
 NETSUITE_OUT_SOURCE_TYPE=savedsearch
 NETSUITE_OUT_SAVEDSEARCH_ID=customsearch_mcv_cronometro_out
 NETSUITE_OUT_SAVEDSEARCH_NAME=BG - Control de HH por OT Detalle VF - CARGA
@@ -32,7 +37,9 @@ Cursor debe implementar la integración leyendo estas variables de entorno y **n
 ## Flujo correcto
 
 - `NETSUITE_OUT_SAVEDSEARCH_ID` se usa para el **pull** del OUT en Saved Search
-- `NETSUITE_RESTLET_IN_URL` se usa para el **push** al RESTlet `MCV_Cronometro_In`
+- `NETSUITE_PUSH_MODE=import_ot` usa el record personalizado `Importación OT` para push profesional (recomendado)
+- `NETSUITE_PUSH_MODE=restlet` usa el RESTlet `MCV_Cronometro_In` (compatibilidad legado)
+- `NETSUITE_RESTLET_IN_URL` solo aplica cuando `NETSUITE_PUSH_MODE=restlet`
 - `NETSUITE_PRIVATE_KEY` debe leerse desde entorno y nunca desde un archivo versionado dentro del repo
 
 ## Aprendizaje clave (mar 2026): OUT oficial por Saved Search
@@ -65,7 +72,7 @@ Con variables completas, el API expone (JWT admin):
 - `GET /chronometer/netsuite/status` — qué variables están presentes (sin secretos)
 - `GET /chronometer/netsuite/peek-dataset?limit=5` — nombre legado; hoy inspecciona el OUT de Saved Search
 - `POST /chronometer/netsuite/pull-dataset` — nombre legado; hoy ejecuta pull paginado de Saved Search OUT y upsert en `work_order_operations` (no pisa `completed_quantity` en duplicados)
-- `POST /chronometer/netsuite/push-actuals` — push batch al RESTlet IN; cuerpo opcional `{ "operation_ids": [1,2] }`
+- `POST /chronometer/netsuite/push-actuals` — push batch a NetSuite según `NETSUITE_PUSH_MODE`; cuerpo opcional `{ "operation_ids": [1,2] }`
 - `POST /chronometer/netsuite/oauth/clear-cache` — limpia caché del access token
 
 **Importante:** mantener scopes M2M necesarios para lectura OUT y para RESTlet IN; validar permisos del rol técnico sobre la Saved Search y sobre `manufacturingoperationtask`.

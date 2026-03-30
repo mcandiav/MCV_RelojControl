@@ -144,13 +144,7 @@ async function runOfficialSyncFlow({ operationIds = null, maxRows = 0 } = {}) {
 
   let pushResult = null;
   if (items.length > 0) {
-    const restletItems = items.map((it) => ({
-      netsuite_operation_id: it.netsuite_operation_id,
-      actual_setup_time: it.actual_setup_time,
-      actual_run_time: it.actual_run_time,
-      completed_quantity: it.completed_quantity
-    }));
-    pushResult = await pushActualsBatch(restletItems);
+    pushResult = await pushActualsBatch(items);
     await markSuccessfulPushes(items, pushResult);
   }
 
@@ -301,6 +295,9 @@ exports.pushActuals = async function pushActuals(req, res) {
     if (dryRun) {
       const payloadPreview = items.map((it) => ({
         operation_id: it.operation_id,
+        ot_number: it.ot_number,
+        operation_sequence: it.operation_sequence,
+        netsuite_work_order_id: it.netsuite_work_order_id,
         netsuite_operation_id: it.netsuite_operation_id,
         actual_setup_time: it.actual_setup_time,
         actual_run_time: it.actual_run_time,
@@ -313,16 +310,10 @@ exports.pushActuals = async function pushActuals(req, res) {
       });
     }
 
-    const restletItems = items.map((it) => ({
-      netsuite_operation_id: it.netsuite_operation_id,
-      actual_setup_time: it.actual_setup_time,
-      actual_run_time: it.actual_run_time,
-      completed_quantity: it.completed_quantity
-    }));
-    const netsuite = await pushActualsBatch(restletItems);
+    const netsuite = await pushActualsBatch(items);
     const marked = await markSuccessfulPushes(items, netsuite);
     return res.status(200).json({
-      message: 'Batch enviado a MCV_Cronometro_In.',
+      message: 'Batch enviado a NetSuite.',
       itemCount: items.length,
       markedSuccessfulPushes: marked,
       netsuite
