@@ -137,6 +137,8 @@ function buildWocPatchCandidates(cfg, op) {
   if ((cfg.wocCompletedQtyField || '').toLowerCase() !== 'completedquantity') {
     candidates.push({ ...primary, completedQuantity: qty });
   }
+  candidates.push({ ...primary, overallCompletedQuantity: qty });
+  candidates.push({ ...primary, completedQuantity: qty, overallCompletedQuantity: qty });
   candidates.push({
     machineRunTime: run,
     machineSetupTime: setup,
@@ -163,6 +165,24 @@ function buildWocPatchCandidates(cfg, op) {
     seen.add(k);
     return true;
   });
+}
+
+async function patchCompletionHeaderQtyWithFallback(token, completionUrl, qty) {
+  const q = normalizeInt(qty);
+  if (q <= 0) return;
+  const candidates = [
+    { completedQuantity: q },
+    { quantity: q },
+    { completedQuantity: q, quantity: q }
+  ];
+  for (const body of candidates) {
+    try {
+      await recordPatch(completionUrl, token, body);
+      return;
+    } catch (_) {
+      // best-effort: algunos formularios aceptan uno de estos campos en cabecera
+    }
+  }
 }
 
 async function patchOperationWithFallback(cfg, token, patchUrl, op) {
@@ -347,6 +367,9 @@ async function pushViaWorkOrderCompletion(cfg, token, items) {
       const lines = Array.isArray(completion && completion.operation && completion.operation.items)
         ? completion.operation.items
         : [];
+      if (ops.length === 1) {
+        await patchCompletionHeaderQtyWithFallback(token, completionUrl, ops[0].completed_quantity);
+      }
 
       for (const op of ops) {
         let lineId = findOperationLineIdBySequence(lines, op.operation_sequence);
