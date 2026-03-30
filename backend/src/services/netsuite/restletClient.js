@@ -173,25 +173,45 @@ async function patchOperationWithFallback(cfg, token, patchUrl, op) {
 }
 
 function extractOperationRange(ops) {
-  const seqs = (ops || [])
-    .map((x) => Number(x && x.operation_sequence))
-    .filter((n) => Number.isFinite(n))
-    .sort((a, b) => a - b);
-  if (seqs.length === 0) return { start: 1, end: 1 };
-  return { start: seqs[0], end: seqs[seqs.length - 1] };
+  const sorted = (ops || [])
+    .filter(Boolean)
+    .slice()
+    .sort((a, b) => Number(a.operation_sequence || 0) - Number(b.operation_sequence || 0));
+
+  const seqs = sorted
+    .map((x) => Number(x.operation_sequence))
+    .filter((n) => Number.isFinite(n));
+  const nsIds = sorted
+    .map((x) => Number(x.netsuite_operation_id))
+    .filter((n) => Number.isFinite(n));
+
+  return {
+    startSequence: seqs.length ? seqs[0] : 1,
+    endSequence: seqs.length ? seqs[seqs.length - 1] : 1,
+    startNsId: nsIds.length ? nsIds[0] : null,
+    endNsId: nsIds.length ? nsIds[nsIds.length - 1] : null
+  };
 }
 
 function buildTransformBodiesForOperationRange(ops) {
-  const { start, end } = extractOperationRange(ops);
+  const { startSequence, endSequence, startNsId, endNsId } = extractOperationRange(ops);
   const bodies = [
     {},
-    { startOperation: start, endOperation: end },
-    { startOperation: { id: String(start) }, endOperation: { id: String(end) } },
-    { startoperation: start, endoperation: end },
-    { startoperation: { id: String(start) }, endoperation: { id: String(end) } },
-    { operationStart: start, operationEnd: end },
-    { operationStart: { id: String(start) }, operationEnd: { id: String(end) } }
+    { startOperation: startSequence, endOperation: endSequence },
+    { startOperation: { id: String(startSequence) }, endOperation: { id: String(endSequence) } },
+    { startoperation: startSequence, endoperation: endSequence },
+    { startoperation: { id: String(startSequence) }, endoperation: { id: String(endSequence) } },
+    { operationStart: startSequence, operationEnd: endSequence },
+    { operationStart: { id: String(startSequence) }, operationEnd: { id: String(endSequence) } }
   ];
+  if (Number.isFinite(startNsId) && Number.isFinite(endNsId)) {
+    bodies.push({ startOperation: startNsId, endOperation: endNsId });
+    bodies.push({ startOperation: { id: String(startNsId) }, endOperation: { id: String(endNsId) } });
+    bodies.push({ startoperation: startNsId, endoperation: endNsId });
+    bodies.push({ startoperation: { id: String(startNsId) }, endoperation: { id: String(endNsId) } });
+    bodies.push({ operationStart: startNsId, operationEnd: endNsId });
+    bodies.push({ operationStart: { id: String(startNsId) }, operationEnd: { id: String(endNsId) } });
+  }
   const seen = new Set();
   return bodies.filter((b) => {
     const k = JSON.stringify(b);
