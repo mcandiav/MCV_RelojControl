@@ -183,6 +183,55 @@ async function patchOperationWithFallback(cfg, token, patchUrl, op) {
   return { success: false, error: lastErr };
 }
 
+function collectOperationPatchKeys(lines, op, preferred) {
+  const keys = [];
+  const pushKey = (v) => {
+    const n = Number(v);
+    if (Number.isInteger(n) && n > 0 && !keys.includes(n)) keys.push(n);
+  };
+
+  pushKey(preferred);
+  pushKey(op && op.operation_sequence);
+  pushKey(op && op.netsuite_operation_id);
+
+  for (const line of lines || []) {
+    const taskId = Number(line && (line.taskId ?? line.taskid));
+    if (Number.isInteger(taskId) && Number(taskId) === Number(op && op.netsuite_operation_id)) {
+      pushKey(line && line.timeId);
+      pushKey(line && line.id);
+      pushKey(line && line.line);
+      pushKey(taskId);
+      pushKey(line && line.operationSequence);
+    }
+  }
+
+  if (keys.length === 0 && Array.isArray(lines) && lines.length === 1) {
+    pushKey(lines[0] && lines[0].timeId);
+    pushKey(lines[0] && lines[0].id);
+    pushKey(lines[0] && lines[0].line);
+    pushKey(lines[0] && lines[0].taskId);
+    pushKey(lines[0] && lines[0].operationSequence);
+    pushKey(1);
+  }
+  return keys;
+}
+
+async function patchOperationSubresourceWithKeyFallback(cfg, token, completionUrl, lines, op, preferredLineId) {
+  const keys = collectOperationPatchKeys(lines, op, preferredLineId);
+  let last = null;
+  for (const key of keys) {
+    const patchUrl = `${completionUrl}/operation/${key}`;
+    const patched = await patchOperationWithFallback(cfg, token, patchUrl, op);
+    if (patched.success) return { success: true, key };
+    last = patched.error;
+    const detail = last && last.response && last.response.data ? JSON.stringify(last.response.data) : String(last && last.message ? last.message : last);
+    if (!/NONEXISTENT_SUBLIST_KEY|Unable to find the specified sublist line/i.test(detail)) {
+      break;
+    }
+  }
+  return { success: false, error: last, triedKeys: keys };
+}
+
 function extractOperationRange(ops) {
   const sorted = (ops || [])
     .filter(Boolean)
@@ -334,8 +383,7 @@ async function pushViaWorkOrderCompletion(cfg, token, items) {
           continue;
         }
 
-        const patchUrl = `${completionUrl}/operation/${lineId}`;
-        const patched = await patchOperationWithFallback(cfg, token, patchUrl, op);
+        const patched = await patchOperationSubresourceWithKeyFallback(cfg, token, completionUrl, lines, op, lineId);
         if (patched.success) {
           successful += 1;
           results.push({
@@ -343,7 +391,8 @@ async function pushViaWorkOrderCompletion(cfg, token, items) {
             success: true,
             ot_number: ot,
             work_order_completion_id: completionId,
-            operation_line_id: lineId
+            operation_line_id: lineId,
+            operation_patch_key_used: patched.key
           });
         } else {
           const detail = patched.error && patched.error.response && patched.error.response.data
@@ -356,6 +405,7 @@ async function pushViaWorkOrderCompletion(cfg, token, items) {
             ot_number: ot,
             work_order_completion_id: completionId,
             operation_line_id: lineId,
+            operation_patch_keys_tried: patched.triedKeys || [],
             error: typeof detail === 'string' ? detail : JSON.stringify(detail)
           });
         }
