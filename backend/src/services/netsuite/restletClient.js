@@ -121,8 +121,10 @@ async function pushViaImportOt(cfg, token, items) {
     }
 
     const externalId = `mcv_ot_${ot}_${Date.now()}`;
+    const recordName = `Importacion OT ${ot} ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`;
     const body = {
       externalId,
+      name: recordName,
       [cfg.importOtJsonField]: buildImportJsonPayload(ops),
       [cfg.importOtWorkOrderField]: { id: String(woId) }
     };
