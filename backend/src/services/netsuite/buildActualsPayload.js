@@ -2,12 +2,16 @@ const { Op } = require('sequelize');
 const WorkOrderOperation = require('../../models/work_order_operation');
 const TimerEvent = require('../../models/timer_event');
 const { computeTotalsFromEvents } = require('../../lib/timerEventTotals');
+const { getNetsuiteConfig } = require('./config');
 
 /**
  * Arquitectura v6: overwrite de los 3 datos vigentes por operación hacia manufacturingoperationtask.
  * Nota: actual_setup_time queda en 0 hasta modelar fases de montaje explícitas en eventos (no inferir desde pausa).
  */
 async function buildActualsPayload({ operationIds } = {}) {
+  const cfg = getNetsuiteConfig();
+  const useDeltaMode = String(cfg.pushMode || '').toLowerCase() === 'workorder_completion';
+
   const where = {
     netsuite_operation_id: {
       [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }]
@@ -75,10 +79,28 @@ async function buildActualsPayload({ operationIds } = {}) {
     if ((actual_run_time + actual_setup_time) <= 0) {
       continue;
     }
-    // Solo enviar cambios pendientes reales contra el último push exitoso.
-    if (actual_run_time <= baselineRun && completed_quantity <= baselineQty) {
+
+    const pendingRunDelta = Math.max(0, actual_run_time - baselineRun);
+    const pendingQtyDelta = Math.max(0, completed_quantity - baselineQty);
+
+    if (useDeltaMode) {
+      // Para workOrderCompletion, NetSuite acumula: enviar solo delta pendiente.
+      if (pendingRunDelta <= 0 && pendingQtyDelta <= 0) continue;
+      items.push({
+        operation_id: op.id,
+        ot_number: op.ot_number,
+        operation_sequence: op.operation_sequence,
+        netsuite_work_order_id: op.netsuite_work_order_id || null,
+        netsuite_operation_id: nsId,
+        actual_setup_time: 0,
+        actual_run_time: pendingRunDelta,
+        completed_quantity: pendingQtyDelta
+      });
       continue;
     }
+
+    // Modos legacy (restlet/import_ot): envían valor vigente total.
+    if (actual_run_time <= baselineRun && completed_quantity <= baselineQty) continue;
 
     items.push({
       operation_id: op.id,
