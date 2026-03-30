@@ -71,7 +71,7 @@ Reglas:
 
 ### Implementación en este repo (capa 3)
 
-Módulos en `src/services/netsuite/`: OAuth 2.0 M2M (JWT **PS256** con *fallback* **RS256**), cliente de extracción OUT (Saved Search), y push IN por `Importación OT` (o RESTlet legado según configuración).
+Módulos en `src/services/netsuite/`: OAuth 2.0 M2M (JWT **PS256** con *fallback* **RS256**), cliente de extracción OUT (Saved Search), y push IN por `Importación OT`, `workOrderCompletion` o RESTlet legado según configuración.
 
 Endpoints (cabecera JWT de **admin**):
 
@@ -80,7 +80,7 @@ Endpoints (cabecera JWT de **admin**):
 | GET | `/chronometer/netsuite/status` | Comprobación de entorno |
 | GET | `/chronometer/netsuite/peek-dataset` | Nombre legado; hoy inspecciona el OUT de Saved Search |
 | POST | `/chronometer/netsuite/pull-dataset` | Nombre legado; hoy ejecuta pull + upsert desde Saved Search OUT |
-| POST | `/chronometer/netsuite/push-actuals` | Push de los 3 datos vigentes hacia NetSuite (`NETSUITE_PUSH_MODE=import_ot` recomendado) |
+| POST | `/chronometer/netsuite/push-actuals` | Push de los 3 datos vigentes hacia NetSuite (`NETSUITE_PUSH_MODE=import_ot`, `workorder_completion` o `restlet`) |
 | POST | `/chronometer/netsuite/sync-official` | Flujo oficial: push confirmado + pull + replace total WIP |
 | POST | `/chronometer/netsuite/oauth/clear-cache` | Invalida token en memoria |
 

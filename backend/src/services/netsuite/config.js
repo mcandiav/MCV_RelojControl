@@ -48,6 +48,9 @@ function getNetsuiteConfig() {
   const importOtJsonField = String(process.env.NETSUITE_IMPORT_OT_JSON_FIELD || 'custrecord_3k_imp_ot_json').trim();
   const importOtWorkOrderField = String(process.env.NETSUITE_IMPORT_OT_WORKORDER_FIELD || 'custrecord_3k_ot_principal').trim();
   const importOtDateField = String(process.env.NETSUITE_IMPORT_OT_DATE_FIELD || 'custrecord_3k_imp_ot_fecha').trim();
+  const wocRunField = String(process.env.NETSUITE_WOC_RUN_FIELD || 'machineRunTime').trim();
+  const wocSetupField = String(process.env.NETSUITE_WOC_SETUP_FIELD || 'machineSetupTime').trim();
+  const wocCompletedQtyField = String(process.env.NETSUITE_WOC_COMPLETED_QTY_FIELD || 'completedQuantity').trim();
 
   return {
     clientId: process.env.NETSUITE_CLIENT_ID || '',
@@ -69,6 +72,9 @@ function getNetsuiteConfig() {
     importOtJsonField,
     importOtWorkOrderField,
     importOtDateField,
+    wocRunField,
+    wocSetupField,
+    wocCompletedQtyField,
     scope: parseScopeList(process.env.NETSUITE_OAUTH_SCOPE)
   };
 }
@@ -78,7 +84,9 @@ function isNetsuiteConfigured() {
   const pushReady =
     c.pushMode === 'restlet'
       ? Boolean(c.restletInUrl)
-      : Boolean(c.recordApiBaseUrl && c.importOtRecordType && c.importOtJsonField && c.importOtWorkOrderField);
+      : c.pushMode === 'workorder_completion'
+        ? Boolean(c.recordApiBaseUrl)
+        : Boolean(c.recordApiBaseUrl && c.importOtRecordType && c.importOtJsonField && c.importOtWorkOrderField);
   return Boolean(
     c.clientId &&
       c.certificateId &&
@@ -106,6 +114,9 @@ function getNetsuiteConfigStatus() {
     import_ot_json_field: c.importOtJsonField || null,
     import_ot_workorder_field: c.importOtWorkOrderField || null,
     import_ot_date_field: c.importOtDateField || null,
+    woc_run_field: c.wocRunField || null,
+    woc_setup_field: c.wocSetupField || null,
+    woc_completed_qty_field: c.wocCompletedQtyField || null,
     dataset_id: c.datasetId || null,
     out_source_type: c.outSourceType || null,
     out_savedsearch_id: c.outSavedSearchId || null,

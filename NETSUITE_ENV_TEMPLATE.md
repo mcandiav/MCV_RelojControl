@@ -17,6 +17,9 @@ NETSUITE_IMPORT_OT_RECORD_TYPE=customrecord_3k_importacion_ot
 NETSUITE_IMPORT_OT_WORKORDER_FIELD=custrecord_3k_ot_principal
 NETSUITE_IMPORT_OT_JSON_FIELD=custrecord_3k_imp_ot_json
 NETSUITE_IMPORT_OT_DATE_FIELD=custrecord_3k_imp_ot_fecha
+NETSUITE_WOC_RUN_FIELD=machineRunTime
+NETSUITE_WOC_SETUP_FIELD=machineSetupTime
+NETSUITE_WOC_COMPLETED_QTY_FIELD=completedQuantity
 NETSUITE_OUT_SOURCE_TYPE=savedsearch
 NETSUITE_OUT_SAVEDSEARCH_ID=customsearch_mcv_cronometro_out
 NETSUITE_OUT_SAVEDSEARCH_NAME=BG - Control de HH por OT Detalle VF - CARGA
@@ -39,7 +42,9 @@ Cursor debe implementar la integración leyendo estas variables de entorno y **n
 - `NETSUITE_OUT_SAVEDSEARCH_ID` se usa para el **pull** del OUT en Saved Search
 - `NETSUITE_PUSH_MODE=import_ot` usa el record personalizado `Importación OT` para push profesional (recomendado)
 - `NETSUITE_PUSH_MODE=restlet` usa el RESTlet `MCV_Cronometro_In` (compatibilidad legado)
+- `NETSUITE_PUSH_MODE=workorder_completion` usa transformación `workOrder -> workOrderCompletion` y patch de subrecurso `operation`
 - `NETSUITE_RESTLET_IN_URL` solo aplica cuando `NETSUITE_PUSH_MODE=restlet`
+- `NETSUITE_WOC_*` solo aplica cuando `NETSUITE_PUSH_MODE=workorder_completion`
 - `NETSUITE_PRIVATE_KEY` debe leerse desde entorno y nunca desde un archivo versionado dentro del repo
 
 ## Aprendizaje clave (mar 2026): OUT oficial por Saved Search
