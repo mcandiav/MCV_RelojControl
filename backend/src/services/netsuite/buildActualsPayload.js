@@ -94,7 +94,9 @@ async function buildActualsPayload({ operationIds } = {}) {
         netsuite_operation_id: nsId,
         actual_setup_time: 0,
         actual_run_time: pendingRunDelta,
-        completed_quantity: pendingQtyDelta
+        completed_quantity: pendingQtyDelta,
+        absolute_actual_run_time: actual_run_time,
+        absolute_completed_quantity: completed_quantity
       });
       continue;
     }
@@ -110,7 +112,9 @@ async function buildActualsPayload({ operationIds } = {}) {
       netsuite_operation_id: nsId,
       actual_setup_time,
       actual_run_time,
-      completed_quantity
+      completed_quantity,
+      absolute_actual_run_time: actual_run_time,
+      absolute_completed_quantity: completed_quantity
     });
   }
 

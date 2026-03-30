@@ -59,8 +59,22 @@ async function markSuccessfulPushes(payloadItems, netsuiteResult) {
     if (!src || !Number.isInteger(src.operation_id)) continue;
     updates.push({
       id: src.operation_id,
-      last_pushed_actual_run_time: Math.max(0, Math.floor(Number(src.actual_run_time) || 0)),
-      last_pushed_completed_quantity: Math.max(0, Math.floor(Number(src.completed_quantity) || 0))
+      last_pushed_actual_run_time: Math.max(
+        0,
+        Math.floor(
+          Number(
+            src.absolute_actual_run_time != null ? src.absolute_actual_run_time : src.actual_run_time
+          ) || 0
+        )
+      ),
+      last_pushed_completed_quantity: Math.max(
+        0,
+        Math.floor(
+          Number(
+            src.absolute_completed_quantity != null ? src.absolute_completed_quantity : src.completed_quantity
+          ) || 0
+        )
+      )
     });
   }
   if (updates.length === 0) return 0;
