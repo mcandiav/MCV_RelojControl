@@ -443,7 +443,7 @@
         <v-card-actions>
           <v-spacer />
           <v-btn text :disabled="stopQtyLoading" @click="closeStopQuantityDialog">Cancelar</v-btn>
-          <v-btn color="error" :loading="stopQtyLoading" @click="confirmStopWithQuantity">Detener</v-btn>
+          <v-btn color="primary" :loading="stopQtyLoading" @click="confirmStopWithQuantity">Aceptar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -961,8 +961,8 @@ export default {
       this.stopQtyValue = ''
       this.stopQtyDialog = true
     },
-    closeStopQuantityDialog() {
-      if (this.stopQtyLoading) return
+    closeStopQuantityDialog(force = false) {
+      if (this.stopQtyLoading && !force) return
       this.stopQtyDialog = false
       this.stopQtyOpId = null
       this.stopQtyValue = ''
@@ -985,7 +985,7 @@ export default {
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
         else await this.loadAreaOperations()
-        this.closeStopQuantityDialog()
+        this.closeStopQuantityDialog(true)
       } catch (error) {
         const msg =
           (error.response && error.response.data && (error.response.data.message || error.response.data.text)) ||

@@ -60,7 +60,6 @@ define(['N/record', 'N/log', 'N/search', 'N/format'], (record, log, search, form
       filters: [['internalid', 'anyof', String(opId)]],
       columns: [
         search.createColumn({ name: 'internalid' }),
-        search.createColumn({ name: 'operationsequence' }),
         search.createColumn({ name: 'internalid', join: 'workorder' }),
         search.createColumn({ name: 'tranid', join: 'workorder' })
       ]
@@ -68,7 +67,8 @@ define(['N/record', 'N/log', 'N/search', 'N/format'], (record, log, search, form
 
     if (!rs || rs.length === 0) return null;
     return {
-      operation_sequence: Number(rs[0].getValue({ name: 'operationsequence' })) || null,
+      // No consultar "operationsequence": en algunas cuentas no existe como columna de N/search.
+      operation_sequence: null,
       workorder_id: rs[0].getValue({ name: 'internalid', join: 'workorder' })
         ? String(rs[0].getValue({ name: 'internalid', join: 'workorder' }))
         : null,
