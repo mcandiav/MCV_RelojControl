@@ -8,6 +8,7 @@ const { pushActualsBatch } = require('../services/netsuite/restletClient');
 const { buildActualsPayload } = require('../services/netsuite/buildActualsPayload');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
 let netsuitePushInFlight = false;
+let netsuiteOperationalSyncInFlight = false;
 
 function resolveAreaFromResource(resourceCode) {
   const code = String(resourceCode || '').trim().toUpperCase();
@@ -457,6 +458,81 @@ exports.officialSync = async function officialSync(req, res) {
       message: 'Fallo en sincronizacion oficial NetSuite.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
+  }
+};
+
+exports.operationalSync = async function operationalSync(req, res) {
+  if (!isNetsuiteConfigured()) {
+    return res.status(503).json({
+      message: 'NetSuite no estÃ¡ configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.'
+    });
+  }
+  if (netsuiteOperationalSyncInFlight || netsuitePushInFlight) {
+    return res.status(409).json({
+      message: 'Ya hay una sincronizacion/push en curso. Espera a que termine.'
+    });
+  }
+
+  const delaySecondsRaw = req.body && req.body.pull_delay_seconds;
+  const delaySeconds = Number.isFinite(Number(delaySecondsRaw))
+    ? Math.max(0, Math.min(120, Math.floor(Number(delaySecondsRaw))))
+    : 10;
+  const delayMs = delaySeconds * 1000;
+
+  netsuiteOperationalSyncInFlight = true;
+  netsuitePushInFlight = true;
+  const startedAt = Date.now();
+
+  try {
+    const { runShiftClose } = require('./chronometer');
+
+    // 1) detener todos los relojes primero (sin sync automática embebida)
+    const shift = await runShiftClose('manual_operational_sync', { skipNetsuiteSync: true });
+
+    // 2) push de deltas a NetSuite
+    const { items } = await buildActualsPayload();
+    let netsuitePush = null;
+    let markedSuccessfulPushes = 0;
+    if (items.length > 0) {
+      netsuitePush = await pushActualsBatch(items);
+      markedSuccessfulPushes = await markSuccessfulPushes(items, netsuitePush);
+    }
+
+    // 3) esperar ventana operacional antes del pull
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    // 4) pull + replace: verdad desde NetSuite
+    const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
+    const replaced = await replaceAllWipRows(rows);
+
+    return res.status(200).json({
+      message: 'Sincronizacion operativa completada.',
+      elapsedMs: Date.now() - startedAt,
+      delaySecondsApplied: delaySeconds,
+      shift,
+      push: {
+        itemCount: items.length,
+        markedSuccessfulPushes,
+        netsuite: netsuitePush
+      },
+      pull: {
+        totalRows,
+        imported: replaced.imported
+      }
+    });
+  } catch (err) {
+    const detail = err.response && err.response.data ? err.response.data : explainSequelizeError(err);
+    return res.status(200).json({
+      ok: false,
+      httpStatus: 502,
+      message: 'Fallo en sincronizacion operativa.',
+      error: typeof detail === 'string' ? detail : JSON.stringify(detail)
+    });
+  } finally {
+    netsuitePushInFlight = false;
+    netsuiteOperationalSyncInFlight = false;
   }
 };
 

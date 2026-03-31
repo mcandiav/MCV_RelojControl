@@ -74,6 +74,7 @@
         <v-tab>Operación</v-tab>
         <v-tab v-if="isAdmin">Usuarios</v-tab>
         <v-tab v-if="isAdmin">Sistema</v-tab>
+        <v-tab v-if="isAdmin">Sincronizacion</v-tab>
       </v-tabs>
 
       <v-tabs-items v-model="activeTab" class="transparent">
@@ -408,6 +409,40 @@
               </v-card>
             </v-col>
           </v-row>
+        <v-tab-item v-if="isAdmin">
+          <v-row>
+            <v-col cols="12" md="8">
+              <v-card outlined class="pa-4">
+                <div class="text-subtitle-1 font-weight-bold mb-2">Sincronizacion operativa</div>
+                <p class="text-body-2 grey--text text--darken-1 mb-3">
+                  Flujo: detener todos los relojes -> push a NetSuite -> esperar -> pull + replace desde NetSuite.
+                </p>
+                <v-text-field
+                  v-model.number="nsOperationalDelaySeconds"
+                  label="Espera entre push y pull (segundos)"
+                  type="number"
+                  min="0"
+                  max="120"
+                  dense
+                  outlined
+                  hide-details
+                  style="max-width: 320px"
+                  class="mb-3"
+                />
+                <v-btn
+                  color="primary"
+                  :loading="loadingNsOperationalSync"
+                  :disabled="loadingNsOperationalSync"
+                  @click="runOperationalSync"
+                >
+                  Sincronizar ahora
+                </v-btn>
+                <v-alert v-if="nsOperationalLastResult" type="info" dense outlined class="mt-3 mb-0 text-left">
+                  <pre class="ns-json">{{ nsOperationalLastResult }}</pre>
+                </v-alert>
+              </v-card>
+            </v-col>
+          </v-row>
         </v-tab-item>
       </v-tabs-items>
     </v-container>
@@ -527,8 +562,11 @@ export default {
       loadingNsPush: false,
       loadingNsPushDryRun: false,
       loadingNsWipRows: false,
+      loadingNsOperationalSync: false,
       nsStatus: null,
       nsLastResult: '',
+      nsOperationalLastResult: '',
+      nsOperationalDelaySeconds: 10,
       nsWipRows: [],
       nsWipRowsError: '',
       nsWipFilter: '',
@@ -1298,6 +1336,36 @@ export default {
         this.showSnack(msg, 'error')
       } finally {
         this.loadingNsPushDryRun = false
+      }
+    },
+    async runOperationalSync() {
+      this.loadingNsOperationalSync = true
+      this.nsOperationalLastResult = ''
+      const delay = Number.isFinite(Number(this.nsOperationalDelaySeconds))
+        ? Math.max(0, Math.min(120, Math.floor(Number(this.nsOperationalDelaySeconds))))
+        : 10
+      this.nsOperationalDelaySeconds = delay
+      try {
+        const res = await axios.post(
+          '/chronometer/netsuite/sync-operational',
+          { pull_delay_seconds: delay },
+          { timeout: NETSUITE_AXIOS_TIMEOUT_MS }
+        )
+        this.nsOperationalLastResult = JSON.stringify(res.data, null, 2)
+        this.showSnack('Sincronizacion operativa completada.')
+        await this.refreshBoard()
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+        else await this.loadAreaOperations()
+        await this.loadNsWipRows()
+      } catch (error) {
+        const d = error.response && error.response.data
+        const fallback = !error.response ? this.netsuiteAxiosErrorPayload(error) : { message: error.message }
+        this.nsOperationalLastResult = JSON.stringify(d || fallback, null, 2)
+        const msg = (d && d.message) || (fallback && fallback.message) || 'Error en sincronizacion operativa.'
+        this.showSnack(msg, 'error')
+      } finally {
+        this.loadingNsOperationalSync = false
       }
     }
   }

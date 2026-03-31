@@ -109,7 +109,7 @@ async function consolidateShiftForOperation(operationId, shiftDate) {
   });
 }
 
-async function runShiftClose(trigger = 'manual') {
+async function runShiftClose(trigger = 'manual', options = {}) {
   const shiftDate = getShiftDateString(new Date());
   const activeOrPausedTimers = await OperationTimer.findAll({
     where: {
@@ -151,7 +151,11 @@ async function runShiftClose(trigger = 'manual') {
     consolidatedOperations: affectedOperationIds.size
   };
 
-  if (config.NETSUITE_PUSH_ON_SHIFT_CLOSE) {
+  const shouldRunNetsuiteSync = options && options.skipNetsuiteSync === true
+    ? false
+    : config.NETSUITE_PUSH_ON_SHIFT_CLOSE;
+
+  if (shouldRunNetsuiteSync) {
     try {
       const { runOfficialSyncFlow } = require('./netsuiteSync');
       result.netsuiteSync = await runOfficialSyncFlow();
