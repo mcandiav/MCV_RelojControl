@@ -128,6 +128,48 @@
           <v-row>
             <v-col cols="12">
               <v-card outlined class="pa-4">
+                <div class="d-flex flex-wrap align-center justify-space-between mb-2">
+                  <div class="text-subtitle-1 font-weight-bold">Tablero de cronometros activos</div>
+                  <div class="d-flex flex-wrap align-center" style="gap: 8px">
+                    <span class="grey--text text-caption">Protector 2×2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay más de 4.</span>
+                    <v-btn small outlined color="primary" @click="openIdleBoardPreview">Ver tablero grande</v-btn>
+                  </div>
+                </div>
+                <v-alert v-if="errorBoard" type="error" dense class="mb-3">{{ errorBoard }}</v-alert>
+            <v-simple-table v-if="activeBoard.length > 0" class="compact-table">
+                  <thead>
+                    <tr>
+                      <th>OT</th>
+                      <th>Operacion</th>
+                      <th>Recurso</th>
+                      <th>Area</th>
+                      <th>Planificado (HH:MM)</th>
+                      <th>Transcurrido</th>
+                      <th>Estado</th>
+                      <th>Operario</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in activeBoard" :key="row.id">
+                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.ot_number }}</td>
+                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.operation_name }}</td>
+                      <td>{{ row.resource_code }}</td>
+                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.area }}</td>
+                      <td>{{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }}</td>
+                      <td>{{ formatElapsed(row) }}</td>
+                      <td>{{ row.status }}</td>
+                      <td>{{ row.User ? (row.User.name + ' ' + row.User.lastname) : '-' }}</td>
+                    </tr>
+                  </tbody>
+                </v-simple-table>
+                <div v-else class="grey--text">No hay cronometros activos.</div>
+              </v-card>
+            </v-col>
+          </v-row>
+
+          <v-row>
+            <v-col cols="12">
+              <v-card outlined class="pa-4">
                 <div class="text-subtitle-1 font-weight-bold mb-3">
                   {{ operationsMode === 'area' ? 'Operaciones de tu area' : 'Operaciones por OT' }}
                 </div>
@@ -178,48 +220,6 @@
                 <div v-else class="grey--text">
                   {{ operationsMode === 'area' ? 'Sin operaciones cargadas para tu area.' : 'Sin operaciones cargadas.' }}
                 </div>
-              </v-card>
-            </v-col>
-          </v-row>
-
-          <v-row>
-            <v-col cols="12">
-              <v-card outlined class="pa-4">
-                <div class="d-flex flex-wrap align-center justify-space-between mb-2">
-                  <div class="text-subtitle-1 font-weight-bold">Tablero de cronometros activos</div>
-                  <div class="d-flex flex-wrap align-center" style="gap: 8px">
-                    <span class="grey--text text-caption">Protector 2×2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay más de 4.</span>
-                    <v-btn small outlined color="primary" @click="openIdleBoardPreview">Ver tablero grande</v-btn>
-                  </div>
-                </div>
-                <v-alert v-if="errorBoard" type="error" dense class="mb-3">{{ errorBoard }}</v-alert>
-            <v-simple-table v-if="activeBoard.length > 0" class="compact-table">
-                  <thead>
-                    <tr>
-                      <th>OT</th>
-                      <th>Operacion</th>
-                      <th>Recurso</th>
-                      <th>Area</th>
-                      <th>Planificado (HH:MM)</th>
-                      <th>Transcurrido</th>
-                      <th>Estado</th>
-                      <th>Operario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in activeBoard" :key="row.id">
-                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.ot_number }}</td>
-                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.operation_name }}</td>
-                      <td>{{ row.resource_code }}</td>
-                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.area }}</td>
-                      <td>{{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }}</td>
-                      <td>{{ formatElapsed(row) }}</td>
-                      <td>{{ row.status }}</td>
-                      <td>{{ row.User ? (row.User.name + ' ' + row.User.lastname) : '-' }}</td>
-                    </tr>
-                  </tbody>
-                </v-simple-table>
-                <div v-else class="grey--text">No hay cronometros activos.</div>
               </v-card>
             </v-col>
           </v-row>
@@ -1729,3 +1729,5 @@ export default {
   white-space: nowrap;
 }
 </style>
+
+
