@@ -103,8 +103,9 @@ async function buildActualsPayload({ operationIds } = {}) {
       continue;
     }
 
-    // Modos legacy (restlet/import_ot): envían valor vigente total.
-    if (actual_run_time <= baselineRun && completed_quantity <= baselineQty) continue;
+    // Modos legacy (restlet/import_ot con TEK): enviar deltas, no acumulados.
+    // Si se envia acumulado, TEK lo vuelve a sumar y duplica tiempo.
+    if (pendingRunDelta <= 0 && pendingQtyDelta <= 0) continue;
 
     items.push({
       operation_id: op.id,
@@ -112,9 +113,9 @@ async function buildActualsPayload({ operationIds } = {}) {
       operation_sequence: op.operation_sequence,
       netsuite_work_order_id: op.netsuite_work_order_id || null,
       netsuite_operation_id: nsId,
-      actual_setup_time,
-      actual_run_time,
-      completed_quantity,
+      actual_setup_time: 0,
+      actual_run_time: pendingRunDelta,
+      completed_quantity: pendingQtyDelta,
       absolute_actual_run_time: actual_run_time,
       absolute_completed_quantity: completed_quantity
     });
