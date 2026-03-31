@@ -15,6 +15,7 @@ router.post('/wip/upsert', [security.verifyToken, security.isAdmin], chronometer
 router.post('/wip/seed-sample', [security.verifyToken, security.isAdmin], chronometer.seedWipSample);
 router.post('/wip/import-upload', [security.verifyToken, security.isAdmin], chronometer.importWipFromUpload);
 router.post('/shift/close', [security.verifyToken, security.isAdmin], chronometer.closeShiftBatch);
+router.post('/timers/stop-batch', [security.verifyToken, security.isAdmin], chronometer.stopTimersBatch);
 
 router.get('/admin/shift-schedule', [security.verifyToken, security.isAdmin], shiftSchedule.getShiftSchedule);
 router.put('/admin/shift-schedule', [security.verifyToken, security.isAdmin], shiftSchedule.putShiftSchedule);

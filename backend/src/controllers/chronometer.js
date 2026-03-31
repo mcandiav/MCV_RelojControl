@@ -754,6 +754,61 @@ exports.closeShiftBatch = async function closeShiftBatch(req, res) {
   });
 };
 
+exports.stopTimersBatch = async function stopTimersBatch(req, res) {
+  const area = String((req.body && req.body.area) || 'ALL').trim().toUpperCase();
+  if (!['ALL', 'ME', 'ES'].includes(area)) {
+    return res.status(400).json({ message: 'area debe ser ALL, ME o ES.' });
+  }
+
+  const query = {
+    where: { status: { [Op.in]: ['ACTIVE', 'PAUSED'] } }
+  };
+  if (area !== 'ALL') {
+    query.include = [{
+      model: WorkOrderOperation,
+      required: true,
+      attributes: ['id', 'area'],
+      where: { area }
+    }];
+  }
+
+  const timers = await OperationTimer.findAll(query);
+  let stoppedActive = 0;
+  let stoppedPaused = 0;
+
+  for (const timer of timers) {
+    if (timer.status === 'ACTIVE') {
+      timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
+      stoppedActive += 1;
+    } else if (timer.status === 'PAUSED') {
+      stoppedPaused += 1;
+    }
+
+    await appendEvent({
+      timerId: timer.id,
+      operationId: timer.work_order_operation_id,
+      userId: req.userId || null,
+      eventType: 'AUTO_STOP_SHIFT_END',
+      details: {
+        trigger: 'admin_stop_batch',
+        area
+      }
+    });
+
+    timer.status = 'STOPPED';
+    timer.active_since = null;
+    timer.last_event_at = new Date();
+    await timer.save();
+  }
+
+  return res.status(200).json({
+    area,
+    stoppedTimers: timers.length,
+    stoppedActive,
+    stoppedPaused
+  });
+};
+
 exports.runShiftClose = runShiftClose;
 
 exports.deleteOperation = async function deleteOperation(req, res) {

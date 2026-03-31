@@ -356,6 +356,22 @@
           <v-row>
             <v-col cols="12" md="6">
               <v-card outlined class="pa-4">
+                <div class="text-subtitle-1 font-weight-bold mb-2">Control de relojes</div>
+                <p class="text-body-2 grey--text text--darken-1 mb-3">
+                  Detiene relojes activos y pausados del alcance seleccionado.
+                </p>
+                <div class="d-flex flex-wrap mb-4" style="gap: 8px">
+                  <v-btn color="error" :loading="loadingStopBatch === 'ALL'" @click="stopTimersBatch('ALL')">
+                    Detener todos
+                  </v-btn>
+                  <v-btn color="warning" :loading="loadingStopBatch === 'ME'" @click="stopTimersBatch('ME')">
+                    Detener ME
+                  </v-btn>
+                  <v-btn color="secondary" :loading="loadingStopBatch === 'ES'" @click="stopTimersBatch('ES')">
+                    Detener ES
+                  </v-btn>
+                </div>
+
                 <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automaticos</div>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Tres horarios (zona {{ shiftMeta.timezone || '-' }}). Se programan cron jobs en el servidor al guardar.
@@ -615,6 +631,7 @@ export default {
       loadingSeed: false,
       loadingImportUpload: false,
       loadingShiftClose: false,
+      loadingStopBatch: '',
       loadingCreateUser: false,
       loadingEditUser: false,
       errorOps: '',
@@ -1342,6 +1359,24 @@ export default {
         alert(msg)
       } finally {
         this.loadingShiftClose = false
+      }
+    },
+    async stopTimersBatch(area) {
+      const scope = String(area || 'ALL').toUpperCase()
+      this.loadingStopBatch = scope
+      try {
+        const res = await axios.post('/chronometer/timers/stop-batch', { area: scope })
+        const stopped = (res.data && res.data.stoppedTimers) || 0
+        this.showSnack(`Relojes detenidos (${scope}): ${stopped}`)
+        await this.refreshBoard()
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+        else await this.loadAreaOperations()
+      } catch (error) {
+        const msg = (error.response && error.response.data && error.response.data.message) || `No fue posible detener relojes (${scope}).`
+        this.showSnack(msg, 'error')
+      } finally {
+        this.loadingStopBatch = ''
       }
     },
     showSnack(text, color = 'success') {
