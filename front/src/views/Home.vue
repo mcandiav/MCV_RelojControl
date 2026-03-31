@@ -1,6 +1,6 @@
-<template>
+﻿<template>
   <v-app>
-    <!-- Tablero protector: siempre 2×2 visibles; si hay más de 4 tareas, carrusel (flechas / teclado). -->
+    <!-- Tablero protector: siempre 2Ã—2 visibles; si hay mÃ¡s de 4 tareas, carrusel (flechas / teclado). -->
     <transition name="fade">
       <div
         v-if="showIdleBoard"
@@ -10,14 +10,14 @@
       >
         <div class="idle-board-body" @click.stop>
           <div v-if="idleBoardTotalPages > 1" class="idle-board-carousel-bar">
-            <v-btn icon dark large class="carousel-nav" aria-label="Página anterior" @click="idleBoardPrev">
+            <v-btn icon dark large class="carousel-nav" aria-label="PÃ¡gina anterior" @click="idleBoardPrev">
               <v-icon large>mdi-chevron-left</v-icon>
             </v-btn>
             <div class="carousel-meta">
               <span class="carousel-page">{{ idleBoardSafePage + 1 }} / {{ idleBoardTotalPages }}</span>
-              <span class="carousel-count">{{ idleActiveTimersSorted.length }} tareas · ← →</span>
+              <span class="carousel-count">{{ idleActiveTimersSorted.length }} tareas Â· â† â†’</span>
             </div>
-            <v-btn icon dark large class="carousel-nav" aria-label="Página siguiente" @click="idleBoardNext">
+            <v-btn icon dark large class="carousel-nav" aria-label="PÃ¡gina siguiente" @click="idleBoardNext">
               <v-icon large>mdi-chevron-right</v-icon>
             </v-btn>
           </div>
@@ -33,11 +33,51 @@
               }"
             >
               <template v-if="cell">
+                <div class="q-status">
+                  <span class="status-dot" :class="statusDotClass(cell.status)" />
+                  <span>{{ statusLabel(cell.status) }}</span>
+                </div>
                 <div class="q-time">{{ formatElapsed(cell) }}</div>
                 <div class="q-ot">{{ quadrantOtNumber(cell) }}</div>
                 <div class="q-op-block">
                   <span class="q-field-label">Operación</span>
                   <span class="q-op-text">{{ quadrantOperationText(cell) }}</span>
+                </div>
+                <div class="q-metric-block">
+                  <div class="time-bar-label">
+                    Run:
+                    {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_run_time) || 0) }}
+                    / {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_operation_minutes) || 0) }}
+                  </div>
+                  <div class="time-bar-track">
+                    <div
+                      class="time-bar-fill"
+                      :style="timeBarStyle(
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_run_time) || 0,
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_operation_minutes) || 0
+                      )"
+                    />
+                  </div>
+                </div>
+                <div class="q-metric-block">
+                  <div class="time-bar-label">
+                    Setup:
+                    {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_setup_time) || 0) }}
+                    / {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_setup_minutes) || 0) }}
+                  </div>
+                  <div class="time-bar-track">
+                    <div
+                      class="time-bar-fill"
+                      :style="timeBarStyle(
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_setup_time) || 0,
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_setup_minutes) || 0
+                      )"
+                    />
+                  </div>
+                </div>
+                <div class="q-qty">
+                  Q: {{ (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).completed_quantity) != null ? quadrantLinkedOp(cell).completed_quantity : '-' }}
+                  / {{ (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_quantity) != null ? quadrantLinkedOp(cell).planned_quantity : '-' }}
                 </div>
                 <div class="q-res">{{ cell.resource_code }}</div>
                 <div class="q-user">{{ cell.User ? (cell.User.name + ' ' + cell.User.lastname) : '—' }}</div>
@@ -50,7 +90,7 @@
           </div>
         </div>
         <div class="idle-board-footer" @click="closeIdleBoard">
-          Toca aquí para cerrar · Esc · Carrusel cada {{ idleBoardCarouselSeconds }}s si hay varias páginas · Datos cada {{ boardPollSeconds }}s
+          Toca aquÃ­ para cerrar Â· Esc Â· Carrusel cada {{ idleBoardCarouselSeconds }}s si hay varias pÃ¡ginas Â· Datos cada {{ boardPollSeconds }}s
         </div>
       </div>
     </transition>
@@ -60,7 +100,7 @@
       <v-row>
         <v-col cols="12">
           <v-card outlined class="pa-4">
-            <div class="text-h6 font-weight-bold mb-2">Cronómetro v3</div>
+            <div class="text-h6 font-weight-bold mb-2">CronÃ³metro v3</div>
             <div v-if="user" class="subtitle-2">
               Usuario: {{ user.name }} {{ user.lastname }} |
               Rol: {{ user.Role && user.Role.name }} |
@@ -71,7 +111,7 @@
       </v-row>
 
       <v-tabs v-model="activeTab" background-color="transparent" class="mb-4">
-        <v-tab>Operación</v-tab>
+        <v-tab>OperaciÃ³n</v-tab>
         <v-tab v-if="isAdmin">Usuarios</v-tab>
         <v-tab v-if="isAdmin">Sistema</v-tab>
         <v-tab v-if="isAdmin">Sincronizacion</v-tab>
@@ -117,7 +157,7 @@
                   <div class="font-weight-bold mb-1">Respuesta del servidor (ultimo Seed)</div>
                   <pre class="seed-json text-left">{{ lastSeedResponse }}</pre>
                   <div class="text-caption mt-2">
-                    Tras Seed WIP: <code>total</code> <strong>52</strong>, <code>ot_numbers</code> <strong>OT1</strong> … <strong>OT9</strong> (nombres con <strong>CUAD A/B/…</strong> para probar cuadrantes).
+                    Tras Seed WIP: <code>total</code> <strong>52</strong>, <code>ot_numbers</code> <strong>OT1</strong> â€¦ <strong>OT9</strong> (nombres con <strong>CUAD A/B/â€¦</strong> para probar cuadrantes).
                     Si el total no coincide, el <strong>backend</strong> puede estar con imagen antigua.
                   </div>
                 </v-alert>
@@ -131,7 +171,7 @@
                 <div class="d-flex flex-wrap align-center justify-space-between mb-2">
                   <div class="text-subtitle-1 font-weight-bold">Tablero de cronometros activos</div>
                   <div class="d-flex flex-wrap align-center" style="gap: 8px">
-                    <span class="grey--text text-caption">Protector 2×2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay más de 4.</span>
+                    <span class="grey--text text-caption">Protector 2Ã—2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay mÃ¡s de 4.</span>
                     <v-btn small outlined color="primary" @click="openIdleBoardPreview">Ver tablero grande</v-btn>
                   </div>
                 </div>
@@ -143,8 +183,8 @@
                       <th>Operacion</th>
                       <th>Recurso</th>
                       <th>Area</th>
-                      <th>Planificado (HH:MM)</th>
-                      <th>Transcurrido</th>
+                      <th>Tiempos</th>
+                      <th>Cantidades</th>
                       <th>Estado</th>
                       <th>Operario</th>
                     </tr>
@@ -155,9 +195,33 @@
                       <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.operation_name }}</td>
                       <td>{{ row.resource_code }}</td>
                       <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.area }}</td>
-                      <td>{{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }}</td>
-                      <td>{{ formatElapsed(row) }}</td>
-                      <td>{{ row.status }}</td>
+                      <td>
+                        <div class="time-bar-label">
+                          Run: {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.actual_run_time) }}
+                          / {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }}
+                          ({{ formatPlanVsRealPercent(row.WorkOrderOperation && row.WorkOrderOperation.actual_run_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }})
+                        </div>
+                        <div class="time-bar-track">
+                          <div class="time-bar-fill" :style="timeBarStyle(row.WorkOrderOperation && row.WorkOrderOperation.actual_run_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes)" />
+                        </div>
+                        <div class="time-bar-label mt-1">
+                          Setup: {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.actual_setup_time) }}
+                          / {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_setup_minutes) }}
+                          ({{ formatPlanVsRealPercent(row.WorkOrderOperation && row.WorkOrderOperation.actual_setup_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_setup_minutes) }})
+                        </div>
+                        <div class="time-bar-track">
+                          <div class="time-bar-fill" :style="timeBarStyle(row.WorkOrderOperation && row.WorkOrderOperation.actual_setup_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_setup_minutes)" />
+                        </div>
+                        <div class="time-block">En uso: <strong>{{ formatElapsed(row) }}</strong></div>
+                      </td>
+                      <td>
+                        {{ row.WorkOrderOperation && row.WorkOrderOperation.completed_quantity != null ? row.WorkOrderOperation.completed_quantity : '-' }}
+                        / {{ row.WorkOrderOperation && row.WorkOrderOperation.planned_quantity != null ? row.WorkOrderOperation.planned_quantity : '-' }}
+                      </td>
+                      <td>
+                        <span class="status-dot" :class="statusDotClass(row.status)" />
+                        {{ statusLabel(row.status) }}
+                      </td>
                       <td>{{ row.User ? (row.User.name + ' ' + row.User.lastname) : '-' }}</td>
                     </tr>
                   </tbody>
@@ -190,7 +254,7 @@
                   <tbody>
                     <tr v-for="op in operations" :key="op.id">
                       <td>
-                        <div class="ops-meta"><strong>{{ op.ot_number }}</strong> · Sec {{ op.operation_sequence }}</div>
+                        <div class="ops-meta"><strong>{{ op.ot_number }}</strong> Â· Sec {{ op.operation_sequence }}</div>
                         <div class="ops-meta">{{ op.operation_name }}</div>
                       </td>
                       <td>{{ op.resource_code }}</td>
@@ -291,14 +355,14 @@
           <v-row>
             <v-col cols="12" md="6">
               <v-card outlined class="pa-4">
-                <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automáticos</div>
+                <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automÃ¡ticos</div>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
-                  Tres horarios (zona {{ shiftMeta.timezone || '—' }}). Se programan cron jobs en el servidor al guardar.
+                  Tres horarios (zona {{ shiftMeta.timezone || 'â€”' }}). Se programan cron jobs en el servidor al guardar.
                   Los flags globales vienen de variables de entorno del API (<code>NS_SHIFT_BATCH_ENABLED</code>,
                   <code>NS_AUTO_STOP_AT_SHIFT_END</code>).
                 </p>
                 <v-alert v-if="shiftMeta.shift_batch_enabled === false || shiftMeta.auto_stop_at_shift_end === false" type="warning" dense outlined class="mb-3">
-                  El planificador está deshabilitado por configuración del servidor; igual podés editar y guardar horarios para cuando se active.
+                  El planificador estÃ¡ deshabilitado por configuraciÃ³n del servidor; igual podÃ©s editar y guardar horarios para cuando se active.
                 </v-alert>
                 <v-alert v-if="shiftScheduleError" type="error" dense class="mb-3">{{ shiftScheduleError }}</v-alert>
                 <div v-for="slot in shiftSlotsDraft" :key="'s-' + slot.sequence" class="d-flex flex-wrap align-center mb-3" style="gap: 12px">
@@ -323,20 +387,20 @@
                 <div class="text-subtitle-1 font-weight-bold mb-2">NetSuite</div>
                 <v-alert v-if="apiUrlBrokenOnHttps" type="error" dense prominent class="mb-3">
                   La app carga en <strong>HTTPS</strong> pero axios apunta a <code>{{ axiosBaseUrlDisplay }}</code>.
-                  El navegador bloquea eso (mixed content) y verás <strong>Network Error</strong> al instante.
-                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacío en EasyPanel.
+                  El navegador bloquea eso (mixed content) y verÃ¡s <strong>Network Error</strong> al instante.
+                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacÃ­o en EasyPanel.
                 </v-alert>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
-                  URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> · Origen web: <code>{{ browserOrigin }}</code>
+                  URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> Â· Origen web: <code>{{ browserOrigin }}</code>
                 </p>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Pull: dataset <strong>MCV_cronometro_out</strong> (desde el navegador o con script en el host:
-                  <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la máquina donde corrás el script.
+                  <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la mÃ¡quina donde corrÃ¡s el script.
                 </p>
                 <v-btn class="mr-2 mb-2" small outlined :loading="loadingCorsPing" @click="testApiCorsPing">
-                  Probar conexión API
+                  Probar conexiÃ³n API
                 </v-btn>
-                <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integración</v-btn>
+                <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integraciÃ³n</v-btn>
                 <v-simple-table v-if="nsStatus" dense class="mb-3 ns-status-table">
                   <tbody>
                     <tr v-for="row in nsStatusFlat" :key="row.key">
@@ -372,7 +436,7 @@
                   outlined
                   hide-details
                   class="mb-2"
-                  label="Filtrar (OT, operación, recurso, área o status)"
+                  label="Filtrar (OT, operaciÃ³n, recurso, Ã¡rea o status)"
                 />
                 <div class="text-caption grey--text mb-2">
                   Mostrando {{ filteredNsWipRows.length }} de {{ nsWipRows.length }} filas.
@@ -472,10 +536,10 @@
     <!-- Stop: cantidad terminada (opcional) -->
     <v-dialog v-model="stopQtyDialog" max-width="420" persistent>
       <v-card>
-        <v-card-title class="text-h6">Detener cronómetro</v-card-title>
+        <v-card-title class="text-h6">Detener cronÃ³metro</v-card-title>
         <v-card-text>
           <p class="body-2 mb-3">
-            Podés registrar la <strong>cantidad terminada</strong> de esta operación al cerrar. Si no cargás nada, solo se detiene el cronómetro y no se cambia el valor en base.
+            PodÃ©s registrar la <strong>cantidad terminada</strong> de esta operaciÃ³n al cerrar. Si no cargÃ¡s nada, solo se detiene el cronÃ³metro y no se cambia el valor en base.
           </p>
           <v-text-field
             v-model="stopQtyValue"
@@ -580,7 +644,7 @@ export default {
       boardPollIntervalId: null,
       lastPointerMoveTs: 0,
       lastSeedResponse: '',
-      /** Página del carrusel del tablero grande (4 tareas por página, rejilla 2×2). */
+      /** PÃ¡gina del carrusel del tablero grande (4 tareas por pÃ¡gina, rejilla 2Ã—2). */
       idleBoardPage: 0,
       stopQtyDialog: false,
       stopQtyOpId: null,
@@ -691,7 +755,7 @@ export default {
     idleBoardEnabled() {
       return String(process.env.VUE_APP_IDLE_BOARD_ENABLED || 'true').toLowerCase() !== 'false'
     },
-    /** Segundos entre páginas del carrusel (solo si hay más de 4 tareas). */
+    /** Segundos entre pÃ¡ginas del carrusel (solo si hay mÃ¡s de 4 tareas). */
     idleBoardCarouselSeconds() {
       const s = Number(process.env.VUE_APP_IDLE_BOARD_CAROUSEL_SEC || 2)
       return Math.max(1, Math.min(120, s))
@@ -699,7 +763,7 @@ export default {
     idleMs() {
       return Math.max(1, this.idleBoardMinutes) * 60 * 1000
     },
-    /** Tamaño fijo 2×2 = 4 por pantalla (legible en monitor planta). */
+    /** TamaÃ±o fijo 2Ã—2 = 4 por pantalla (legible en monitor planta). */
     idleBoardSlotsPerPage() {
       const n = Number(process.env.VUE_APP_IDLE_BOARD_SLOTS || 4)
       return Math.max(1, Math.min(4, n))
@@ -739,10 +803,10 @@ export default {
       return String((axios.defaults && axios.defaults.baseURL) || '(sin baseURL)')
     },
     browserOrigin() {
-      if (typeof window === 'undefined') return '—'
-      return window.location.origin || '—'
+      if (typeof window === 'undefined') return 'â€”'
+      return window.location.origin || 'â€”'
     },
-    /** HTTPS en planta + API en http://localhost o http://cualquiera → bloqueo inmediato del navegador. */
+    /** HTTPS en planta + API en http://localhost o http://cualquiera â†’ bloqueo inmediato del navegador. */
     apiUrlBrokenOnHttps() {
       if (typeof window === 'undefined') return false
       if (window.location.protocol !== 'https:') return false
@@ -882,7 +946,7 @@ export default {
       const ss = String(secs).padStart(2, '0')
       return `${hh}:${mm}:${ss}`
     },
-    /** Incluye asociación anidada (WorkOrderOperation o serialización alternativa). */
+    /** Incluye asociaciÃ³n anidada (WorkOrderOperation o serializaciÃ³n alternativa). */
     quadrantLinkedOp(cell) {
       if (!cell) return null
       return cell.WorkOrderOperation || cell.workOrderOperation || null
@@ -890,7 +954,7 @@ export default {
     quadrantOtNumber(cell) {
       const op = this.quadrantLinkedOp(cell)
       if (op != null && op.ot_number != null && String(op.ot_number).trim() !== '') return op.ot_number
-      return '—'
+      return 'â€”'
     },
     quadrantOperationText(cell) {
       const op = this.quadrantLinkedOp(cell)
@@ -902,7 +966,21 @@ export default {
         }
       }
       const rc = cell && String(cell.resource_code || '').trim()
-      return rc || '—'
+      return rc || 'â€”'
+    },
+    statusLabel(status) {
+      const s = String(status || '').toUpperCase()
+      if (s === 'ACTIVE') return 'Activo'
+      if (s === 'PAUSED') return 'Pausa'
+      if (s === 'STOPPED') return 'Detenido'
+      return s || '-'
+    },
+    statusDotClass(status) {
+      const s = String(status || '').toUpperCase()
+      if (s === 'ACTIVE') return 'status-dot--active'
+      if (s === 'PAUSED') return 'status-dot--paused'
+      if (s === 'STOPPED') return 'status-dot--stopped'
+      return 'status-dot--unknown'
     },
     formatElapsedFromSeconds(totalSeconds) {
       const total = Math.max(0, Number(totalSeconds || 0))
@@ -941,13 +1019,13 @@ export default {
       return { width: `${pct}%`, backgroundColor: color }
     },
     async borrarOperacion(id) {
-      if (!confirm('¿Borrar operación?')) return
+      if (!confirm('Â¿Borrar operaciÃ³n?')) return
       try {
         await axios.delete(`/chronometer/operations/${id}`)
         this.operations = this.operations.filter((item) => item.id !== id)
         this.refreshBoard()
       } catch (error) {
-        alert('No fue posible borrar la operación.')
+        alert('No fue posible borrar la operaciÃ³n.')
       }
     },
     async loadAdminCatalogs() {
@@ -984,7 +1062,7 @@ export default {
       }
     },
     async eliminarUsuario(id) {
-      if (!confirm('¿Eliminar usuario?')) return
+      if (!confirm('Â¿Eliminar usuario?')) return
       try {
         await axios.delete(`/auth/users/${id}`)
         await this.loadAdminCatalogs()
@@ -1060,7 +1138,7 @@ export default {
         this.operations = res.data.operations || []
         if (this.operations.length === 0) {
           this.emptyOpsHint =
-            'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP o POST upsert (ver backend/scripts) y busca OT1 … OT9.'
+            'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP o POST upsert (ver backend/scripts) y busca OT1 â€¦ OT9.'
         }
       } catch (error) {
         const d = error.response && error.response.data
@@ -1073,7 +1151,7 @@ export default {
       }
     },
     async loadAreaOperations() {
-      // Requisito operativo: al iniciar sesión, operario ve tablero con todas las operaciones de su área.
+      // Requisito operativo: al iniciar sesiÃ³n, operario ve tablero con todas las operaciones de su Ã¡rea.
       this.loadingOps = true
       this.errorOps = ''
       this.emptyOpsHint = ''
@@ -1121,7 +1199,7 @@ export default {
     },
     openStopQuantityDialog(op) {
       this.stopQtyOpId = op.id
-      // Delta por cierre: iniciar vacío para no reenviar el acumulado por error.
+      // Delta por cierre: iniciar vacÃ­o para no reenviar el acumulado por error.
       this.stopQtyValue = ''
       this.stopQtyDialog = true
     },
@@ -1137,7 +1215,7 @@ export default {
       const body = { work_order_operation_id: this.stopQtyOpId }
       if (trimmed !== '') {
         if (!/^\d+$/.test(trimmed)) {
-          alert('Ingresá solo números enteros ≥ 0, o dejá vacío para no cambiar la cantidad terminada.')
+          alert('IngresÃ¡ solo nÃºmeros enteros â‰¥ 0, o dejÃ¡ vacÃ­o para no cambiar la cantidad terminada.')
           return
         }
         body.completed_quantity = parseInt(trimmed, 10)
@@ -1153,7 +1231,7 @@ export default {
       } catch (error) {
         const msg =
           (error.response && error.response.data && (error.response.data.message || error.response.data.text)) ||
-          'No fue posible detener el cronómetro.'
+          'No fue posible detener el cronÃ³metro.'
         alert(msg)
       } finally {
         this.stopQtyLoading = false
@@ -1167,7 +1245,7 @@ export default {
         this.lastSeedResponse = JSON.stringify(res.data, null, 2)
         const ots = res.data && res.data.ot_numbers ? res.data.ot_numbers.join(', ') : ''
         const n = res.data && res.data.total != null ? res.data.total : '?'
-        alert(`Seed WIP OK. Filas: ${n}. OTs: ${ots || '(sin ot_numbers en respuesta — backend viejo)'}`)
+        alert(`Seed WIP OK. Filas: ${n}. OTs: ${ots || '(sin ot_numbers en respuesta â€” backend viejo)'}`)
       } catch (error) {
         const msg = (error.response && error.response.data && error.response.data.message) || 'Error al ejecutar seed.'
         alert(msg)
@@ -1213,7 +1291,7 @@ export default {
     netsuiteAxiosErrorPayload(error) {
       if (error && error.code === 'ECONNABORTED') {
         return {
-          message: 'Tiempo de espera agotado. El pull puede tardar varios minutos; reintentá o revisá la API.',
+          message: 'Tiempo de espera agotado. El pull puede tardar varios minutos; reintentÃ¡ o revisÃ¡ la API.',
           code: 'ECONNABORTED'
         }
       }
@@ -1221,16 +1299,16 @@ export default {
         const base = String(axios.defaults.baseURL || '').replace(/\/$/, '')
         const httpsOk = /^https:/i.test(base)
         const pasos = [
-          `Abrí en una pestaña nueva: ${base}/health — si el navegador marca certificado inválido, el problema es TLS (no CORS).`,
-          `Desde acá usá el botón «Probar conexión API» (GET ${base}/cors-ping, sin JWT).`,
+          `AbrÃ­ en una pestaÃ±a nueva: ${base}/health â€” si el navegador marca certificado invÃ¡lido, el problema es TLS (no CORS).`,
+          `Desde acÃ¡ usÃ¡ el botÃ³n Â«Probar conexiÃ³n APIÂ» (GET ${base}/cors-ping, sin JWT).`,
           'Si /health abre bien pero axios falla: otra red/VPN, antivirus, bloqueo DNS o proxy frente a reloj-api.'
         ]
         if (!httpsOk) {
-          pasos.unshift('La base del API debería ser https:// en producción.')
+          pasos.unshift('La base del API deberÃ­a ser https:// en producciÃ³n.')
         }
         return {
           message:
-            'Network Error: no hubo respuesta HTTP usable. Tu baseURL ya es HTTPS hacia reloj-api → suele ser certificado TLS, red/firewall o DNS, no la variable VUE_APP_API_URL.',
+            'Network Error: no hubo respuesta HTTP usable. Tu baseURL ya es HTTPS hacia reloj-api â†’ suele ser certificado TLS, red/firewall o DNS, no la variable VUE_APP_API_URL.',
           code: 'NETWORK_ERROR',
           axios_baseURL: axios.defaults.baseURL || null,
           pasos
@@ -1376,7 +1454,7 @@ export default {
       }
     },
     async netsuitePullReplace() {
-      if (!confirm('Esto REEMPLAZA toda la tabla WIP (work_order_operations) con lo que venga desde NetSuite. Debe no haber cronómetros activos/pausados. ¿Continuar?')) {
+      if (!confirm('Esto REEMPLAZA toda la tabla WIP (work_order_operations) con lo que venga desde NetSuite. Debe no haber cronÃ³metros activos/pausados. Â¿Continuar?')) {
         return
       }
       this.loadingNsPullReplace = true
@@ -1399,7 +1477,7 @@ export default {
       }
     },
     async netsuitePullReplace500() {
-      if (!confirm('Esto REEMPLAZA toda la tabla WIP con un tope de 500 filas del pull (prueba controlada). Debe no haber cronómetros activos/pausados. ¿Continuar?')) {
+      if (!confirm('Esto REEMPLAZA toda la tabla WIP con un tope de 500 filas del pull (prueba controlada). Debe no haber cronÃ³metros activos/pausados. Â¿Continuar?')) {
         return
       }
       this.loadingNsPullReplace500 = true
@@ -1540,6 +1618,31 @@ export default {
   transition: width 0.2s ease;
 }
 
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.status-dot--active {
+  background: #2e7d32;
+}
+
+.status-dot--paused {
+  background: #f9a825;
+}
+
+.status-dot--stopped {
+  background: #c62828;
+}
+
+.status-dot--unknown {
+  background: #9e9e9e;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.22s ease;
@@ -1641,7 +1744,7 @@ export default {
   box-shadow: 0 0 0 2px rgba(187, 128, 9, 0.35);
 }
 
-/* Cuadrantes: tiempo muy grande → OT → operación → recurso → operario (más chico) */
+/* Cuadrantes: tiempo muy grande â†’ OT â†’ operaciÃ³n â†’ recurso â†’ operario (mÃ¡s chico) */
 .q-time {
   font-size: clamp(3.2rem, 14vw, 8.5rem);
   font-weight: 800;
@@ -1692,6 +1795,24 @@ export default {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   white-space: normal;
+}
+
+.q-status {
+  font-size: clamp(0.68rem, 1.8vw, 0.9rem);
+  color: #c9d1d9;
+  margin-bottom: 2px;
+}
+
+.q-metric-block {
+  width: 90%;
+  max-width: 520px;
+  margin: 2px 0;
+}
+
+.q-qty {
+  font-size: clamp(0.72rem, 2.1vw, 0.98rem);
+  color: #c9d1d9;
+  margin-bottom: 2px;
 }
 
 .q-res {
@@ -1784,5 +1905,7 @@ export default {
   white-space: nowrap;
 }
 </style>
+
+
 
 
