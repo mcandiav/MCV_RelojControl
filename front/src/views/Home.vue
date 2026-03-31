@@ -268,7 +268,10 @@
                       <td>{{ u.username }}</td>
                       <td>{{ u.Role && u.Role.name }}</td>
                       <td>{{ u.Workplace && u.Workplace.name }}</td>
-                      <td><v-btn x-small color="error" @click="eliminarUsuario(u.id)">Eliminar</v-btn></td>
+                      <td>
+                        <v-btn x-small color="primary" class="mr-1" @click="openEditUserDialog(u)">Editar</v-btn>
+                        <v-btn x-small color="error" @click="eliminarUsuario(u.id)">Eliminar</v-btn>
+                      </td>
                     </tr>
                   </tbody>
                 </v-simple-table>
@@ -417,6 +420,9 @@
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Flujo: detener todos los relojes -> push a NetSuite -> esperar -> pull + replace desde NetSuite.
                 </p>
+                <v-alert type="warning" dense outlined class="mb-3">
+                  Esta sincronizacion puede demorar hasta 3 minutos.
+                </v-alert>
                 <v-text-field
                   v-model.number="nsOperationalDelaySeconds"
                   label="Espera entre push y pull (segundos)"
@@ -431,11 +437,12 @@
                 />
                 <v-btn
                   color="primary"
+                  large
                   :loading="loadingNsOperationalSync"
                   :disabled="loadingNsOperationalSync"
                   @click="runOperationalSync"
                 >
-                  Sincronizar ahora
+                  Ejecutar cierre + sincronizacion
                 </v-btn>
                 <v-alert v-if="nsOperationalLastResult" type="info" dense outlined class="mt-3 mb-0 text-left">
                   <pre class="ns-json">{{ nsOperationalLastResult }}</pre>
@@ -482,6 +489,25 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="editUserDialog" max-width="560" persistent>
+      <v-card>
+        <v-card-title class="text-h6">Editar usuario</v-card-title>
+        <v-card-text>
+          <v-text-field v-model.trim="editUser.name" label="Nombre" dense outlined />
+          <v-text-field v-model.trim="editUser.lastname" label="Apellido" dense outlined />
+          <v-text-field v-model.trim="editUser.username" label="Usuario" dense outlined />
+          <v-text-field v-model="editUser.password" label="Nuevo password / PIN (opcional)" dense outlined type="password" />
+          <v-select v-model="editUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
+          <v-select v-model="editUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Area" dense outlined />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text :disabled="loadingEditUser" @click="closeEditUserDialog">Cancelar</v-btn>
+          <v-btn color="primary" :loading="loadingEditUser" @click="saveEditUser">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
@@ -508,6 +534,7 @@ export default {
       loadingImportUpload: false,
       loadingShiftClose: false,
       loadingCreateUser: false,
+      loadingEditUser: false,
       errorOps: '',
       emptyOpsHint: '',
       errorBoard: '',
@@ -519,6 +546,16 @@ export default {
       uploadFilename: 'ResultadosZIMDataRelojControlDefaultView285.xls',
       searchTimeout: null,
       newUser: {
+        name: '',
+        lastname: '',
+        username: '',
+        password: '',
+        RoleId: null,
+        WorkplaceId: null
+      },
+      editUserDialog: false,
+      editUser: {
+        id: null,
         name: '',
         lastname: '',
         username: '',
@@ -925,6 +962,58 @@ export default {
         await this.loadAdminCatalogs()
       } catch (error) {
         alert('No fue posible eliminar el usuario.')
+      }
+    },
+    openEditUserDialog(user) {
+      if (!user) return
+      this.editUser = {
+        id: user.id,
+        name: user.name || '',
+        lastname: user.lastname || '',
+        username: user.username || '',
+        password: '',
+        RoleId: user.RoleId || (user.Role && user.Role.id) || null,
+        WorkplaceId: user.WorkplaceId || (user.Workplace && user.Workplace.id) || null
+      }
+      this.editUserDialog = true
+    },
+    closeEditUserDialog() {
+      this.editUserDialog = false
+      this.editUser = {
+        id: null,
+        name: '',
+        lastname: '',
+        username: '',
+        password: '',
+        RoleId: null,
+        WorkplaceId: null
+      }
+    },
+    async saveEditUser() {
+      if (!this.editUser.id) return
+      if (!this.editUser.name || !this.editUser.lastname || !this.editUser.username || !this.editUser.RoleId || !this.editUser.WorkplaceId) {
+        alert('Completa nombre, apellido, usuario, rol y area.')
+        return
+      }
+      this.loadingEditUser = true
+      try {
+        const payload = {
+          name: this.editUser.name,
+          lastname: this.editUser.lastname,
+          username: this.editUser.username,
+          RoleId: this.editUser.RoleId,
+          WorkplaceId: this.editUser.WorkplaceId
+        }
+        if (this.editUser.password) payload.password = this.editUser.password
+        await axios.put(`/auth/users/${this.editUser.id}`, payload)
+        this.showSnack('Usuario actualizado.')
+        this.closeEditUserDialog()
+        await this.loadAdminCatalogs()
+      } catch (error) {
+        const msg = (error.response && error.response.data && error.response.data.message) || 'No fue posible actualizar el usuario.'
+        alert(msg)
+      } finally {
+        this.loadingEditUser = false
       }
     },
     async buscarOperaciones() {

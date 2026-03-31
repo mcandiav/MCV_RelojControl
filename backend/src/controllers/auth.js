@@ -179,6 +179,7 @@ exports.updateUser = async function (req, res) {
 
         const { password, id, ...fields } = req.body;
 
+        userFound.username    = fields.username    ?? userFound.username;
         userFound.name        = fields.name        ?? userFound.name;
         userFound.lastname    = fields.lastname    ?? userFound.lastname;
         userFound.RoleId      = fields.RoleId      ?? userFound.RoleId;
