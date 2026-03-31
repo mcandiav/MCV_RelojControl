@@ -176,7 +176,17 @@
                   </div>
                 </div>
                 <v-alert v-if="errorBoard" type="error" dense class="mb-3">{{ errorBoard }}</v-alert>
-            <v-simple-table v-if="activeBoard.length > 0" class="compact-table">
+                <v-simple-table v-if="activeBoard.length > 0" class="compact-table">
+                  <colgroup>
+                    <col :style="{ width: boardCols.ot }" />
+                    <col :style="{ width: boardCols.operation }" />
+                    <col :style="{ width: boardCols.resource }" />
+                    <col :style="{ width: boardCols.area }" />
+                    <col :style="{ width: boardCols.times }" />
+                    <col :style="{ width: boardCols.quantity }" />
+                    <col :style="{ width: boardCols.status }" />
+                    <col :style="{ width: boardCols.user }" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>OT</th>
@@ -219,6 +229,7 @@
                         / {{ row.WorkOrderOperation && row.WorkOrderOperation.planned_quantity != null ? row.WorkOrderOperation.planned_quantity : '-' }}
                       </td>
                       <td>
+                        <v-icon small :color="statusColor(row.status)" class="mr-1">{{ statusIcon(row.status) }}</v-icon>
                         <span class="status-dot" :class="statusDotClass(row.status)" />
                         {{ statusLabel(row.status) }}
                       </td>
@@ -239,7 +250,27 @@
                 </div>
                 <v-alert v-if="errorOps" type="error" dense class="mb-3">{{ errorOps }}</v-alert>
                 <v-alert v-if="!errorOps && emptyOpsHint" type="info" dense class="mb-3">{{ emptyOpsHint }}</v-alert>
+                <div class="d-flex flex-wrap align-center mb-3" style="gap: 16px">
+                  <div style="min-width: 220px; max-width: 300px">
+                    <div class="text-caption">Ancho OT/Op: {{ opsColOtPct }}%</div>
+                    <v-slider v-model="opsColOtPct" min="16" max="34" hide-details dense />
+                  </div>
+                  <div style="min-width: 220px; max-width: 300px">
+                    <div class="text-caption">Ancho Recurso: {{ opsColResourcePct }}%</div>
+                    <v-slider v-model="opsColResourcePct" min="10" max="24" hide-details dense />
+                  </div>
+                  <v-btn small outlined @click="resetOpsLayout">Reset anchos</v-btn>
+                </div>
             <v-simple-table v-if="operations.length > 0" class="compact-table ops-table">
+                  <colgroup>
+                    <col :style="{ width: opsTableCols.ot }" />
+                    <col :style="{ width: opsTableCols.resource }" />
+                    <col :style="{ width: opsTableCols.status }" />
+                    <col :style="{ width: opsTableCols.times }" />
+                    <col :style="{ width: opsTableCols.quantity }" />
+                    <col :style="{ width: opsTableCols.area }" />
+                    <col :style="{ width: opsTableCols.action }" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>OT / Op</th>
@@ -258,7 +289,10 @@
                         <div class="ops-meta">{{ op.operation_name }}</div>
                       </td>
                       <td>{{ op.resource_code }}</td>
-                      <td>{{ op.status || 'STOPPED' }}</td>
+                      <td>
+                        <v-icon small :color="statusColor(op.status || 'STOPPED')" class="mr-1">{{ statusIcon(op.status || 'STOPPED') }}</v-icon>
+                        {{ op.status || 'STOPPED' }}
+                      </td>
                       <td>
                         <div class="time-bar-label">
                           Run: {{ formatMinutesAsHHMM(op.actual_run_time) }} / {{ formatMinutesAsHHMM(op.planned_operation_minutes) }}
@@ -275,8 +309,8 @@
                           <div class="time-bar-fill" :style="timeBarStyle(op.actual_setup_time, op.planned_setup_minutes)" />
                         </div>
                         <div class="time-block">En uso: <strong>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</strong></div>
-                        <div class="time-block">Run P/R: {{ formatMinutesAsHHMM(op.planned_operation_minutes) }} / {{ formatMinutesAsHHMM(op.actual_run_time) }}</div>
-                        <div class="time-block">Set P/R: {{ formatMinutesAsHHMM(op.planned_setup_minutes) }} / {{ formatMinutesAsHHMM(op.actual_setup_time) }}</div>
+                        <div class="time-block">Run R/P: {{ formatMinutesAsHHMM(op.actual_run_time) }} / {{ formatMinutesAsHHMM(op.planned_operation_minutes) }}</div>
+                        <div class="time-block">Set R/P: {{ formatMinutesAsHHMM(op.actual_setup_time) }} / {{ formatMinutesAsHHMM(op.planned_setup_minutes) }}</div>
                       </td>
                       <td>
                         {{ op.completed_quantity != null ? op.completed_quantity : '-' }} / {{ op.planned_quantity != null ? op.planned_quantity : '-' }}
@@ -676,6 +710,8 @@ export default {
       nsLastResult: '',
       nsOperationalLastResult: '',
       nsOperationalDelaySeconds: 10,
+      opsColOtPct: 22,
+      opsColResourcePct: 15,
       nsWipRows: [],
       nsWipRowsError: '',
       nsWipFilter: '',
@@ -833,9 +869,44 @@ export default {
           .join(' | ')
         return bag.includes(q)
       })
+    },
+    opsTableCols() {
+      const ot = Math.min(34, Math.max(16, Number(this.opsColOtPct || 22)))
+      const resource = Math.min(24, Math.max(10, Number(this.opsColResourcePct || 15)))
+      const status = 10
+      const quantity = 10
+      const area = 6
+      const action = 12
+      const used = ot + resource + status + quantity + area + action
+      const times = Math.max(24, 100 - used)
+      return {
+        ot: `${ot}%`,
+        resource: `${resource}%`,
+        status: `${status}%`,
+        times: `${times}%`,
+        quantity: `${quantity}%`,
+        area: `${area}%`,
+        action: `${action}%`
+      }
+    },
+    boardCols() {
+      return {
+        ot: '9%',
+        operation: '12%',
+        resource: '14%',
+        area: '6%',
+        times: '34%',
+        quantity: '9%',
+        status: '8%',
+        user: '8%'
+      }
     }
   },
   methods: {
+    resetOpsLayout() {
+      this.opsColOtPct = 22
+      this.opsColResourcePct = 15
+    },
     onMouseMoveForIdle() {
       if (!this.idleBoardEnabled || this.showIdleBoard) return
       const now = Date.now()
@@ -974,6 +1045,20 @@ export default {
       if (s === 'PAUSED') return 'Pausa'
       if (s === 'STOPPED') return 'Detenido'
       return s || '-'
+    },
+    statusIcon(status) {
+      const s = String(status || '').toUpperCase()
+      if (s === 'ACTIVE') return 'mdi-play-circle'
+      if (s === 'PAUSED') return 'mdi-pause-circle'
+      if (s === 'STOPPED') return 'mdi-stop-circle'
+      return 'mdi-help-circle'
+    },
+    statusColor(status) {
+      const s = String(status || '').toUpperCase()
+      if (s === 'ACTIVE') return 'success'
+      if (s === 'PAUSED') return 'warning'
+      if (s === 'STOPPED') return 'error'
+      return 'grey'
     },
     statusDotClass(status) {
       const s = String(status || '').toUpperCase()
@@ -1571,8 +1656,13 @@ export default {
 .compact-table table th,
 .compact-table table td {
   font-size: 12px !important;
-  white-space: nowrap;
+  white-space: normal;
   padding: 6px 8px !important;
+}
+
+.compact-table table {
+  table-layout: fixed;
+  width: 100%;
 }
 
 .actions-cell {
@@ -1595,6 +1685,7 @@ export default {
 .ops-meta,
 .time-block {
   line-height: 1.2;
+  word-break: break-word;
 }
 
 .time-bar-label {
