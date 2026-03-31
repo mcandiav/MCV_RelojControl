@@ -140,12 +140,12 @@
                   <th>OT</th>
                   <th>Secuencia</th>
                   <th>Estado</th>
-                  <th>Tiempo planificado montaje (min)</th>
+                  <th>Tiempo planificado montaje (HH:MM)</th>
                   <th>Tiempo en uso</th>
-                  <th>Tiempo real montaje (min)</th>
-                  <th>Tiempo planificado ejecucion (min)</th>
+                  <th>Tiempo real montaje (HH:MM)</th>
+                  <th>Tiempo planificado ejecucion (HH:MM)</th>
                   <th>Tiempo en uso</th>
-                  <th>Tiempo real ejecucion (min)</th>
+                  <th>Tiempo real ejecucion (HH:MM)</th>
                   <th>Cantidad planificada</th>
                   <th>Cant. terminada</th>
                       <th>Area</th>
@@ -159,12 +159,12 @@
                   <td>{{ op.ot_number }}</td>
                   <td>{{ op.operation_sequence }}</td>
                   <td>{{ op.status || 'STOPPED' }}</td>
-                  <td>{{ op.planned_setup_minutes != null ? op.planned_setup_minutes : '-' }}</td>
+                  <td>{{ formatMinutesAsHHMM(op.planned_setup_minutes) }}</td>
                   <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
-                  <td>{{ op.actual_setup_time != null ? op.actual_setup_time : '-' }}</td>
-                  <td>{{ op.planned_operation_minutes != null ? op.planned_operation_minutes : '-' }}</td>
+                  <td>{{ formatMinutesAsHHMM(op.actual_setup_time) }}</td>
+                  <td>{{ formatMinutesAsHHMM(op.planned_operation_minutes) }}</td>
                   <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
-                  <td>{{ op.actual_run_time != null ? op.actual_run_time : '-' }}</td>
+                  <td>{{ formatMinutesAsHHMM(op.actual_run_time) }}</td>
                   <td>{{ op.planned_quantity != null ? op.planned_quantity : '-' }}</td>
                   <td>{{ op.completed_quantity != null ? op.completed_quantity : '-' }}</td>
                   <td>{{ op.area }}</td>
@@ -206,7 +206,7 @@
                       <th>Operacion</th>
                       <th>Recurso</th>
                       <th>Area</th>
-                      <th>Planificado (min)</th>
+                      <th>Planificado (HH:MM)</th>
                       <th>Transcurrido</th>
                       <th>Estado</th>
                       <th>Operario</th>
@@ -218,7 +218,7 @@
                       <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.operation_name }}</td>
                       <td>{{ row.resource_code }}</td>
                       <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.area }}</td>
-                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes != null ? row.WorkOrderOperation.planned_operation_minutes : '-' }}</td>
+                      <td>{{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }}</td>
                       <td>{{ formatElapsed(row) }}</td>
                       <td>{{ row.status }}</td>
                       <td>{{ row.User ? (row.User.name + ' ' + row.User.lastname) : '-' }}</td>
@@ -376,11 +376,11 @@
                         <th>Operacion</th>
                         <th>Recurso</th>
                         <th>Area</th>
-                        <th>Plan setup</th>
-                        <th>Plan run</th>
+                        <th>Plan setup (HH:MM)</th>
+                        <th>Plan run (HH:MM)</th>
                         <th>Plan qty</th>
-                        <th>Real setup</th>
-                        <th>Real run</th>
+                        <th>Real setup (HH:MM)</th>
+                        <th>Real run (HH:MM)</th>
                         <th>Comp qty</th>
                         <th>NS Op ID</th>
                         <th>Status</th>
@@ -393,11 +393,11 @@
                         <td>{{ row.operation_name }}</td>
                         <td>{{ row.resource_code }}</td>
                         <td>{{ row.area }}</td>
-                        <td>{{ row.planned_setup_minutes != null ? row.planned_setup_minutes : '-' }}</td>
-                        <td>{{ row.planned_operation_minutes != null ? row.planned_operation_minutes : '-' }}</td>
+                        <td>{{ formatMinutesAsHHMM(row.planned_setup_minutes) }}</td>
+                        <td>{{ formatMinutesAsHHMM(row.planned_operation_minutes) }}</td>
                         <td>{{ row.planned_quantity != null ? row.planned_quantity : '-' }}</td>
-                        <td>{{ row.actual_setup_time != null ? row.actual_setup_time : '-' }}</td>
-                        <td>{{ row.actual_run_time != null ? row.actual_run_time : '-' }}</td>
+                        <td>{{ formatMinutesAsHHMM(row.actual_setup_time) }}</td>
+                        <td>{{ formatMinutesAsHHMM(row.actual_run_time) }}</td>
                         <td>{{ row.completed_quantity != null ? row.completed_quantity : '-' }}</td>
                         <td>{{ row.netsuite_operation_id || '-' }}</td>
                         <td>{{ row.source_status || '-' }}</td>
@@ -827,6 +827,15 @@ export default {
       const mins = Math.floor((total % 3600) / 60)
       const secs = total % 60
       return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    },
+    formatMinutesAsHHMM(totalMinutes) {
+      if (totalMinutes == null || totalMinutes === '') return '-'
+      const n = Number(totalMinutes)
+      if (!Number.isFinite(n)) return '-'
+      const m = Math.max(0, Math.floor(n))
+      const hrs = Math.floor(m / 60)
+      const mins = m % 60
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
     },
     async borrarOperacion(id) {
       if (!confirm('¿Borrar operación?')) return
