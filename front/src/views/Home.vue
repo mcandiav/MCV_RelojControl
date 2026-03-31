@@ -127,7 +127,9 @@
           <v-row>
             <v-col cols="12">
               <v-card outlined class="pa-4">
-                <div class="text-subtitle-1 font-weight-bold mb-3">Operaciones por OT</div>
+                <div class="text-subtitle-1 font-weight-bold mb-3">
+                  {{ operationsMode === 'area' ? 'Operaciones de tu area' : 'Operaciones por OT' }}
+                </div>
                 <v-alert v-if="errorOps" type="error" dense class="mb-3">{{ errorOps }}</v-alert>
                 <v-alert v-if="!errorOps && emptyOpsHint" type="info" dense class="mb-3">{{ emptyOpsHint }}</v-alert>
             <v-simple-table v-if="operations.length > 0" class="compact-table">
@@ -179,7 +181,9 @@
                     </tr>
                   </tbody>
                 </v-simple-table>
-                <div v-else class="grey--text">Sin operaciones cargadas.</div>
+                <div v-else class="grey--text">
+                  {{ operationsMode === 'area' ? 'Sin operaciones cargadas para tu area.' : 'Sin operaciones cargadas.' }}
+                </div>
               </v-card>
             </v-col>
           </v-row>
@@ -487,6 +491,7 @@ export default {
         RoleId: null,
         WorkplaceId: null
       },
+      operationsMode: 'area',
       showIdleBoard: false,
       idleBoardMinutes: Number(process.env.VUE_APP_IDLE_BOARD_MINUTES || 2),
       boardPollSeconds: Number(process.env.VUE_APP_IDLE_BOARD_POLL_SEC || 15),
@@ -534,6 +539,7 @@ export default {
   },
   created() {
     this.refreshBoard()
+    this.loadAreaOperations()
     this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
   },
   mounted() {
@@ -570,9 +576,9 @@ export default {
       if (this.searchTimeout) clearTimeout(this.searchTimeout)
       const digits = String(value || '').replace(/[^0-9]/g, '')
       if (!digits) {
-        this.operations = []
         this.errorOps = ''
         this.emptyOpsHint = ''
+        this.loadAreaOperations()
         return
       }
       this.searchTimeout = setTimeout(() => {
@@ -878,6 +884,7 @@ export default {
       this.errorOps = ''
       this.emptyOpsHint = ''
       this.operations = []
+      this.operationsMode = 'ot'
       const normalized = String(this.otNumber || '').replace(/[^0-9]/g, '')
       if (!normalized) {
         this.errorOps = 'Ingresa un numero de OT.'
@@ -901,6 +908,29 @@ export default {
         this.loadingOps = false
       }
     },
+    async loadAreaOperations() {
+      // Requisito operativo: al iniciar sesión, operario ve tablero con todas las operaciones de su área.
+      this.loadingOps = true
+      this.errorOps = ''
+      this.emptyOpsHint = ''
+      this.operationsMode = 'area'
+      try {
+        const res = await axios.get('/chronometer/operations?status=ALL&limit=500')
+        this.operations = (res.data && Array.isArray(res.data.operations)) ? res.data.operations : []
+        if (this.operations.length === 0) {
+          this.emptyOpsHint = 'No hay operaciones disponibles en tu area.'
+        }
+      } catch (error) {
+        const d = error.response && error.response.data
+        let msg = 'No fue posible cargar operaciones del area.'
+        if (typeof d === 'string') msg = d
+        else if (d && typeof d.message === 'string') msg = d.message
+        this.errorOps = msg
+        this.operations = []
+      } finally {
+        this.loadingOps = false
+      }
+    },
     async refreshBoard() {
       this.errorBoard = ''
       try {
@@ -917,6 +947,9 @@ export default {
       try {
         await axios.post(`/chronometer/timers/${action}`, { work_order_operation_id: operationId })
         await this.refreshBoard()
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+        else await this.loadAreaOperations()
       } catch (error) {
         const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
         alert(msg)
@@ -924,10 +957,8 @@ export default {
     },
     openStopQuantityDialog(op) {
       this.stopQtyOpId = op.id
-      this.stopQtyValue =
-        op.completed_quantity != null && op.completed_quantity !== ''
-          ? String(op.completed_quantity)
-          : ''
+      // Delta por cierre: iniciar vacío para no reenviar el acumulado por error.
+      this.stopQtyValue = ''
       this.stopQtyDialog = true
     },
     closeStopQuantityDialog() {
@@ -953,6 +984,7 @@ export default {
         await this.refreshBoard()
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
+        else await this.loadAreaOperations()
         this.closeStopQuantityDialog()
       } catch (error) {
         const msg =

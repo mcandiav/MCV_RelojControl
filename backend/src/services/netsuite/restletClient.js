@@ -122,40 +122,19 @@ function findOperationLineIdBySequence(lines, sequence) {
 function buildWocPatchCandidates(cfg, op) {
   const run = normalizeInt(op.actual_run_time);
   const setup = normalizeInt(op.actual_setup_time);
-  const qty = normalizeInt(op.completed_quantity);
   const candidates = [];
 
   const primary = {};
   primary[cfg.wocRunField || 'machineRunTime'] = run;
   primary[cfg.wocSetupField || 'machineSetupTime'] = setup;
-  if (cfg.wocCompletedQtyField) primary[cfg.wocCompletedQtyField] = qty;
   candidates.push(primary);
-
-  if ((cfg.wocCompletedQtyField || '').toLowerCase() !== 'quantitycompleted') {
-    candidates.push({ ...primary, quantityCompleted: qty });
-  }
-  if ((cfg.wocCompletedQtyField || '').toLowerCase() !== 'completedquantity') {
-    candidates.push({ ...primary, completedQuantity: qty });
-  }
-  candidates.push({ ...primary, overallCompletedQuantity: qty });
-  candidates.push({ ...primary, completedQuantity: qty, overallCompletedQuantity: qty });
   candidates.push({
     machineRunTime: run,
-    machineSetupTime: setup,
-    completedQuantity: qty
-  });
-  candidates.push({
-    laborRunTime: run,
-    laborSetupTime: setup,
-    completedQuantity: qty
+    machineSetupTime: setup
   });
   candidates.push({
     laborRunTime: run,
     laborSetupTime: setup
-  });
-  candidates.push({
-    machineRunTime: run,
-    machineSetupTime: setup
   });
 
   const seen = new Set();
@@ -169,7 +148,7 @@ function buildWocPatchCandidates(cfg, op) {
 
 async function patchCompletionHeaderQtyWithFallback(token, completionUrl, qty) {
   const q = normalizeInt(qty);
-  if (q <= 0) return;
+  if (q <= 0) return { success: true, skipped: true };
   const candidates = [
     { completedQuantity: q },
     { quantity: q },
@@ -178,11 +157,12 @@ async function patchCompletionHeaderQtyWithFallback(token, completionUrl, qty) {
   for (const body of candidates) {
     try {
       await recordPatch(completionUrl, token, body);
-      return;
+      return { success: true, body };
     } catch (_) {
       // best-effort: algunos formularios aceptan uno de estos campos en cabecera
     }
   }
+  return { success: false, error: `No se pudo aplicar cantidad en cabecera para qty=${q}` };
 }
 
 async function patchOperationWithFallback(cfg, token, patchUrl, op) {
@@ -361,17 +341,60 @@ async function pushViaWorkOrderCompletion(cfg, token, items) {
 
     try {
       const completionId = await createWorkOrderCompletionWithFallback(cfg, token, woId, ops);
-
       const completionUrl = `${cfg.recordApiBaseUrl}/workOrderCompletion/${completionId}`;
+
+      const hasAnyTimeDelta = ops.some((op) => normalizeInt(op.actual_run_time) > 0 || normalizeInt(op.actual_setup_time) > 0);
+
+      if (ops.length === 1) {
+        const qtyPatch = await patchCompletionHeaderQtyWithFallback(token, completionUrl, ops[0].completed_quantity);
+        if (!qtyPatch.success) {
+          failed += 1;
+          results.push({
+            netsuite_operation_id: ops[0].netsuite_operation_id,
+            success: false,
+            ot_number: ot,
+            work_order_completion_id: completionId,
+            error: qtyPatch.error
+          });
+          continue;
+        }
+        // Fast-path: si solo viene cantidad (sin tiempos), no hace falta sublista operation.
+        if (!hasAnyTimeDelta) {
+          successful += 1;
+          results.push({
+            netsuite_operation_id: ops[0].netsuite_operation_id,
+            success: true,
+            ot_number: ot,
+            work_order_completion_id: completionId,
+            operation_line_id: null,
+            operation_patch_key_used: null,
+            operation_patch_skipped: 'no_time_delta'
+          });
+          continue;
+        }
+      }
+
       const completion = await recordGet(completionUrl, token, { expandSubResources: true });
       const lines = Array.isArray(completion && completion.operation && completion.operation.items)
         ? completion.operation.items
         : [];
-      if (ops.length === 1) {
-        await patchCompletionHeaderQtyWithFallback(token, completionUrl, ops[0].completed_quantity);
-      }
 
       for (const op of ops) {
+        const hasTimeDelta = normalizeInt(op.actual_run_time) > 0 || normalizeInt(op.actual_setup_time) > 0;
+        if (!hasTimeDelta) {
+          successful += 1;
+          results.push({
+            netsuite_operation_id: op.netsuite_operation_id,
+            success: true,
+            ot_number: ot,
+            work_order_completion_id: completionId,
+            operation_line_id: null,
+            operation_patch_key_used: null,
+            operation_patch_skipped: 'no_time_delta'
+          });
+          continue;
+        }
+
         let lineId = findOperationLineIdBySequence(lines, op.operation_sequence);
         if (!Number.isInteger(lineId)) {
           const targetTaskId = Number(op.netsuite_operation_id);
@@ -504,6 +527,10 @@ async function pushViaRestlet(cfg, token, items) {
     cfg.restletInUrl,
     {
       items: items.map((it) => ({
+        operation_id: it.operation_id,
+        ot_number: it.ot_number,
+        operation_sequence: it.operation_sequence,
+        netsuite_work_order_id: it.netsuite_work_order_id,
         netsuite_operation_id: it.netsuite_operation_id,
         actual_setup_time: it.actual_setup_time,
         actual_run_time: it.actual_run_time,

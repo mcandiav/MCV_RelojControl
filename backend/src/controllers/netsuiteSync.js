@@ -7,6 +7,7 @@ const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
 const { buildActualsPayload } = require('../services/netsuite/buildActualsPayload');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
+let netsuitePushInFlight = false;
 
 function resolveAreaFromResource(resourceCode) {
   const code = String(resourceCode || '').trim().toUpperCase();
@@ -357,6 +358,12 @@ exports.pushActuals = async function pushActuals(req, res) {
       message: 'NetSuite no está configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.'
     });
   }
+  if (netsuitePushInFlight) {
+    return res.status(409).json({
+      message: 'Ya hay un push a NetSuite en curso. Espera a que termine para evitar envios duplicados.'
+    });
+  }
+  netsuitePushInFlight = true;
 
   const rawIds = req.body && req.body.operation_ids;
   const operationIds = Array.isArray(rawIds)
@@ -411,6 +418,8 @@ exports.pushActuals = async function pushActuals(req, res) {
       message: 'Fallo al publicar en NetSuite.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
+  } finally {
+    netsuitePushInFlight = false;
   }
 };
 
@@ -543,3 +552,6 @@ exports.peekDataset = async function peekDataset(req, res) {
 };
 
 exports.runOfficialSyncFlow = runOfficialSyncFlow;
+
+
+

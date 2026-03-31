@@ -73,7 +73,9 @@ async function buildActualsPayload({ operationIds } = {}) {
     const lastSyncedAt = op.last_synced_at ? new Date(op.last_synced_at) : null;
     const hasSyncedStamp = lastSyncedAt instanceof Date && !Number.isNaN(lastSyncedAt.getTime());
     const baselineRun = (lastPushedRun === 0 && hasSyncedStamp && base_run_time > 0) ? base_run_time : lastPushedRun;
-    const baselineQty = (lastPushedQty === 0 && hasSyncedStamp && completed_quantity > 0) ? completed_quantity : lastPushedQty;
+    // Para cantidad terminada en modo delta, el baseline debe ser siempre lo último pusheado.
+    // Si no, cuando baseline=0 y el operario registra la primera unidad, el delta queda en 0.
+    const baselineQty = lastPushedQty;
 
     // Regla definitiva: solo enviar operaciones con tiempo real cronometrado.
     if ((actual_run_time + actual_setup_time) <= 0) {
