@@ -5,12 +5,14 @@
  * @NApiVersion 2.1
  * @NScriptType UserEventScript
  */
-define(['N/error'], (error) => {
+define(['N/error', 'N/task', 'N/log'], (error, task, log) => {
   const CFG = {
     fieldJson: 'custrecord_3k_imp_ot_json',
     fieldStatus: 'custrecord_3k_imp_ot_estado',
     fieldDetail: 'custrecord_3k_imp_ot_det_proc',
-    statusPending: 1
+    statusPending: 1,
+    mrScriptId: 'customscript_mcv_cronometro_mr',
+    mrDeploymentId: 'customdeploy_mcv_cronometro_mr'
   };
 
   function isBlank(v) {
@@ -93,6 +95,38 @@ define(['N/error'], (error) => {
     });
   }
 
-  return { beforeSubmit };
-});
+  function afterSubmit(context) {
+    const eventType = String(context.type || '').toLowerCase();
+    const allowed = ['create', 'edit', 'xedit', 'copy'];
+    if (!allowed.includes(eventType)) return;
 
+    try {
+      const rec = context.newRecord;
+      const status = Number(rec.getValue(CFG.fieldStatus) || 0);
+      if (status !== CFG.statusPending) return;
+
+      const mrTask = task.create({
+        taskType: task.TaskType.MAP_REDUCE,
+        scriptId: CFG.mrScriptId,
+        deploymentId: CFG.mrDeploymentId
+      });
+      const taskId = mrTask.submit();
+
+      log.audit({
+        title: 'MCV_SS_TRIGGER_MR',
+        details: {
+          importRecordId: rec.id,
+          taskId
+        }
+      });
+    } catch (e) {
+      // No romper guardado de importación por fallas de scheduling.
+      log.error({
+        title: 'MCV_SS_TRIGGER_MR_ERROR',
+        details: `${e.name || 'ERROR'}: ${e.message || e}`
+      });
+    }
+  }
+
+  return { beforeSubmit, afterSubmit };
+});
