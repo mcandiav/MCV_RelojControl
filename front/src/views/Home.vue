@@ -15,7 +15,7 @@
             </v-btn>
             <div class="carousel-meta">
               <span class="carousel-page">{{ idleBoardSafePage + 1 }} / {{ idleBoardTotalPages }}</span>
-              <span class="carousel-count">{{ idleActiveTimersSorted.length }} tareas <- -></span>
+              <span class="carousel-count">{{ idleActiveTimersSorted.length }} tareas · izquierda/derecha</span>
             </div>
             <v-btn icon dark large class="carousel-nav" aria-label="PÃ¡gina siguiente" @click="idleBoardNext">
               <v-icon large>mdi-chevron-right</v-icon>
