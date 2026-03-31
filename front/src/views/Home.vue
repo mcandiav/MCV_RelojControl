@@ -412,6 +412,7 @@
               </v-card>
             </v-col>
           </v-row>
+        </v-tab-item>
         <v-tab-item v-if="isAdmin">
           <v-row>
             <v-col cols="12" md="8">
