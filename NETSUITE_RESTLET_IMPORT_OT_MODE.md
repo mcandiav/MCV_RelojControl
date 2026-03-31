@@ -1,33 +1,53 @@
-﻿# NetSuite RESTlet IN - Modo Importacion OT
+# NetSuite RESTlet IN - Modo `import_ot` (vigente)
 
-Este documento describe el nuevo comportamiento de `MCV_cronometro_restlet.js`.
+## Resumen
 
-## Cambio principal
+`MCV_cronometro_restlet.js` recibe un batch desde Cronometro y crea registros de staging en:
 
-Antes: intentaba actualizar `manufacturingoperationtask` directamente (bloqueado en WIP).
+- `customrecord_3k_importacion_ot`
 
-Ahora: recibe el batch del cronometro y crea registros en `customrecord_3k_importacion_ot` agrupados por OT.
+El procesamiento final en NetSuite lo realizan scripts internos sobre ese custom record.
 
-## Campos de entrada por item
+## Por que este modo es el recomendado
 
-- `ot_number` (opcional si viene `netsuite_operation_id`)
+Comparado con escritura directa en registros operativos:
+
+- mejor rendimiento por lotes,
+- menor friccion de permisos,
+- menor acoplamiento entre captura y aplicacion final.
+
+## Entrada esperada por item
+
+- `ot_number` (recomendado)
 - `netsuite_work_order_id` (opcional)
-- `operation_sequence` (opcional si viene `netsuite_operation_id`)
-- `netsuite_operation_id` (opcional si vienen `ot_number + operation_sequence`)
+- `operation_sequence` (recomendado)
+- `netsuite_operation_id` (opcional si ya viene OT+secuencia)
 - `actual_setup_time`
 - `actual_run_time`
 - `completed_quantity`
 
-## Salida esperada
+## Respuesta esperada
 
 - `results`: validacion por item recibido
 - `import_results`: registros de importacion creados por OT
 
-## Ajuste en backend API
+## Reglas de implementacion en API
 
-Se actualizo `pushViaRestlet` para enviar tambien:
-- `ot_number`
-- `operation_sequence`
-- `netsuite_work_order_id`
+Variables clave:
 
-De esta forma el RESTlet puede operar en modo staging sin depender exclusivamente de `netsuite_operation_id`.
+```env
+NETSUITE_PUSH_MODE=import_ot
+NETSUITE_IMPORT_OT_RECORD_TYPE=customrecord_3k_importacion_ot
+NETSUITE_IMPORT_OT_WORKORDER_FIELD=custrecord_3k_ot_principal
+NETSUITE_IMPORT_OT_JSON_FIELD=custrecord_3k_imp_ot_json
+NETSUITE_IMPORT_OT_DATE_FIELD=custrecord_3k_imp_ot_fecha
+```
+
+## Lecciones aprendidas
+
+1. No asumir que `completed_quantity` se aplica igual que tiempos en scripts de terceros.
+2. Si tiempos actualizan y cantidad no, revisar:
+   - formato JSON exacto,
+   - mapeo de campos del custom record,
+   - script de procesamiento que hace la aplicacion final.
+3. El ciclo robusto de operacion sigue siendo: **Stop -> Push -> Pull(+replace)**.
