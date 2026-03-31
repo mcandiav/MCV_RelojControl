@@ -402,6 +402,17 @@
             <v-col cols="12" md="6">
               <v-card outlined class="pa-4">
                 <div class="text-subtitle-1 font-weight-bold mb-2">NetSuite</div>
+                <div class="d-flex flex-wrap mb-3" style="gap: 8px">
+                  <v-btn small color="error" :loading="loadingStopBatch === 'ALL'" @click="stopTimersBatch('ALL')">
+                    Detener todos
+                  </v-btn>
+                  <v-btn small color="warning" :loading="loadingStopBatch === 'ME'" @click="stopTimersBatch('ME')">
+                    Detener ME
+                  </v-btn>
+                  <v-btn small color="secondary" :loading="loadingStopBatch === 'ES'" @click="stopTimersBatch('ES')">
+                    Detener ES
+                  </v-btn>
+                </div>
                 <v-alert v-if="apiUrlBrokenOnHttps" type="error" dense prominent class="mb-3">
                   La app carga en <strong>HTTPS</strong> pero axios apunta a <code>{{ axiosBaseUrlDisplay }}</code>.
                   El navegador bloquea eso (mixed content) y veras <strong>Network Error</strong> al instante.
