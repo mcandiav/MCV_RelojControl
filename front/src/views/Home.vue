@@ -196,6 +196,20 @@
                       <td>{{ op.resource_code }}</td>
                       <td>{{ op.status || 'STOPPED' }}</td>
                       <td>
+                        <div class="time-bar-label">
+                          Run: {{ formatMinutesAsHHMM(op.actual_run_time) }} / {{ formatMinutesAsHHMM(op.planned_operation_minutes) }}
+                          ({{ formatPlanVsRealPercent(op.actual_run_time, op.planned_operation_minutes) }})
+                        </div>
+                        <div class="time-bar-track">
+                          <div class="time-bar-fill" :style="timeBarStyle(op.actual_run_time, op.planned_operation_minutes)" />
+                        </div>
+                        <div class="time-bar-label mt-1">
+                          Setup: {{ formatMinutesAsHHMM(op.actual_setup_time) }} / {{ formatMinutesAsHHMM(op.planned_setup_minutes) }}
+                          ({{ formatPlanVsRealPercent(op.actual_setup_time, op.planned_setup_minutes) }})
+                        </div>
+                        <div class="time-bar-track">
+                          <div class="time-bar-fill" :style="timeBarStyle(op.actual_setup_time, op.planned_setup_minutes)" />
+                        </div>
                         <div class="time-block">En uso: <strong>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</strong></div>
                         <div class="time-block">Run P/R: {{ formatMinutesAsHHMM(op.planned_operation_minutes) }} / {{ formatMinutesAsHHMM(op.actual_run_time) }}</div>
                         <div class="time-block">Set P/R: {{ formatMinutesAsHHMM(op.planned_setup_minutes) }} / {{ formatMinutesAsHHMM(op.actual_setup_time) }}</div>
@@ -906,6 +920,26 @@ export default {
       const mins = m % 60
       return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
     },
+    formatPlanVsRealPercent(realMinutes, planMinutes) {
+      const real = Number(realMinutes || 0)
+      const plan = Number(planMinutes || 0)
+      if (!Number.isFinite(plan) || plan <= 0) return 'sin plan'
+      const pct = Math.max(0, Math.round((Math.max(0, real) / plan) * 100))
+      return `${pct}%`
+    },
+    timeBarStyle(realMinutes, planMinutes) {
+      const real = Number(realMinutes || 0)
+      const plan = Number(planMinutes || 0)
+      if (!Number.isFinite(plan) || plan <= 0) {
+        return { width: '0%', backgroundColor: '#9e9e9e' }
+      }
+      const ratio = Math.max(0, real) / plan
+      const pct = Math.min(150, Math.round(ratio * 100))
+      let color = '#4caf50'
+      if (ratio > 1) color = '#ef5350'
+      else if (ratio >= 0.85) color = '#ff9800'
+      return { width: `${pct}%`, backgroundColor: color }
+    },
     async borrarOperacion(id) {
       if (!confirm('¿Borrar operación?')) return
       try {
@@ -1483,6 +1517,27 @@ export default {
 .ops-meta,
 .time-block {
   line-height: 1.2;
+}
+
+.time-bar-label {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.time-bar-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: #e0e0e0;
+  overflow: hidden;
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.time-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
 }
 
 .fade-enter-active,
