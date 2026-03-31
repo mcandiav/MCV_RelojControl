@@ -1,6 +1,6 @@
 ﻿<template>
   <v-app>
-    <!-- Tablero protector: siempre 2Ã—2 visibles; si hay mÃ¡s de 4 tareas, carrusel (flechas / teclado). -->
+    <!-- Tablero protector: siempre 2x2 visibles; si hay mas de 4 tareas, carrusel (flechas / teclado). -->
     <transition name="fade">
       <div
         v-if="showIdleBoard"
@@ -10,14 +10,14 @@
       >
         <div class="idle-board-body" @click.stop>
           <div v-if="idleBoardTotalPages > 1" class="idle-board-carousel-bar">
-            <v-btn icon dark large class="carousel-nav" aria-label="PÃ¡gina anterior" @click="idleBoardPrev">
+            <v-btn icon dark large class="carousel-nav" aria-label="Pagina anterior" @click="idleBoardPrev">
               <v-icon large>mdi-chevron-left</v-icon>
             </v-btn>
             <div class="carousel-meta">
               <span class="carousel-page">{{ idleBoardSafePage + 1 }} / {{ idleBoardTotalPages }}</span>
               <span class="carousel-count">{{ idleActiveTimersSorted.length }} tareas · izquierda/derecha</span>
             </div>
-            <v-btn icon dark large class="carousel-nav" aria-label="PÃ¡gina siguiente" @click="idleBoardNext">
+            <v-btn icon dark large class="carousel-nav" aria-label="Pagina siguiente" @click="idleBoardNext">
               <v-icon large>mdi-chevron-right</v-icon>
             </v-btn>
           </div>
@@ -90,7 +90,7 @@
           </div>
         </div>
         <div class="idle-board-footer" @click="closeIdleBoard">
-          Toca aquÃ­ para cerrar Â· Esc Â· Carrusel cada {{ idleBoardCarouselSeconds }}s si hay varias pÃ¡ginas Â· Datos cada {{ boardPollSeconds }}s
+          Toca aqui para cerrar · Esc · Carrusel cada {{ idleBoardCarouselSeconds }}s si hay varias paginas · Datos cada {{ boardPollSeconds }}s
         </div>
       </div>
     </transition>
@@ -100,7 +100,7 @@
       <v-row>
         <v-col cols="12">
           <v-card outlined class="pa-4">
-            <div class="text-h6 font-weight-bold mb-2">CronÃ³metro v3</div>
+            <div class="text-h6 font-weight-bold mb-2">Cronometro v3</div>
             <div v-if="user" class="subtitle-2">
               Usuario: {{ user.name }} {{ user.lastname }} |
               Rol: {{ user.Role && user.Role.name }} |
@@ -111,7 +111,7 @@
       </v-row>
 
       <v-tabs v-model="activeTab" background-color="transparent" class="mb-4">
-        <v-tab>OperaciÃ³n</v-tab>
+        <v-tab>Operacion</v-tab>
         <v-tab v-if="isAdmin">Usuarios</v-tab>
         <v-tab v-if="isAdmin">Sistema</v-tab>
         <v-tab v-if="isAdmin">Sincronizacion</v-tab>
@@ -133,36 +133,6 @@
             <div class="grey--text text-caption mt-2">Busqueda automatica al escribir el numero.</div>
               </v-card>
             </v-col>
-
-            <v-col cols="12" md="6" v-if="isAdmin">
-              <v-card outlined class="pa-4">
-                <div class="text-subtitle-1 font-weight-bold mb-3">Acciones admin de prueba</div>
-                <v-btn class="mr-2 mb-2" color="secondary" :loading="loadingSeed" @click="seedWip">
-                  Seed WIP sample
-                </v-btn>
-                <v-text-field
-                  v-model.trim="uploadFilename"
-                  label="Archivo en uploads (ej: Resultados...xls)"
-                  dense
-                  outlined
-                  class="mb-2"
-                />
-                <v-btn class="mr-2 mb-2" color="secondary" :loading="loadingImportUpload" @click="importarDesdeUpload">
-                  Importar upload
-                </v-btn>
-                <v-btn class="mb-2" color="error" :loading="loadingShiftClose" @click="cerrarTurno">
-                  Ejecutar cierre de turno
-                </v-btn>
-                <v-alert v-if="lastSeedResponse" type="info" dense outlined class="mt-3 mb-0 seed-debug-alert">
-                  <div class="font-weight-bold mb-1">Respuesta del servidor (ultimo Seed)</div>
-                  <pre class="seed-json text-left">{{ lastSeedResponse }}</pre>
-                  <div class="text-caption mt-2">
-                    Tras Seed WIP: <code>total</code> <strong>52</strong>, <code>ot_numbers</code> <strong>OT1</strong> â€¦ <strong>OT9</strong> (nombres con <strong>CUAD A/B/â€¦</strong> para probar cuadrantes).
-                    Si el total no coincide, el <strong>backend</strong> puede estar con imagen antigua.
-                  </div>
-                </v-alert>
-              </v-card>
-            </v-col>
           </v-row>
 
           <v-row>
@@ -171,7 +141,7 @@
                 <div class="d-flex flex-wrap align-center justify-space-between mb-2">
                   <div class="text-subtitle-1 font-weight-bold">Tablero de cronometros activos</div>
                   <div class="d-flex flex-wrap align-center" style="gap: 8px">
-                    <span class="grey--text text-caption">Protector 2Ã—2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay mÃ¡s de 4.</span>
+                    <span class="grey--text text-caption">Protector 2x2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay mas de 4.</span>
                     <v-btn small outlined color="primary" @click="openIdleBoardPreview">Ver tablero grande</v-btn>
                   </div>
                 </div>
@@ -285,7 +255,7 @@
                   <tbody>
                     <tr v-for="op in operations" :key="op.id">
                       <td>
-                        <div class="ops-meta"><strong>{{ op.ot_number }}</strong> Â· Sec {{ op.operation_sequence }}</div>
+                        <div class="ops-meta"><strong>{{ op.ot_number }}</strong> · Sec {{ op.operation_sequence }}</div>
                         <div class="ops-meta">{{ op.operation_name }}</div>
                       </td>
                       <td>{{ op.resource_code }}</td>
@@ -321,9 +291,6 @@
                       <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
                       <v-btn x-small color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
                       <v-btn x-small color="error" @click="openStopQuantityDialog(op)">Stop</v-btn>
-                    <template v-if="isAdmin">
-                      <v-btn x-small color="error" @click="borrarOperacion(op.id)">Borrar</v-btn>
-                    </template>
                     </div>
                       </td>
                     </tr>
@@ -389,14 +356,14 @@
           <v-row>
             <v-col cols="12" md="6">
               <v-card outlined class="pa-4">
-                <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automÃ¡ticos</div>
+                <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automaticos</div>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
-                  Tres horarios (zona {{ shiftMeta.timezone || 'â€”' }}). Se programan cron jobs en el servidor al guardar.
+                  Tres horarios (zona {{ shiftMeta.timezone || '-' }}). Se programan cron jobs en el servidor al guardar.
                   Los flags globales vienen de variables de entorno del API (<code>NS_SHIFT_BATCH_ENABLED</code>,
                   <code>NS_AUTO_STOP_AT_SHIFT_END</code>).
                 </p>
                 <v-alert v-if="shiftMeta.shift_batch_enabled === false || shiftMeta.auto_stop_at_shift_end === false" type="warning" dense outlined class="mb-3">
-                  El planificador estÃ¡ deshabilitado por configuraciÃ³n del servidor; igual podÃ©s editar y guardar horarios para cuando se active.
+                  El planificador esta deshabilitado por configuracion del servidor; igual podes editar y guardar horarios para cuando se active.
                 </v-alert>
                 <v-alert v-if="shiftScheduleError" type="error" dense class="mb-3">{{ shiftScheduleError }}</v-alert>
                 <div v-for="slot in shiftSlotsDraft" :key="'s-' + slot.sequence" class="d-flex flex-wrap align-center mb-3" style="gap: 12px">
@@ -421,20 +388,20 @@
                 <div class="text-subtitle-1 font-weight-bold mb-2">NetSuite</div>
                 <v-alert v-if="apiUrlBrokenOnHttps" type="error" dense prominent class="mb-3">
                   La app carga en <strong>HTTPS</strong> pero axios apunta a <code>{{ axiosBaseUrlDisplay }}</code>.
-                  El navegador bloquea eso (mixed content) y verÃ¡s <strong>Network Error</strong> al instante.
-                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacÃ­o en EasyPanel.
+                  El navegador bloquea eso (mixed content) y veras <strong>Network Error</strong> al instante.
+                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacio en EasyPanel.
                 </v-alert>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
-                  URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> Â· Origen web: <code>{{ browserOrigin }}</code>
+                  URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> · Origen web: <code>{{ browserOrigin }}</code>
                 </p>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Pull: dataset <strong>MCV_cronometro_out</strong> (desde el navegador o con script en el host:
-                  <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la mÃ¡quina donde corrÃ¡s el script.
+                  <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la maquina donde corras el script.
                 </p>
                 <v-btn class="mr-2 mb-2" small outlined :loading="loadingCorsPing" @click="testApiCorsPing">
-                  Probar conexiÃ³n API
+                  Probar conexion API
                 </v-btn>
-                <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integraciÃ³n</v-btn>
+                <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integracion</v-btn>
                 <v-simple-table v-if="nsStatus" dense class="mb-3 ns-status-table">
                   <tbody>
                     <tr v-for="row in nsStatusFlat" :key="row.key">
@@ -470,7 +437,7 @@
                   outlined
                   hide-details
                   class="mb-2"
-                  label="Filtrar (OT, operaciÃ³n, recurso, Ã¡rea o status)"
+                  label="Filtrar (OT, operacion, recurso, area o status)"
                 />
                 <div class="text-caption grey--text mb-2">
                   Mostrando {{ filteredNsWipRows.length }} de {{ nsWipRows.length }} filas.
@@ -570,10 +537,10 @@
     <!-- Stop: cantidad terminada (opcional) -->
     <v-dialog v-model="stopQtyDialog" max-width="420" persistent>
       <v-card>
-        <v-card-title class="text-h6">Detener cronÃ³metro</v-card-title>
+        <v-card-title class="text-h6">Detener cronometro</v-card-title>
         <v-card-text>
           <p class="body-2 mb-3">
-            PodÃ©s registrar la <strong>cantidad terminada</strong> de esta operaciÃ³n al cerrar. Si no cargÃ¡s nada, solo se detiene el cronÃ³metro y no se cambia el valor en base.
+            Podes registrar la <strong>cantidad terminada</strong> de esta operacion al cerrar. Si no cargas nada, solo se detiene el cronometro y no se cambia el valor en base.
           </p>
           <v-text-field
             v-model="stopQtyValue"
@@ -587,6 +554,15 @@
             :disabled="stopQtyLoading"
             @keyup.enter="confirmStopWithQuantity"
           />
+          <v-alert
+            v-if="stopQtyWarningText"
+            type="warning"
+            dense
+            outlined
+            class="mt-3 mb-0"
+          >
+            {{ stopQtyWarningText }}
+          </v-alert>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -683,6 +659,7 @@ export default {
       stopQtyDialog: false,
       stopQtyOpId: null,
       stopQtyValue: '',
+      stopQtyPlanned: null,
       stopQtyLoading: false,
       shiftSlotsDraft: [
         { sequence: 1, hhmm: '07:00', enabled: true },
@@ -869,6 +846,14 @@ export default {
           .join(' | ')
         return bag.includes(q)
       })
+    },
+    stopQtyWarningText() {
+      const raw = String(this.stopQtyValue || '').trim()
+      if (!raw || !/^\d+$/.test(raw)) return ''
+      const planned = Number(this.stopQtyPlanned)
+      if (!Number.isFinite(planned) || planned < 0) return ''
+      if (Number(raw) > planned) return 'Esta cantidad supera lo requerido'
+      return ''
     },
     opsTableCols() {
       const ot = Math.min(34, Math.max(16, Number(this.opsColOtPct || 22)))
@@ -1103,16 +1088,6 @@ export default {
       else if (ratio >= 0.85) color = '#ff9800'
       return { width: `${pct}%`, backgroundColor: color }
     },
-    async borrarOperacion(id) {
-      if (!confirm('Â¿Borrar operaciÃ³n?')) return
-      try {
-        await axios.delete(`/chronometer/operations/${id}`)
-        this.operations = this.operations.filter((item) => item.id !== id)
-        this.refreshBoard()
-      } catch (error) {
-        alert('No fue posible borrar la operaciÃ³n.')
-      }
-    },
     async loadAdminCatalogs() {
       try {
         const [users, roles, workplaces] = await Promise.all([
@@ -1284,6 +1259,7 @@ export default {
     },
     openStopQuantityDialog(op) {
       this.stopQtyOpId = op.id
+      this.stopQtyPlanned = op && op.planned_quantity != null ? Number(op.planned_quantity) : null
       // Delta por cierre: iniciar vacÃ­o para no reenviar el acumulado por error.
       this.stopQtyValue = ''
       this.stopQtyDialog = true
@@ -1293,6 +1269,7 @@ export default {
       this.stopQtyDialog = false
       this.stopQtyOpId = null
       this.stopQtyValue = ''
+      this.stopQtyPlanned = null
     },
     async confirmStopWithQuantity() {
       if (!this.stopQtyOpId) return
