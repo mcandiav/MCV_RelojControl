@@ -133,41 +133,34 @@
                 </div>
                 <v-alert v-if="errorOps" type="error" dense class="mb-3">{{ errorOps }}</v-alert>
                 <v-alert v-if="!errorOps && emptyOpsHint" type="info" dense class="mb-3">{{ emptyOpsHint }}</v-alert>
-            <v-simple-table v-if="operations.length > 0" class="compact-table">
+            <v-simple-table v-if="operations.length > 0" class="compact-table ops-table">
                   <thead>
                     <tr>
-                      <th>Operacion</th>
+                      <th>OT / Op</th>
                       <th>Recurso</th>
-                  <th>OT</th>
-                  <th>Secuencia</th>
-                  <th>Estado</th>
-                  <th>Tiempo planificado montaje (HH:MM)</th>
-                  <th>Tiempo en uso</th>
-                  <th>Tiempo real montaje (HH:MM)</th>
-                  <th>Tiempo planificado ejecucion (HH:MM)</th>
-                  <th>Tiempo en uso</th>
-                  <th>Tiempo real ejecucion (HH:MM)</th>
-                  <th>Cantidad planificada</th>
-                  <th>Cant. terminada</th>
+                      <th>Estado</th>
+                      <th>Tiempos</th>
+                      <th>Cantidades</th>
                       <th>Area</th>
                       <th>Accion</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="op in operations" :key="op.id">
-                      <td>{{ op.operation_name }}</td>
+                      <td>
+                        <div class="ops-meta"><strong>{{ op.ot_number }}</strong> · Sec {{ op.operation_sequence }}</div>
+                        <div class="ops-meta">{{ op.operation_name }}</div>
+                      </td>
                       <td>{{ op.resource_code }}</td>
-                  <td>{{ op.ot_number }}</td>
-                  <td>{{ op.operation_sequence }}</td>
-                  <td>{{ op.status || 'STOPPED' }}</td>
-                  <td>{{ formatMinutesAsHHMM(op.planned_setup_minutes) }}</td>
-                  <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
-                  <td>{{ formatMinutesAsHHMM(op.actual_setup_time) }}</td>
-                  <td>{{ formatMinutesAsHHMM(op.planned_operation_minutes) }}</td>
-                  <td>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</td>
-                  <td>{{ formatMinutesAsHHMM(op.actual_run_time) }}</td>
-                  <td>{{ op.planned_quantity != null ? op.planned_quantity : '-' }}</td>
-                  <td>{{ op.completed_quantity != null ? op.completed_quantity : '-' }}</td>
+                      <td>{{ op.status || 'STOPPED' }}</td>
+                      <td>
+                        <div class="time-block">En uso: <strong>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</strong></div>
+                        <div class="time-block">Run P/R: {{ formatMinutesAsHHMM(op.planned_operation_minutes) }} / {{ formatMinutesAsHHMM(op.actual_run_time) }}</div>
+                        <div class="time-block">Set P/R: {{ formatMinutesAsHHMM(op.planned_setup_minutes) }} / {{ formatMinutesAsHHMM(op.actual_setup_time) }}</div>
+                      </td>
+                      <td>
+                        {{ op.completed_quantity != null ? op.completed_quantity : '-' }} / {{ op.planned_quantity != null ? op.planned_quantity : '-' }}
+                      </td>
                   <td>{{ op.area }}</td>
                   <td class="actions-cell">
                     <div class="action-buttons">
@@ -1476,9 +1469,20 @@ export default {
 
 .action-buttons {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+}
+
+.ops-table table th,
+.ops-table table td {
+  white-space: normal !important;
+  vertical-align: middle;
+}
+
+.ops-meta,
+.time-block {
+  line-height: 1.2;
 }
 
 .fade-enter-active,
