@@ -132,10 +132,10 @@
       </v-row>
 
       <v-tabs v-model="activeTab" background-color="transparent" class="mb-4">
-        <v-tab>Operacion</v-tab>
+        <v-tab>Operación</v-tab>
         <v-tab v-if="isAdmin">Usuarios</v-tab>
         <v-tab v-if="isAdmin">Sistema</v-tab>
-        <v-tab v-if="isAdmin">Sincronizacion</v-tab>
+        <v-tab v-if="isAdmin">Sincronización</v-tab>
       </v-tabs>
 
       <v-tabs-items v-model="activeTab" class="transparent">
@@ -328,7 +328,7 @@
                   </v-simple-table>
                 </div>
                 <div v-else class="grey--text">
-                  {{ operationsMode === 'area' ? 'Sin operaciones cargadas para tu area.' : 'Sin operaciones cargadas.' }}
+                  {{ operationsMode === 'area' ? 'Sin operaciones cargadas para tu área.' : 'Sin operaciones cargadas.' }}
                 </div>
               </v-card>
             </v-col>
@@ -340,12 +340,12 @@
             <v-col cols="12" md="4">
               <v-card outlined class="pa-4">
                 <div class="text-subtitle-1 font-weight-bold mb-3">Nuevo usuario</div>
-                <v-text-field v-model.trim="newUser.name" label="Nombre" dense outlined />
-                <v-text-field v-model.trim="newUser.lastname" label="Apellido" dense outlined />
-                <v-text-field v-model.trim="newUser.username" label="Usuario" dense outlined />
-                <v-text-field v-model="newUser.password" label="Password / PIN" dense outlined type="password" />
+                <v-text-field v-model.trim="newUser.name" :counter="USER_RULES.nameMax" :maxlength="USER_RULES.nameMax" label="Nombre" dense outlined />
+                <v-text-field v-model.trim="newUser.lastname" :counter="USER_RULES.lastnameMax" :maxlength="USER_RULES.lastnameMax" label="Apellido" dense outlined />
+                <v-text-field v-model.trim="newUser.username" :counter="USER_RULES.usernameMax" :maxlength="USER_RULES.usernameMax" label="Usuario" dense outlined />
+                <v-text-field v-model="newUser.password" :counter="USER_RULES.passwordLen" :maxlength="USER_RULES.passwordLen" label="Contraseña / PIN (4 dígitos)" dense outlined type="password" />
                 <v-select v-model="newUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
-                <v-select v-model="newUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Area" dense outlined />
+                <v-select v-model="newUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Área" dense outlined />
                 <v-btn color="primary" :loading="loadingCreateUser" @click="crearUsuario">Crear usuario</v-btn>
               </v-card>
             </v-col>
@@ -361,7 +361,7 @@
                       <th>Nombre</th>
                       <th>Usuario</th>
                       <th>Rol</th>
-                      <th>Area</th>
+                      <th>Área</th>
                       <th>Accion</th>
                     </tr>
                   </thead>
@@ -495,7 +495,7 @@
                   outlined
                   hide-details
                   class="mb-2"
-                  label="Filtrar (OT, operacion, recurso, area o status)"
+                  label="Filtrar (OT, operación, recurso, área o estado)"
                 />
                 <div class="text-caption grey--text mb-2">
                   Mostrando {{ filteredNsWipRows.length }} de {{ nsWipRows.length }} filas.
@@ -509,7 +509,7 @@
                         <th>Seq</th>
                         <th>Operacion</th>
                         <th>Recurso</th>
-                        <th>Area</th>
+                        <th>Área</th>
                         <th>Plan setup (HH:MM)</th>
                         <th>Plan run (HH:MM)</th>
                         <th>Plan qty</th>
@@ -634,12 +634,12 @@
       <v-card>
         <v-card-title class="text-h6">Editar usuario</v-card-title>
         <v-card-text>
-          <v-text-field v-model.trim="editUser.name" label="Nombre" dense outlined />
-          <v-text-field v-model.trim="editUser.lastname" label="Apellido" dense outlined />
-          <v-text-field v-model.trim="editUser.username" label="Usuario" dense outlined />
-          <v-text-field v-model="editUser.password" label="Nuevo password / PIN (opcional)" dense outlined type="password" />
+          <v-text-field v-model.trim="editUser.name" :counter="USER_RULES.nameMax" :maxlength="USER_RULES.nameMax" label="Nombre" dense outlined />
+          <v-text-field v-model.trim="editUser.lastname" :counter="USER_RULES.lastnameMax" :maxlength="USER_RULES.lastnameMax" label="Apellido" dense outlined />
+          <v-text-field v-model.trim="editUser.username" :counter="USER_RULES.usernameMax" :maxlength="USER_RULES.usernameMax" label="Usuario" dense outlined />
+          <v-text-field v-model="editUser.password" :counter="USER_RULES.passwordLen" :maxlength="USER_RULES.passwordLen" label="Nueva contraseña / PIN (opcional, 4 dígitos)" dense outlined type="password" />
           <v-select v-model="editUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
-          <v-select v-model="editUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Area" dense outlined />
+          <v-select v-model="editUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Área" dense outlined />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -660,6 +660,12 @@ import { mapGetters } from 'vuex'
 
 /** Pull/push NetSuite suele tardar >20s; el timeout global de axios en main.js es corto. */
 const NETSUITE_AXIOS_TIMEOUT_MS = 180000
+const USER_RULES = Object.freeze({
+  nameMax: 40,
+  lastnameMax: 40,
+  usernameMax: 24,
+  passwordLen: 4
+})
 
 export default {
   name: 'Home',
@@ -764,7 +770,8 @@ export default {
       snackbar: false,
       snackbarText: '',
       snackbarColor: 'success',
-      logoSrc: logoCronometro
+      logoSrc: logoCronometro,
+      USER_RULES
     }
   },
   created() {
@@ -997,6 +1004,37 @@ export default {
     }
   },
   methods: {
+    validateUserDraft(user, { requirePassword }) {
+      const name = String((user && user.name) || '').trim()
+      const lastname = String((user && user.lastname) || '').trim()
+      const username = String((user && user.username) || '').trim()
+      const password = String((user && user.password) || '').trim()
+      const roleId = user && user.RoleId
+      const workplaceId = user && user.WorkplaceId
+
+      if (!name) return 'Nombre es obligatorio.'
+      if (name.length > USER_RULES.nameMax) return `Nombre excede ${USER_RULES.nameMax} caracteres.`
+
+      if (!lastname) return 'Apellido es obligatorio.'
+      if (lastname.length > USER_RULES.lastnameMax) return `Apellido excede ${USER_RULES.lastnameMax} caracteres.`
+
+      if (!username) return 'Usuario es obligatorio.'
+      if (username.length > USER_RULES.usernameMax) return `Usuario excede ${USER_RULES.usernameMax} caracteres.`
+      if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+        return 'Usuario solo permite letras, números, punto, guion y guion bajo.'
+      }
+
+      if (!(Number.isInteger(Number(roleId)) && Number(roleId) > 0)) return 'Rol inválido.'
+      if (!(Number.isInteger(Number(workplaceId)) && Number(workplaceId) > 0)) return 'Área inválida.'
+
+      if (requirePassword || password) {
+        if (!/^\d{4}$/.test(password)) {
+          return 'Contraseña / PIN debe tener exactamente 4 dígitos.'
+        }
+      }
+
+      return ''
+    },
     tabIndexByKey(keyRaw) {
       const key = String(keyRaw || '').toLowerCase()
       if (key === 'operacion') return 0
@@ -1411,6 +1449,11 @@ export default {
         alert('Completa todos los campos del usuario.')
         return
       }
+      const validationError = this.validateUserDraft(this.newUser, { requirePassword: true })
+      if (validationError) {
+        alert(validationError)
+        return
+      }
       this.loadingCreateUser = true
       try {
         await axios.post('/auth/signup', this.newUser)
@@ -1418,7 +1461,8 @@ export default {
         await this.loadAdminCatalogs()
         alert('Usuario creado.')
       } catch (error) {
-        alert('No fue posible crear el usuario.')
+        const msg = (error.response && error.response.data && error.response.data.message) || 'No fue posible crear el usuario.'
+        alert(msg)
       } finally {
         this.loadingCreateUser = false
       }
@@ -1460,7 +1504,12 @@ export default {
     async saveEditUser() {
       if (!this.editUser.id) return
       if (!this.editUser.name || !this.editUser.lastname || !this.editUser.username || !this.editUser.RoleId || !this.editUser.WorkplaceId) {
-        alert('Completa nombre, apellido, usuario, rol y area.')
+        alert('Completa nombre, apellido, usuario, rol y área.')
+        return
+      }
+      const validationError = this.validateUserDraft(this.editUser, { requirePassword: false })
+      if (validationError) {
+        alert(validationError)
         return
       }
       this.loadingEditUser = true
@@ -1500,7 +1549,7 @@ export default {
         this.operations = res.data.operations || []
         if (this.operations.length === 0) {
           this.emptyOpsHint =
-            'No hay operaciones para esta OT en tu area o la OT no esta cargada. Con datos de prueba: Seed WIP o POST upsert (ver backend/scripts) y busca OT1 â€¦ OT9.'
+            'No hay operaciones para esta OT en tu área o la OT no está cargada. Con datos de prueba: Seed WIP o POST upsert (ver backend/scripts) y busca OT1 â€¦ OT9.'
         }
       } catch (error) {
         const d = error.response && error.response.data
@@ -1522,11 +1571,11 @@ export default {
         const res = await axios.get('/chronometer/operations?status=ALL&limit=500')
         this.operations = (res.data && Array.isArray(res.data.operations)) ? res.data.operations : []
         if (this.operations.length === 0) {
-          this.emptyOpsHint = 'No hay operaciones disponibles en tu area.'
+          this.emptyOpsHint = 'No hay operaciones disponibles en tu área.'
         }
       } catch (error) {
         const d = error.response && error.response.data
-        let msg = 'No fue posible cargar operaciones del area.'
+        let msg = 'No fue posible cargar operaciones del área.'
         if (typeof d === 'string') msg = d
         else if (d && typeof d.message === 'string') msg = d.message
         this.errorOps = msg

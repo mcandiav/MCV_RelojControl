@@ -7,7 +7,7 @@
         </template>
         <v-list dense>
           <v-list-item @click="goToTab('operacion')">
-            <v-list-item-title>Operacion</v-list-item-title>
+            <v-list-item-title>Operación</v-list-item-title>
           </v-list-item>
           <v-list-item v-if="isAdmin" @click="goToTab('usuarios')">
             <v-list-item-title>Usuarios</v-list-item-title>
@@ -16,7 +16,7 @@
             <v-list-item-title>Sistema</v-list-item-title>
           </v-list-item>
           <v-list-item v-if="isAdmin" @click="goToTab('sincronizacion')">
-            <v-list-item-title>Sincronizacion</v-list-item-title>
+            <v-list-item-title>Sincronización</v-list-item-title>
           </v-list-item>
         </v-list>
       </v-menu>
@@ -47,7 +47,7 @@ export default {
     }),
     appTitle() {
       const buildLabel = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'V2').trim()
-      const base = `BIGNOTTI Cronometro v3 ${buildLabel}`.trim()
+      const base = `BIGNOTTI Cronómetro v3 ${buildLabel}`.trim()
       return isTestBuild() ? `${base} [TEST]` : base
     }
   },

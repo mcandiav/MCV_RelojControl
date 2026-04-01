@@ -18,6 +18,71 @@ const Role = require('../models/role');
 const Workplace = require('../models/workplace');
 const Log = require('../models/log');
 
+const USER_VALIDATION = {
+    nameMax: 40,
+    lastnameMax: 40,
+    usernameMax: 24,
+    passwordLen: 4
+};
+
+function normalizeString(v) {
+    return String(v == null ? '' : v).trim();
+}
+
+function isPositiveInt(v) {
+    const n = Number(v);
+    return Number.isInteger(n) && n > 0;
+}
+
+function validateUserPayload(payload, { requirePassword }) {
+    const username = normalizeString(payload && payload.username);
+    const name = normalizeString(payload && payload.name);
+    const lastname = normalizeString(payload && payload.lastname);
+    const password = normalizeString(payload && payload.password);
+    const RoleId = payload && payload.RoleId;
+    const WorkplaceId = payload && payload.WorkplaceId;
+
+    if (!name) return { ok: false, message: 'Nombre es obligatorio.' };
+    if (name.length > USER_VALIDATION.nameMax) {
+        return { ok: false, message: `Nombre excede ${USER_VALIDATION.nameMax} caracteres.` };
+    }
+
+    if (!lastname) return { ok: false, message: 'Apellido es obligatorio.' };
+    if (lastname.length > USER_VALIDATION.lastnameMax) {
+        return { ok: false, message: `Apellido excede ${USER_VALIDATION.lastnameMax} caracteres.` };
+    }
+
+    if (!username) return { ok: false, message: 'Usuario es obligatorio.' };
+    if (username.length > USER_VALIDATION.usernameMax) {
+        return { ok: false, message: `Usuario excede ${USER_VALIDATION.usernameMax} caracteres.` };
+    }
+    if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+        return { ok: false, message: 'Usuario solo permite letras, números, punto, guion y guion bajo.' };
+    }
+
+    if (!isPositiveInt(RoleId)) return { ok: false, message: 'Rol inválido.' };
+    if (!isPositiveInt(WorkplaceId)) return { ok: false, message: 'Área inválida.' };
+
+    if (requirePassword || password) {
+        if (!password) return { ok: false, message: 'Contraseña/PIN es obligatorio.' };
+        if (!/^\d{4}$/.test(password)) {
+            return { ok: false, message: `Contraseña/PIN debe tener exactamente ${USER_VALIDATION.passwordLen} dígitos.` };
+        }
+    }
+
+    return {
+        ok: true,
+        data: {
+            username,
+            name,
+            lastname,
+            password,
+            RoleId: Number(RoleId),
+            WorkplaceId: Number(WorkplaceId)
+        }
+    };
+}
+
 // =========================================
 // FLUJO DE AUTENTICACIÓN
 // =========================================
@@ -28,7 +93,12 @@ const Log = require('../models/log');
  * @param {object} res - Objeto de respuesta de Express.
  */
 exports.signUp = async function (req, res) {
-    const { username, name, lastname, password, RoleId, WorkplaceId } = req.body;
+    const v = validateUserPayload(req.body, { requirePassword: true });
+    if (!v.ok) return res.status(400).json({ message: v.message });
+    const { username, name, lastname, password, RoleId, WorkplaceId } = v.data;
+
+    const exists = await User.findOne({ where: { username } });
+    if (exists) return res.status(409).json({ message: 'El nombre de usuario ya existe.' });
 
     const newUser = new User({
         username: username,
@@ -177,13 +247,32 @@ exports.updateUser = async function (req, res) {
 
         if (!userFound) return res.status(404).json({ message: "No user found." });
 
-        const { password, id, ...fields } = req.body;
+        const payload = {
+            username: req.body && req.body.username != null ? req.body.username : userFound.username,
+            name: req.body && req.body.name != null ? req.body.name : userFound.name,
+            lastname: req.body && req.body.lastname != null ? req.body.lastname : userFound.lastname,
+            password: req.body && req.body.password != null ? req.body.password : '',
+            RoleId: req.body && req.body.RoleId != null ? req.body.RoleId : userFound.RoleId,
+            WorkplaceId: req.body && req.body.WorkplaceId != null ? req.body.WorkplaceId : userFound.WorkplaceId
+        };
 
-        userFound.username    = fields.username    ?? userFound.username;
-        userFound.name        = fields.name        ?? userFound.name;
-        userFound.lastname    = fields.lastname    ?? userFound.lastname;
-        userFound.RoleId      = fields.RoleId      ?? userFound.RoleId;
-        userFound.WorkplaceId = fields.WorkplaceId ?? userFound.WorkplaceId;
+        const v = validateUserPayload(payload, { requirePassword: false });
+        if (!v.ok) return res.status(400).json({ message: v.message });
+
+        const { username, name, lastname, password, RoleId, WorkplaceId } = v.data;
+
+        if (String(username) !== String(userFound.username)) {
+            const exists = await User.findOne({ where: { username } });
+            if (exists && Number(exists.id) !== Number(userFound.id)) {
+                return res.status(409).json({ message: 'El nombre de usuario ya existe.' });
+            }
+        }
+
+        userFound.username = username;
+        userFound.name = name;
+        userFound.lastname = lastname;
+        userFound.RoleId = RoleId;
+        userFound.WorkplaceId = WorkplaceId;
 
         if (password) {
             const salt = bcrypt.genSaltSync();
