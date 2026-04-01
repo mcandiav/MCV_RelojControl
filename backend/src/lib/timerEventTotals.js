@@ -11,7 +11,9 @@ function getShiftDateString(date = new Date(), timeZone = config.NS_TIMEZONE) {
 
 function normalizeTimerMode(value, fallback = 'RUN') {
   const mode = String(value || '').trim().toUpperCase();
-  return mode === 'SETUP' ? 'SETUP' : fallback;
+  if (mode === 'SETUP') return 'SETUP';
+  if (mode === 'RUN') return 'RUN';
+  return fallback;
 }
 
 function readTimerModeFromEvent(event, fallback = 'RUN') {
