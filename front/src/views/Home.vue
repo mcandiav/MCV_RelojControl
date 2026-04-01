@@ -184,11 +184,16 @@
                       <tr v-for="row in activeBoard" :key="row.id">
                         <td>{{ extractOperation(row).ot_number || '-' }}</td>
                         <td>{{ extractOperation(row).operation_sequence || '-' }}</td>
-                        <td>{{ extractOperation(row).operation_name || '-' }}</td>
+                        <td>
+                          <div>{{ extractOperation(row).operation_name || '-' }}</div>
+                          <div class="lane-now" :class="rowStatusClass(row)">
+                            {{ activeLaneText(row) }}
+                          </div>
+                        </td>
                         <td>{{ row.resource_code || '-' }}</td>
                         <td>{{ quantityProgressText(extractOperation(row)) }}</td>
                         <td>
-                          <div class="lane-cell">
+                          <div class="lane-cell" :class="laneCellClass(row, 'setup')">
                             <div class="lane-actions">
                               <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', row)">
                                 <v-icon x-small>mdi-play</v-icon>
@@ -204,6 +209,9 @@
                               {{ formatMinutesAsHHMMSS(extractOperation(row).actual_setup_time) }}
                               / {{ formatMinutesAsHHMMSS(extractOperation(row).planned_setup_minutes) }}
                             </div>
+                            <div class="lane-live" v-if="isLaneCurrent(row, 'setup')">
+                              En curso: {{ formatElapsed(row) }}
+                            </div>
                             <div class="time-bar-track">
                               <div class="time-bar-fill" :style="timeBarStyle(extractOperation(row).actual_setup_time, extractOperation(row).planned_setup_minutes)" />
                             </div>
@@ -211,7 +219,7 @@
                           </div>
                         </td>
                         <td>
-                          <div class="lane-cell">
+                          <div class="lane-cell" :class="laneCellClass(row, 'run')">
                             <div class="lane-actions">
                               <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', row)">
                                 <v-icon x-small>mdi-play</v-icon>
@@ -226,6 +234,9 @@
                             <div class="lane-time">
                               {{ formatMinutesAsHHMMSS(extractOperation(row).actual_run_time) }}
                               / {{ formatMinutesAsHHMMSS(extractOperation(row).planned_operation_minutes) }}
+                            </div>
+                            <div class="lane-live" v-if="isLaneCurrent(row, 'run')">
+                              En curso: {{ formatElapsed(row) }}
                             </div>
                             <div class="time-bar-track">
                               <div class="time-bar-fill" :style="timeBarStyle(extractOperation(row).actual_run_time, extractOperation(row).planned_operation_minutes)" />
@@ -1297,6 +1308,35 @@ export default {
     extractStatus(item) {
       return String((item && item.status) || 'STOPPED').toUpperCase()
     },
+    extractTimerMode(item) {
+      return String((item && item.timer_mode) || 'RUN').toUpperCase()
+    },
+    isLaneCurrent(item, lane) {
+      const status = this.extractStatus(item)
+      const mode = this.extractTimerMode(item)
+      const wanted = lane === 'setup' ? 'SETUP' : 'RUN'
+      return (status === 'ACTIVE' || status === 'PAUSED') && mode === wanted
+    },
+    laneCellClass(item, lane) {
+      const status = this.extractStatus(item)
+      if (!this.isLaneCurrent(item, lane)) return 'lane-idle'
+      if (status === 'ACTIVE') return 'lane-current lane-current--active'
+      if (status === 'PAUSED') return 'lane-current lane-current--paused'
+      return 'lane-idle'
+    },
+    activeLaneText(item) {
+      const status = this.extractStatus(item)
+      const mode = this.extractTimerMode(item)
+      if (status === 'ACTIVE') return mode === 'SETUP' ? 'Cronometrando ahora: CONFIGURACIÓN' : 'Cronometrando ahora: PRODUCCIÓN'
+      if (status === 'PAUSED') return mode === 'SETUP' ? 'Pausado en: CONFIGURACIÓN' : 'Pausado en: PRODUCCIÓN'
+      return 'Detenido'
+    },
+    rowStatusClass(item) {
+      const status = this.extractStatus(item)
+      if (status === 'ACTIVE') return 'lane-now--active'
+      if (status === 'PAUSED') return 'lane-now--paused'
+      return 'lane-now--stopped'
+    },
     quantityProgressText(op) {
       const completed = Number(op && op.completed_quantity)
       const planned = Number(op && op.planned_quantity)
@@ -2091,6 +2131,28 @@ export default {
 
 .lane-cell {
   min-width: 230px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+}
+
+.lane-idle {
+  opacity: 0.88;
+}
+
+.lane-current {
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.04);
+}
+
+.lane-current--active {
+  border-color: #2e7d32;
+  background: #f1f8e9;
+}
+
+.lane-current--paused {
+  border-color: #f9a825;
+  background: #fff8e1;
 }
 
 .lane-actions {
@@ -2109,11 +2171,36 @@ export default {
   font-variant-numeric: tabular-nums;
 }
 
+.lane-live {
+  font-size: 11px;
+  font-weight: 800;
+  color: #1b5e20;
+  margin-top: 2px;
+}
+
 .lane-percent {
   font-size: 11px;
   margin-top: 2px;
   color: #424242;
   font-weight: 700;
+}
+
+.lane-now {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lane-now--active {
+  color: #1b5e20;
+}
+
+.lane-now--paused {
+  color: #ef6c00;
+}
+
+.lane-now--stopped {
+  color: #757575;
 }
 
 .status-dot {
