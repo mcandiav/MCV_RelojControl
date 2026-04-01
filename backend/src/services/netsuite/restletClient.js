@@ -11,10 +11,12 @@ function isoDateOnly(d = new Date()) {
 }
 
 function buildImportJsonPayload(ops) {
+  const FIXED_SETUP_MINUTES_FOR_TEST = 10;
   return JSON.stringify(
     ops.map((op) => ({
       secuencia: Number(op.operation_sequence) || 0,
-      horasConfiguracion: Math.max(0, Number(op.actual_setup_time) || 0),
+      // Prueba temporal de canal TEK/NetSuite: enviar setup fijo en 10 min.
+      horasConfiguracion: FIXED_SETUP_MINUTES_FOR_TEST,
       horasEjecucion: Math.max(0, Number(op.actual_run_time) || 0),
       cantidadCompletada: Math.max(0, Number(op.completed_quantity) || 0)
     }))
