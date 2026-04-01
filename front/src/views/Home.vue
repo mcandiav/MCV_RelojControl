@@ -365,10 +365,10 @@
                     Detener todos
                   </v-btn>
                   <v-btn color="warning" :loading="loadingStopBatch === 'ME'" @click="stopTimersBatch('ME')">
-                    Detener ME
+                    Detener Mecanizado
                   </v-btn>
                   <v-btn color="secondary" :loading="loadingStopBatch === 'ES'" @click="stopTimersBatch('ES')">
-                    Detener ES
+                    Detener Estructura
                   </v-btn>
                 </div>
 
@@ -407,10 +407,10 @@
                     Detener todos
                   </v-btn>
                   <v-btn small color="warning" :loading="loadingStopBatch === 'ME'" @click="stopTimersBatch('ME')">
-                    Detener ME
+                    Detener Mecanizado
                   </v-btn>
                   <v-btn small color="secondary" :loading="loadingStopBatch === 'ES'" @click="stopTimersBatch('ES')">
-                    Detener ES
+                    Detener Estructura
                   </v-btn>
                 </div>
                 <v-alert v-if="apiUrlBrokenOnHttps" type="error" dense prominent class="mb-3">
@@ -726,6 +726,7 @@ export default {
     }
   },
   created() {
+    this.applyRouteTab()
     this.refreshBoard()
     this.loadAreaOperations()
     this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
@@ -786,6 +787,12 @@ export default {
     idleBoardTotalPages(n) {
       if (this.idleBoardPage >= n) this.idleBoardPage = Math.max(0, n - 1)
       if (this.showIdleBoard) this.syncIdleBoardCarousel()
+    },
+    '$route.query.tab'() {
+      this.applyRouteTab()
+    },
+    activeTab() {
+      this.syncRouteTab()
     }
   },
   computed: {
@@ -916,6 +923,37 @@ export default {
     }
   },
   methods: {
+    tabIndexByKey(keyRaw) {
+      const key = String(keyRaw || '').toLowerCase()
+      if (key === 'operacion') return 0
+      if (key === 'usuarios') return this.isAdmin ? 1 : 0
+      if (key === 'sistema') return this.isAdmin ? 2 : 0
+      if (key === 'sincronizacion') return this.isAdmin ? 3 : 0
+      return 0
+    },
+    tabKeyByIndex(indexRaw) {
+      const index = Number(indexRaw || 0)
+      if (index === 0) return 'operacion'
+      if (index === 1 && this.isAdmin) return 'usuarios'
+      if (index === 2 && this.isAdmin) return 'sistema'
+      if (index === 3 && this.isAdmin) return 'sincronizacion'
+      return 'operacion'
+    },
+    applyRouteTab() {
+      const routeTab = this.$route && this.$route.query ? this.$route.query.tab : null
+      const next = this.tabIndexByKey(routeTab)
+      if (this.activeTab !== next) this.activeTab = next
+    },
+    syncRouteTab() {
+      if (!this.$route || this.$route.name !== 'Home') return
+      const nextTab = this.tabKeyByIndex(this.activeTab)
+      const current = String((this.$route.query && this.$route.query.tab) || '')
+      if (current === nextTab) return
+      this.$router.replace({
+        name: 'Home',
+        query: { ...this.$route.query, tab: nextTab }
+      })
+    },
     resetOpsLayout() {
       this.opsColOtPct = 22
       this.opsColResourcePct = 15
