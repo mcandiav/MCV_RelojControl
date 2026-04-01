@@ -195,14 +195,14 @@
                         <td>
                           <div class="lane-cell" :class="laneCellClass(row, 'setup')">
                             <div class="lane-actions">
-                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', row)">
-                                <v-icon x-small>mdi-play</v-icon>
+                              <v-btn icon small color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', row)">
+                                <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', row)">
-                                <v-icon x-small>mdi-pause</v-icon>
+                              <v-btn icon small color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', row)">
+                                <v-icon small>mdi-pause</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', row)">
-                                <v-icon x-small>mdi-stop</v-icon>
+                              <v-btn icon small color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', row)">
+                                <v-icon small>mdi-stop</v-icon>
                               </v-btn>
                             </div>
                             <div class="lane-time">
@@ -221,14 +221,14 @@
                         <td>
                           <div class="lane-cell" :class="laneCellClass(row, 'run')">
                             <div class="lane-actions">
-                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', row)">
-                                <v-icon x-small>mdi-play</v-icon>
+                              <v-btn icon small color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', row)">
+                                <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', row)">
-                                <v-icon x-small>mdi-pause</v-icon>
+                              <v-btn icon small color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', row)">
+                                <v-icon small>mdi-pause</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', row)">
-                                <v-icon x-small>mdi-stop</v-icon>
+                              <v-btn icon small color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', row)">
+                                <v-icon small>mdi-stop</v-icon>
                               </v-btn>
                             </div>
                             <div class="lane-time">
@@ -282,14 +282,14 @@
                         <td>
                           <div class="lane-cell">
                             <div class="lane-actions">
-                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', op)">
-                                <v-icon x-small>mdi-play</v-icon>
+                              <v-btn icon small color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', op)">
+                                <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', op)">
-                                <v-icon x-small>mdi-pause</v-icon>
+                              <v-btn icon small color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', op)">
+                                <v-icon small>mdi-pause</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', op)">
-                                <v-icon x-small>mdi-stop</v-icon>
+                              <v-btn icon small color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', op)">
+                                <v-icon small>mdi-stop</v-icon>
                               </v-btn>
                             </div>
                             <div class="lane-time">
@@ -304,14 +304,14 @@
                         <td>
                           <div class="lane-cell">
                             <div class="lane-actions">
-                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', op)">
-                                <v-icon x-small>mdi-play</v-icon>
+                              <v-btn icon small color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', op)">
+                                <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', op)">
-                                <v-icon x-small>mdi-pause</v-icon>
+                              <v-btn icon small color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', op)">
+                                <v-icon small>mdi-pause</v-icon>
                               </v-btn>
-                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', op)">
-                                <v-icon x-small>mdi-stop</v-icon>
+                              <v-btn icon small color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', op)">
+                                <v-icon small>mdi-stop</v-icon>
                               </v-btn>
                             </div>
                             <div class="lane-time">
@@ -655,7 +655,7 @@
 import axios from 'axios'
 import '@mdi/font/css/materialdesignicons.css'
 import appbar from '@/components/navegation/appbar.vue'
-import logoCronometro from '@/assets/logo.png'
+import logoCronometro from '@/assets/at-once-logo.png'
 import { mapGetters } from 'vuex'
 
 /** Pull/push NetSuite suele tardar >20s; el timeout global de axios en main.js es corto. */
@@ -2551,6 +2551,7 @@ export default {
   }
 }
 </style>
+
 
 
 

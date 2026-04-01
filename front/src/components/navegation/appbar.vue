@@ -22,7 +22,7 @@
       </v-menu>
 
       <v-toolbar-title class="d-flex align-center">
-        <img src="/logo.png" alt="Bignotti" class="app-logo">
+        <img :src="atOnceLogo" alt="At-Once" class="app-logo">
         <span>{{ appTitle }}</span>
       </v-toolbar-title>
 
@@ -39,8 +39,14 @@
 <script>
 import { mapActions, mapGetters } from 'vuex'
 import { isTestBuild } from '@/utils/buildMode'
+import atOnceLogo from '@/assets/at-once-logo.png'
 
 export default {
+  data() {
+    return {
+      atOnceLogo
+    }
+  },
   computed: {
     ...mapGetters({
       isAdmin: 'auth/isAdmin'
