@@ -100,11 +100,32 @@
       <v-row>
         <v-col cols="12">
           <v-card outlined class="pa-4">
-            <div class="text-h6 font-weight-bold mb-2">Cronometro v3</div>
-            <div v-if="user" class="subtitle-2">
-              Usuario: {{ user.name }} {{ user.lastname }} |
-              Rol: {{ user.Role && user.Role.name }} |
-              Area: {{ user.Workplace && user.Workplace.name }}
+            <div class="chrono-header">
+              <div class="chrono-brand">
+                <img :src="logoSrc" alt="Logo Cronometro" class="chrono-logo" />
+                <div class="chrono-brand-text">
+                  <div class="chrono-title">CRONÓMETRO</div>
+                  <div class="chrono-subtitle">Operación en planta</div>
+                </div>
+              </div>
+              <div class="chrono-meta-grid">
+                <div class="meta-item">
+                  <span class="meta-label">Turno Activo</span>
+                  <span class="meta-value">{{ activeShiftLabel }}</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Inicio</span>
+                  <span class="meta-value">{{ activeShiftStart }}</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Fin</span>
+                  <span class="meta-value">{{ activeShiftEnd }}</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Operador</span>
+                  <span class="meta-value">{{ operatorLabel }}</span>
+                </div>
+              </div>
             </div>
           </v-card>
         </v-col>
@@ -139,74 +160,83 @@
             <v-col cols="12">
               <v-card outlined class="pa-4">
                 <div class="d-flex flex-wrap align-center justify-space-between mb-2">
-                  <div class="text-subtitle-1 font-weight-bold">Tablero de cronometros activos</div>
+                  <div class="text-subtitle-1 font-weight-bold">Operaciones Activas</div>
                   <div class="d-flex flex-wrap align-center" style="gap: 8px">
                     <span class="grey--text text-caption">Protector 2x2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay mas de 4.</span>
                     <v-btn small outlined color="primary" @click="openIdleBoardPreview">Ver tablero grande</v-btn>
                   </div>
                 </div>
                 <v-alert v-if="errorBoard" type="error" dense class="mb-3">{{ errorBoard }}</v-alert>
-                <v-simple-table v-if="activeBoard.length > 0" class="compact-table">
-                  <colgroup>
-                    <col :style="{ width: boardCols.ot }" />
-                    <col :style="{ width: boardCols.operation }" />
-                    <col :style="{ width: boardCols.resource }" />
-                    <col :style="{ width: boardCols.area }" />
-                    <col :style="{ width: boardCols.times }" />
-                    <col :style="{ width: boardCols.quantity }" />
-                    <col :style="{ width: boardCols.status }" />
-                    <col :style="{ width: boardCols.user }" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>OT</th>
-                      <th>Operacion</th>
-                      <th>Recurso</th>
-                      <th>Area</th>
-                      <th>Tiempos</th>
-                      <th>Cantidades</th>
-                      <th>Estado</th>
-                      <th>Operario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in activeBoard" :key="row.id">
-                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.ot_number }}</td>
-                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.operation_name }}</td>
-                      <td>{{ row.resource_code }}</td>
-                      <td>{{ row.WorkOrderOperation && row.WorkOrderOperation.area }}</td>
-                      <td>
-                        <div class="time-bar-label">
-                          Run: {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.actual_run_time) }}
-                          / {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }}
-                          ({{ formatPlanVsRealPercent(row.WorkOrderOperation && row.WorkOrderOperation.actual_run_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes) }})
-                        </div>
-                        <div class="time-bar-track">
-                          <div class="time-bar-fill" :style="timeBarStyle(row.WorkOrderOperation && row.WorkOrderOperation.actual_run_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_operation_minutes)" />
-                        </div>
-                        <div class="time-bar-label mt-1">
-                          Setup: {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.actual_setup_time) }}
-                          / {{ formatMinutesAsHHMM(row.WorkOrderOperation && row.WorkOrderOperation.planned_setup_minutes) }}
-                          ({{ formatPlanVsRealPercent(row.WorkOrderOperation && row.WorkOrderOperation.actual_setup_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_setup_minutes) }})
-                        </div>
-                        <div class="time-bar-track">
-                          <div class="time-bar-fill" :style="timeBarStyle(row.WorkOrderOperation && row.WorkOrderOperation.actual_setup_time, row.WorkOrderOperation && row.WorkOrderOperation.planned_setup_minutes)" />
-                        </div>
-                        <div class="time-block">En uso: <strong>{{ formatElapsed(row) }}</strong></div>
-                      </td>
-                      <td>
-                        {{ row.WorkOrderOperation && row.WorkOrderOperation.completed_quantity != null ? row.WorkOrderOperation.completed_quantity : '-' }}
-                        / {{ row.WorkOrderOperation && row.WorkOrderOperation.planned_quantity != null ? row.WorkOrderOperation.planned_quantity : '-' }}
-                      </td>
-                      <td>
-                        <v-icon small :color="statusColor(row.status)" class="mr-1">{{ statusIcon(row.status) }}</v-icon>
-                        <span class="status-dot" :class="statusDotClass(row.status)" />
-                        {{ statusLabel(row.status) }}
-                      </td>
-                      <td>{{ row.User ? (row.User.name + ' ' + row.User.lastname) : '-' }}</td>
-                    </tr>
-                  </tbody>
-                </v-simple-table>
+                <div v-if="activeBoard.length > 0" class="table-scroll-wrap active-wrap">
+                  <v-simple-table class="compact-table dual-board-table">
+                    <thead>
+                      <tr>
+                        <th>Orden de Trabajo</th>
+                        <th>Secuencia</th>
+                        <th>Operación</th>
+                        <th>Recurso</th>
+                        <th>Cantidad</th>
+                        <th>CONFIGURACIÓN</th>
+                        <th>PRODUCCIÓN</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in activeBoard" :key="row.id">
+                        <td>{{ extractOperation(row).ot_number || '-' }}</td>
+                        <td>{{ extractOperation(row).operation_sequence || '-' }}</td>
+                        <td>{{ extractOperation(row).operation_name || '-' }}</td>
+                        <td>{{ row.resource_code || '-' }}</td>
+                        <td>{{ quantityProgressText(extractOperation(row)) }}</td>
+                        <td>
+                          <div class="lane-cell">
+                            <div class="lane-actions">
+                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', row)">
+                                <v-icon x-small>mdi-play</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', row)">
+                                <v-icon x-small>mdi-pause</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', row)">
+                                <v-icon x-small>mdi-stop</v-icon>
+                              </v-btn>
+                            </div>
+                            <div class="lane-time">
+                              {{ formatMinutesAsHHMMSS(extractOperation(row).actual_setup_time) }}
+                              / {{ formatMinutesAsHHMMSS(extractOperation(row).planned_setup_minutes) }}
+                            </div>
+                            <div class="time-bar-track">
+                              <div class="time-bar-fill" :style="timeBarStyle(extractOperation(row).actual_setup_time, extractOperation(row).planned_setup_minutes)" />
+                            </div>
+                            <div class="lane-percent">{{ formatPlanVsRealPercent(extractOperation(row).actual_setup_time, extractOperation(row).planned_setup_minutes) }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div class="lane-cell">
+                            <div class="lane-actions">
+                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', row)">
+                                <v-icon x-small>mdi-play</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', row)">
+                                <v-icon x-small>mdi-pause</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', row)">
+                                <v-icon x-small>mdi-stop</v-icon>
+                              </v-btn>
+                            </div>
+                            <div class="lane-time">
+                              {{ formatMinutesAsHHMMSS(extractOperation(row).actual_run_time) }}
+                              / {{ formatMinutesAsHHMMSS(extractOperation(row).planned_operation_minutes) }}
+                            </div>
+                            <div class="time-bar-track">
+                              <div class="time-bar-fill" :style="timeBarStyle(extractOperation(row).actual_run_time, extractOperation(row).planned_operation_minutes)" />
+                            </div>
+                            <div class="lane-percent">{{ formatPlanVsRealPercent(extractOperation(row).actual_run_time, extractOperation(row).planned_operation_minutes) }}</div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-simple-table>
+                </div>
                 <div v-else class="grey--text">No hay cronometros activos.</div>
               </v-card>
             </v-col>
@@ -215,82 +245,77 @@
           <v-row>
             <v-col cols="12">
               <v-card outlined class="pa-4">
-                <div class="text-subtitle-1 font-weight-bold mb-3">
-                  {{ operationsMode === 'area' ? 'Operaciones de tu area' : 'Operaciones por OT' }}
-                </div>
+                <div class="text-subtitle-1 font-weight-bold mb-3">Operaciones de Tu Área</div>
                 <v-alert v-if="errorOps" type="error" dense class="mb-3">{{ errorOps }}</v-alert>
                 <v-alert v-if="!errorOps && emptyOpsHint" type="info" dense class="mb-3">{{ emptyOpsHint }}</v-alert>
-                <div class="d-flex flex-wrap align-center justify-space-between mb-3" style="gap: 8px">
-                  <span class="text-caption grey--text">
-                    Ajusta el ancho de columnas arrastrando el borde derecho de cada encabezado.
-                  </span>
-                  <v-btn small outlined @click="resetOpsLayout">Reset anchos</v-btn>
+                <div v-if="operations.length > 0" class="table-scroll-wrap area-wrap">
+                  <v-simple-table class="compact-table dual-board-table">
+                    <thead>
+                      <tr>
+                        <th>Orden de Trabajo</th>
+                        <th>Secuencia</th>
+                        <th>Operación</th>
+                        <th>Recurso</th>
+                        <th>Cantidad</th>
+                        <th>CONFIGURACIÓN</th>
+                        <th>PRODUCCIÓN</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="op in operations" :key="op.id">
+                        <td>{{ op.ot_number || '-' }}</td>
+                        <td>{{ op.operation_sequence || '-' }}</td>
+                        <td>{{ op.operation_name || '-' }}</td>
+                        <td>{{ op.resource_code || '-' }}</td>
+                        <td>{{ quantityProgressText(op) }}</td>
+                        <td>
+                          <div class="lane-cell">
+                            <div class="lane-actions">
+                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', op)">
+                                <v-icon x-small>mdi-play</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', op)">
+                                <v-icon x-small>mdi-pause</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', op)">
+                                <v-icon x-small>mdi-stop</v-icon>
+                              </v-btn>
+                            </div>
+                            <div class="lane-time">
+                              {{ formatMinutesAsHHMMSS(op.actual_setup_time) }} / {{ formatMinutesAsHHMMSS(op.planned_setup_minutes) }}
+                            </div>
+                            <div class="time-bar-track">
+                              <div class="time-bar-fill" :style="timeBarStyle(op.actual_setup_time, op.planned_setup_minutes)" />
+                            </div>
+                            <div class="lane-percent">{{ formatPlanVsRealPercent(op.actual_setup_time, op.planned_setup_minutes) }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div class="lane-cell">
+                            <div class="lane-actions">
+                              <v-btn icon x-small color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', op)">
+                                <v-icon x-small>mdi-play</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', op)">
+                                <v-icon x-small>mdi-pause</v-icon>
+                              </v-btn>
+                              <v-btn icon x-small color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', op)">
+                                <v-icon x-small>mdi-stop</v-icon>
+                              </v-btn>
+                            </div>
+                            <div class="lane-time">
+                              {{ formatMinutesAsHHMMSS(op.actual_run_time) }} / {{ formatMinutesAsHHMMSS(op.planned_operation_minutes) }}
+                            </div>
+                            <div class="time-bar-track">
+                              <div class="time-bar-fill" :style="timeBarStyle(op.actual_run_time, op.planned_operation_minutes)" />
+                            </div>
+                            <div class="lane-percent">{{ formatPlanVsRealPercent(op.actual_run_time, op.planned_operation_minutes) }}</div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-simple-table>
                 </div>
-            <v-simple-table v-if="operations.length > 0" ref="opsTable" class="compact-table ops-table">
-                  <colgroup>
-                    <col :style="{ width: opsTableCols.ot }" />
-                    <col :style="{ width: opsTableCols.resource }" />
-                    <col :style="{ width: opsTableCols.status }" />
-                    <col :style="{ width: opsTableCols.times }" />
-                    <col :style="{ width: opsTableCols.quantity }" />
-                    <col :style="{ width: opsTableCols.area }" />
-                    <col :style="{ width: opsTableCols.action }" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th class="resizable-col">OT / Op<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('ot', $event)" /></th>
-                      <th class="resizable-col">Recurso<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('resource', $event)" /></th>
-                      <th class="resizable-col">Estado<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('status', $event)" /></th>
-                      <th class="resizable-col">Tiempos<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('times', $event)" /></th>
-                      <th class="resizable-col">Cantidades<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('quantity', $event)" /></th>
-                      <th class="resizable-col">Area<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('area', $event)" /></th>
-                      <th>Accion</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="op in operations" :key="op.id">
-                      <td>
-                        <div class="ops-meta"><strong>{{ op.ot_number }}</strong> · Sec {{ op.operation_sequence }}</div>
-                        <div class="ops-meta">{{ op.operation_name }}</div>
-                      </td>
-                      <td>{{ op.resource_code }}</td>
-                      <td>
-                        <v-icon small :color="statusColor(op.status || 'STOPPED')" class="mr-1">{{ statusIcon(op.status || 'STOPPED') }}</v-icon>
-                        {{ op.status || 'STOPPED' }}
-                      </td>
-                      <td>
-                        <div class="time-bar-label">
-                          Run: {{ formatMinutesAsHHMM(op.actual_run_time) }} / {{ formatMinutesAsHHMM(op.planned_operation_minutes) }}
-                          ({{ formatPlanVsRealPercent(op.actual_run_time, op.planned_operation_minutes) }})
-                        </div>
-                        <div class="time-bar-track">
-                          <div class="time-bar-fill" :style="timeBarStyle(op.actual_run_time, op.planned_operation_minutes)" />
-                        </div>
-                        <div class="time-bar-label mt-1">
-                          Setup: {{ formatMinutesAsHHMM(op.actual_setup_time) }} / {{ formatMinutesAsHHMM(op.planned_setup_minutes) }}
-                          ({{ formatPlanVsRealPercent(op.actual_setup_time, op.planned_setup_minutes) }})
-                        </div>
-                        <div class="time-bar-track">
-                          <div class="time-bar-fill" :style="timeBarStyle(op.actual_setup_time, op.planned_setup_minutes)" />
-                        </div>
-                        <div class="time-block">En uso: <strong>{{ formatElapsedFromSeconds(op.elapsed_seconds || 0) }}</strong></div>
-                        <div class="time-block">Run R/P: {{ formatMinutesAsHHMM(op.actual_run_time) }} / {{ formatMinutesAsHHMM(op.planned_operation_minutes) }}</div>
-                        <div class="time-block">Set R/P: {{ formatMinutesAsHHMM(op.actual_setup_time) }} / {{ formatMinutesAsHHMM(op.planned_setup_minutes) }}</div>
-                      </td>
-                      <td>
-                        {{ op.completed_quantity != null ? op.completed_quantity : '-' }} / {{ op.planned_quantity != null ? op.planned_quantity : '-' }}
-                      </td>
-                  <td>{{ op.area }}</td>
-                  <td class="actions-cell">
-                    <div class="action-buttons">
-                      <v-btn x-small color="success" @click="timerAction('start', op.id)">Play</v-btn>
-                      <v-btn x-small color="warning" @click="timerAction('pause', op.id)">Pausa</v-btn>
-                      <v-btn x-small color="error" @click="openStopQuantityDialog(op)">Stop</v-btn>
-                    </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </v-simple-table>
                 <div v-else class="grey--text">
                   {{ operationsMode === 'area' ? 'Sin operaciones cargadas para tu area.' : 'Sin operaciones cargadas.' }}
                 </div>
@@ -619,6 +644,7 @@
 import axios from 'axios'
 import '@mdi/font/css/materialdesignicons.css'
 import appbar from '@/components/navegation/appbar.vue'
+import logoCronometro from '@/assets/logo.png'
 import { mapGetters } from 'vuex'
 
 /** Pull/push NetSuite suele tardar >20s; el timeout global de axios en main.js es corto. */
@@ -726,7 +752,8 @@ export default {
       nsWipFilter: '',
       snackbar: false,
       snackbarText: '',
-      snackbarColor: 'success'
+      snackbarColor: 'success',
+      logoSrc: logoCronometro
     }
   },
   created() {
@@ -858,6 +885,44 @@ export default {
     browserOrigin() {
       if (typeof window === 'undefined') return 'â€”'
       return window.location.origin || 'â€”'
+    },
+    operatorLabel() {
+      if (!this.user) return '-'
+      const name = [this.user.name, this.user.lastname].filter(Boolean).join(' ').trim()
+      return name || '-'
+    },
+    activeShiftData() {
+      const slots = (Array.isArray(this.shiftSlotsDraft) ? this.shiftSlotsDraft : [])
+        .filter((s) => s && s.enabled !== false && /^\d{2}:\d{2}$/.test(String(s.hhmm || '')))
+        .slice()
+        .sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0))
+      if (slots.length === 0) return { label: '-', start: '-', end: '-' }
+
+      const now = new Date()
+      const nowMinutes = now.getHours() * 60 + now.getMinutes()
+      let selectedIndex = -1
+      for (let i = 0; i < slots.length; i += 1) {
+        const [hh, mm] = String(slots[i].hhmm).split(':').map((x) => Number(x))
+        const slotMinutes = (Number.isFinite(hh) ? hh : 0) * 60 + (Number.isFinite(mm) ? mm : 0)
+        if (slotMinutes <= nowMinutes) selectedIndex = i
+      }
+      if (selectedIndex < 0) selectedIndex = slots.length - 1
+      const current = slots[selectedIndex]
+      const next = slots[(selectedIndex + 1) % slots.length]
+      return {
+        label: `Turno ${current.sequence || selectedIndex + 1}`,
+        start: current.hhmm || '-',
+        end: next && next.hhmm ? next.hhmm : '-'
+      }
+    },
+    activeShiftLabel() {
+      return this.activeShiftData.label
+    },
+    activeShiftStart() {
+      return this.activeShiftData.start
+    },
+    activeShiftEnd() {
+      return this.activeShiftData.end
     },
     /** HTTPS en planta + API en http://localhost o http://cualquiera â†’ bloqueo inmediato del navegador. */
     apiUrlBrokenOnHttps() {
@@ -1195,6 +1260,16 @@ export default {
       const mins = m % 60
       return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
     },
+    formatMinutesAsHHMMSS(totalMinutes) {
+      if (totalMinutes == null || totalMinutes === '') return '-'
+      const n = Number(totalMinutes)
+      if (!Number.isFinite(n)) return '-'
+      const totalSeconds = Math.max(0, Math.floor(n * 60))
+      const hrs = Math.floor(totalSeconds / 3600)
+      const mins = Math.floor((totalSeconds % 3600) / 60)
+      const secs = totalSeconds % 60
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    },
     formatPlanVsRealPercent(realMinutes, planMinutes) {
       const real = Number(realMinutes || 0)
       const plan = Number(planMinutes || 0)
@@ -1214,6 +1289,66 @@ export default {
       if (ratio > 1) color = '#ef5350'
       else if (ratio >= 0.85) color = '#ff9800'
       return { width: `${pct}%`, backgroundColor: color }
+    },
+    extractOperation(item) {
+      if (item && item.WorkOrderOperation) return item.WorkOrderOperation
+      return item || {}
+    },
+    extractStatus(item) {
+      return String((item && item.status) || 'STOPPED').toUpperCase()
+    },
+    quantityProgressText(op) {
+      const completed = Number(op && op.completed_quantity)
+      const planned = Number(op && op.planned_quantity)
+      const left = Number.isFinite(completed) ? Math.max(0, Math.floor(completed)) : '-'
+      const right = Number.isFinite(planned) ? Math.max(0, Math.floor(planned)) : '-'
+      if (!Number.isFinite(planned) || planned <= 0 || !Number.isFinite(completed)) return `${left} / ${right}`
+      const pct = Math.max(0, Math.round((Math.max(0, completed) / planned) * 100))
+      return `${left} / ${right} / ${pct}%`
+    },
+    async laneTimerAction(lane, action, item) {
+      const op = this.extractOperation(item)
+      if (!op || !op.id) return
+      if (action === 'stop') {
+        this.openStopQuantityDialog(op)
+        return
+      }
+
+      const mode = lane === 'setup' ? 'SETUP' : 'RUN'
+      const status = this.extractStatus(item)
+      try {
+        if (action === 'play') {
+          if (status === 'ACTIVE') {
+            await axios.post('/chronometer/timers/mode', {
+              work_order_operation_id: op.id,
+              timer_mode: mode
+            })
+          } else if (status === 'PAUSED') {
+            await axios.post('/chronometer/timers/mode', {
+              work_order_operation_id: op.id,
+              timer_mode: mode
+            })
+            await axios.post('/chronometer/timers/resume', {
+              work_order_operation_id: op.id,
+              timer_mode: mode
+            })
+          } else {
+            await axios.post('/chronometer/timers/start', {
+              work_order_operation_id: op.id,
+              timer_mode: mode
+            })
+          }
+        } else if (action === 'pause') {
+          await axios.post('/chronometer/timers/pause', { work_order_operation_id: op.id })
+        }
+        await this.refreshBoard()
+        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+        if (digits) await this.buscarOperaciones()
+        else await this.loadAreaOperations()
+      } catch (error) {
+        const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
+        alert(msg)
+      }
     },
     async loadAdminCatalogs() {
       try {
@@ -1775,6 +1910,69 @@ export default {
 </script>
 
 <style scoped>
+.chrono-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.chrono-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chrono-logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.chrono-brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.chrono-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.chrono-subtitle {
+  font-size: 0.8rem;
+  color: #616161;
+}
+
+.chrono-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, auto));
+  gap: 8px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fafafa;
+}
+
+.meta-label {
+  font-size: 0.68rem;
+  color: #757575;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.meta-value {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .compact-table table th,
 .compact-table table td {
   font-size: 12px !important;
@@ -1861,6 +2059,61 @@ export default {
   height: 100%;
   border-radius: 999px;
   transition: width 0.2s ease;
+}
+
+.table-scroll-wrap {
+  overflow: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+}
+
+.active-wrap {
+  max-height: 40vh;
+}
+
+.area-wrap {
+  max-height: 52vh;
+}
+
+.dual-board-table table {
+  min-width: 1180px;
+}
+
+.dual-board-table table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f7f7f7;
+  border-bottom: 1px solid #d8d8d8;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.lane-cell {
+  min-width: 230px;
+}
+
+.lane-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.timer-btn-round {
+  border-radius: 999px;
+}
+
+.lane-time {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.lane-percent {
+  font-size: 11px;
+  margin-top: 2px;
+  color: #424242;
+  font-weight: 700;
 }
 
 .status-dot {
@@ -2148,6 +2401,18 @@ export default {
 .ns-wip-table table td {
   font-size: 11px !important;
   white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+  .chrono-meta-grid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    width: 100%;
+  }
+
+  .chrono-logo {
+    width: 42px;
+    height: 42px;
+  }
 }
 </style>
 
