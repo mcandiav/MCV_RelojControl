@@ -22,7 +22,7 @@
       </v-menu>
 
       <v-toolbar-title class="d-flex align-center">
-        <img src="/logo-bignotti-doc.png" alt="Bignotti" class="app-logo">
+        <img src="/logo.png" alt="Bignotti" class="app-logo">
         <span>{{ appTitle }}</span>
       </v-toolbar-title>
 

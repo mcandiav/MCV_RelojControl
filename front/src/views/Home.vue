@@ -220,18 +220,13 @@
                 </div>
                 <v-alert v-if="errorOps" type="error" dense class="mb-3">{{ errorOps }}</v-alert>
                 <v-alert v-if="!errorOps && emptyOpsHint" type="info" dense class="mb-3">{{ emptyOpsHint }}</v-alert>
-                <div class="d-flex flex-wrap align-center mb-3" style="gap: 16px">
-                  <div style="min-width: 220px; max-width: 300px">
-                    <div class="text-caption">Ancho OT/Op: {{ opsColOtPct }}%</div>
-                    <v-slider v-model="opsColOtPct" min="16" max="34" hide-details dense />
-                  </div>
-                  <div style="min-width: 220px; max-width: 300px">
-                    <div class="text-caption">Ancho Recurso: {{ opsColResourcePct }}%</div>
-                    <v-slider v-model="opsColResourcePct" min="10" max="24" hide-details dense />
-                  </div>
+                <div class="d-flex flex-wrap align-center justify-space-between mb-3" style="gap: 8px">
+                  <span class="text-caption grey--text">
+                    Ajusta el ancho de columnas arrastrando el borde derecho de cada encabezado.
+                  </span>
                   <v-btn small outlined @click="resetOpsLayout">Reset anchos</v-btn>
                 </div>
-            <v-simple-table v-if="operations.length > 0" class="compact-table ops-table">
+            <v-simple-table v-if="operations.length > 0" ref="opsTable" class="compact-table ops-table">
                   <colgroup>
                     <col :style="{ width: opsTableCols.ot }" />
                     <col :style="{ width: opsTableCols.resource }" />
@@ -243,12 +238,12 @@
                   </colgroup>
                   <thead>
                     <tr>
-                      <th>OT / Op</th>
-                      <th>Recurso</th>
-                      <th>Estado</th>
-                      <th>Tiempos</th>
-                      <th>Cantidades</th>
-                      <th>Area</th>
+                      <th class="resizable-col">OT / Op<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('ot', $event)" /></th>
+                      <th class="resizable-col">Recurso<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('resource', $event)" /></th>
+                      <th class="resizable-col">Estado<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('status', $event)" /></th>
+                      <th class="resizable-col">Tiempos<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('times', $event)" /></th>
+                      <th class="resizable-col">Cantidades<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('quantity', $event)" /></th>
+                      <th class="resizable-col">Area<span class="col-resizer" @mousedown.prevent="startOpsColumnResize('area', $event)" /></th>
                       <th>Accion</th>
                     </tr>
                   </thead>
@@ -715,8 +710,17 @@ export default {
       nsLastResult: '',
       nsOperationalLastResult: '',
       nsOperationalDelaySeconds: 10,
-      opsColOtPct: 22,
-      opsColResourcePct: 15,
+      opsColWidths: {
+        ot: 22,
+        resource: 15,
+        status: 10,
+        times: 31,
+        quantity: 10,
+        area: 6,
+        action: 6
+      },
+      opsColOrder: ['ot', 'resource', 'status', 'times', 'quantity', 'area', 'action'],
+      opsResizeState: null,
       nsWipRows: [],
       nsWipRowsError: '',
       nsWipFilter: '',
@@ -742,6 +746,7 @@ export default {
   beforeDestroy() {
     if (this.clockInterval) clearInterval(this.clockInterval)
     if (this.searchTimeout) clearTimeout(this.searchTimeout)
+    this.stopOpsColumnResize()
     window.removeEventListener('keydown', this.scheduleIdleOpen)
     window.removeEventListener('touchstart', this.scheduleIdleOpen)
     window.removeEventListener('mousemove', this.onMouseMoveForIdle)
@@ -891,22 +896,15 @@ export default {
       return ''
     },
     opsTableCols() {
-      const ot = Math.min(34, Math.max(16, Number(this.opsColOtPct || 22)))
-      const resource = Math.min(24, Math.max(10, Number(this.opsColResourcePct || 15)))
-      const status = 10
-      const quantity = 10
-      const area = 6
-      const action = 12
-      const used = ot + resource + status + quantity + area + action
-      const times = Math.max(24, 100 - used)
+      const col = this.opsColWidths || {}
       return {
-        ot: `${ot}%`,
-        resource: `${resource}%`,
-        status: `${status}%`,
-        times: `${times}%`,
-        quantity: `${quantity}%`,
-        area: `${area}%`,
-        action: `${action}%`
+        ot: `${Number(col.ot || 22).toFixed(2)}%`,
+        resource: `${Number(col.resource || 15).toFixed(2)}%`,
+        status: `${Number(col.status || 10).toFixed(2)}%`,
+        times: `${Number(col.times || 31).toFixed(2)}%`,
+        quantity: `${Number(col.quantity || 10).toFixed(2)}%`,
+        area: `${Number(col.area || 6).toFixed(2)}%`,
+        action: `${Number(col.action || 6).toFixed(2)}%`
       }
     },
     boardCols() {
@@ -955,8 +953,71 @@ export default {
       })
     },
     resetOpsLayout() {
-      this.opsColOtPct = 22
-      this.opsColResourcePct = 15
+      this.opsColWidths = {
+        ot: 22,
+        resource: 15,
+        status: 10,
+        times: 31,
+        quantity: 10,
+        area: 6,
+        action: 6
+      }
+    },
+    opsColMinPct(key) {
+      const min = {
+        ot: 12,
+        resource: 9,
+        status: 7,
+        times: 18,
+        quantity: 8,
+        area: 6,
+        action: 6
+      }
+      return min[key] || 6
+    },
+    startOpsColumnResize(key, event) {
+      const order = this.opsColOrder || []
+      const i = order.indexOf(key)
+      if (i < 0 || i >= order.length - 1) return
+      const nextKey = order[i + 1]
+      const tableEl = this.$refs.opsTable && this.$refs.opsTable.$el ? this.$refs.opsTable.$el : null
+      const widthPx = tableEl ? tableEl.getBoundingClientRect().width : 0
+      if (!widthPx) return
+      this.opsResizeState = {
+        key,
+        nextKey,
+        startX: Number(event.clientX || 0),
+        widthPx,
+        startCurrent: Number(this.opsColWidths[key] || 0),
+        startNext: Number(this.opsColWidths[nextKey] || 0)
+      }
+      window.addEventListener('mousemove', this.onOpsColumnResize)
+      window.addEventListener('mouseup', this.stopOpsColumnResize)
+      document.body.classList.add('ops-resizing')
+    },
+    onOpsColumnResize(event) {
+      if (!this.opsResizeState) return
+      const state = this.opsResizeState
+      const deltaPx = Number(event.clientX || 0) - state.startX
+      const deltaPct = (deltaPx / state.widthPx) * 100
+      const minCurrent = this.opsColMinPct(state.key)
+      const minNext = this.opsColMinPct(state.nextKey)
+      const maxGrow = state.startNext - minNext
+      const maxShrink = minCurrent - state.startCurrent
+      const clampedDelta = Math.max(maxShrink, Math.min(maxGrow, deltaPct))
+      const current = Number((state.startCurrent + clampedDelta).toFixed(2))
+      const next = Number((state.startNext - clampedDelta).toFixed(2))
+      this.opsColWidths = {
+        ...this.opsColWidths,
+        [state.key]: current,
+        [state.nextKey]: next
+      }
+    },
+    stopOpsColumnResize() {
+      this.opsResizeState = null
+      window.removeEventListener('mousemove', this.onOpsColumnResize)
+      window.removeEventListener('mouseup', this.stopOpsColumnResize)
+      document.body.classList.remove('ops-resizing')
     },
     onMouseMoveForIdle() {
       if (!this.idleBoardEnabled || this.showIdleBoard) return
@@ -1741,6 +1802,38 @@ export default {
 .ops-table table td {
   white-space: normal !important;
   vertical-align: middle;
+}
+
+.ops-table table th.resizable-col {
+  position: relative;
+  padding-right: 14px !important;
+}
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: #c7c7c7;
+  opacity: 0.8;
+}
+
+:global(body.ops-resizing) {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .ops-meta,
