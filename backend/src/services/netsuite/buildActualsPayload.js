@@ -11,6 +11,8 @@ const { getNetsuiteConfig } = require('./config');
 async function buildActualsPayload({ operationIds } = {}) {
   const cfg = getNetsuiteConfig();
   const useDeltaMode = String(cfg.pushMode || '').toLowerCase() === 'workorder_completion';
+  const useRestletMode = String(cfg.pushMode || '').toLowerCase() === 'restlet';
+  const FIXED_SETUP_MINUTES_FOR_TEST = 10;
 
   const where = {
     netsuite_operation_id: {
@@ -113,7 +115,8 @@ async function buildActualsPayload({ operationIds } = {}) {
       operation_sequence: op.operation_sequence,
       netsuite_work_order_id: op.netsuite_work_order_id || null,
       netsuite_operation_id: nsId,
-      actual_setup_time: 0,
+      // Prueba temporal para validar canal TEK en modo RESTlet.
+      actual_setup_time: useRestletMode ? FIXED_SETUP_MINUTES_FOR_TEST : 0,
       actual_run_time: pendingRunDelta,
       completed_quantity: pendingQtyDelta,
       absolute_actual_run_time: actual_run_time,
