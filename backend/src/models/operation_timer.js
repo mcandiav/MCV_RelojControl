@@ -34,6 +34,14 @@ const OperationTimer = sequelize.define('OperationTimer', {
       isIn: [['ACTIVE', 'PAUSED', 'STOPPED']]
     }
   },
+  timer_mode: {
+    type: DataTypes.STRING(16),
+    allowNull: false,
+    defaultValue: 'RUN',
+    validate: {
+      isIn: [['RUN', 'SETUP']]
+    }
+  },
   active_since: {
     type: DataTypes.DATE,
     allowNull: true

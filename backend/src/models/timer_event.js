@@ -26,7 +26,7 @@ const TimerEvent = sequelize.define('TimerEvent', {
     type: DataTypes.STRING(32),
     allowNull: false,
     validate: {
-      isIn: [['START', 'PAUSE', 'RESUME', 'STOP', 'AUTO_STOP_SHIFT_END']]
+      isIn: [['START', 'PAUSE', 'RESUME', 'STOP', 'AUTO_STOP_SHIFT_END', 'MODE_CHANGE']]
     }
   },
   event_at: {

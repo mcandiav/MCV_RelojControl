@@ -5,14 +5,12 @@ const { computeTotalsFromEvents } = require('../../lib/timerEventTotals');
 const { getNetsuiteConfig } = require('./config');
 
 /**
- * Arquitectura v6: overwrite de los 3 datos vigentes por operación hacia manufacturingoperationtask.
- * Nota: actual_setup_time queda en 0 hasta modelar fases de montaje explícitas en eventos (no inferir desde pausa).
+ * Arquitectura v6: overwrite de los 3 datos vigentes por operacion hacia manufacturingoperationtask.
+ * actual_setup_time se calcula desde eventos etiquetados como SETUP.
  */
 async function buildActualsPayload({ operationIds } = {}) {
   const cfg = getNetsuiteConfig();
   const useDeltaMode = String(cfg.pushMode || '').toLowerCase() === 'workorder_completion';
-  const useRestletMode = String(cfg.pushMode || '').toLowerCase() === 'restlet';
-  const FIXED_SETUP_MINUTES_FOR_TEST = 10;
 
   const where = {
     netsuite_operation_id: {
@@ -55,9 +53,10 @@ async function buildActualsPayload({ operationIds } = {}) {
       op.actual_setup_time != null && Number.isFinite(Number(op.actual_setup_time))
         ? Math.max(0, Math.floor(Number(op.actual_setup_time)))
         : 0;
-    const delta_run_time = Math.max(0, Math.floor(totals.total_active_seconds / 60));
+    const delta_run_time = Math.max(0, Math.floor((totals.total_run_seconds || 0) / 60));
+    const delta_setup_time = Math.max(0, Math.floor((totals.total_setup_seconds || 0) / 60));
     const actual_run_time = base_run_time + delta_run_time;
-    const actual_setup_time = base_setup_time;
+    const actual_setup_time = base_setup_time + delta_setup_time;
     const cq = op.completed_quantity;
     const completed_quantity =
       cq != null && cq !== '' && Number.isFinite(Number(cq)) ? Math.max(0, Math.floor(Number(cq))) : 0;
@@ -70,12 +69,12 @@ async function buildActualsPayload({ operationIds } = {}) {
         ? Math.max(0, Math.floor(Number(op.last_pushed_completed_quantity)))
         : completed_quantity;
 
-    // Si aún no existe baseline de push (columnas nuevas en 0) pero la fila ya vino sincronizada desde NetSuite,
+    // Si aun no existe baseline de push (columnas nuevas en 0) pero la fila ya vino sincronizada desde NetSuite,
     // tomar los reales actuales como baseline para evitar push masivo falso.
     const lastSyncedAt = op.last_synced_at ? new Date(op.last_synced_at) : null;
     const hasSyncedStamp = lastSyncedAt instanceof Date && !Number.isNaN(lastSyncedAt.getTime());
     const baselineRun = (lastPushedRun === 0 && hasSyncedStamp && base_run_time > 0) ? base_run_time : lastPushedRun;
-    // Para cantidad terminada en modo delta, el baseline debe ser siempre lo último pusheado.
+    // Para cantidad terminada en modo delta, el baseline debe ser siempre lo ultimo pusheado.
     // Si no, cuando baseline=0 y el operario registra la primera unidad, el delta queda en 0.
     const baselineQty = lastPushedQty;
 
@@ -85,20 +84,22 @@ async function buildActualsPayload({ operationIds } = {}) {
     }
 
     const pendingRunDelta = Math.max(0, actual_run_time - baselineRun);
+    const pendingSetupDelta = Math.max(0, actual_setup_time - base_setup_time);
     const pendingQtyDelta = Math.max(0, completed_quantity - baselineQty);
 
     if (useDeltaMode) {
       // Para workOrderCompletion, NetSuite acumula: enviar solo delta pendiente.
-      if (pendingRunDelta <= 0 && pendingQtyDelta <= 0) continue;
+      if (pendingRunDelta <= 0 && pendingSetupDelta <= 0 && pendingQtyDelta <= 0) continue;
       items.push({
         operation_id: op.id,
         ot_number: op.ot_number,
         operation_sequence: op.operation_sequence,
         netsuite_work_order_id: op.netsuite_work_order_id || null,
         netsuite_operation_id: nsId,
-        actual_setup_time: 0,
+        actual_setup_time: pendingSetupDelta,
         actual_run_time: pendingRunDelta,
         completed_quantity: pendingQtyDelta,
+        absolute_actual_setup_time: actual_setup_time,
         absolute_actual_run_time: actual_run_time,
         absolute_completed_quantity: completed_quantity
       });
@@ -107,7 +108,7 @@ async function buildActualsPayload({ operationIds } = {}) {
 
     // Modos legacy (restlet/import_ot con TEK): enviar deltas, no acumulados.
     // Si se envia acumulado, TEK lo vuelve a sumar y duplica tiempo.
-    if (pendingRunDelta <= 0 && pendingQtyDelta <= 0) continue;
+    if (pendingRunDelta <= 0 && pendingSetupDelta <= 0 && pendingQtyDelta <= 0) continue;
 
     items.push({
       operation_id: op.id,
@@ -115,10 +116,10 @@ async function buildActualsPayload({ operationIds } = {}) {
       operation_sequence: op.operation_sequence,
       netsuite_work_order_id: op.netsuite_work_order_id || null,
       netsuite_operation_id: nsId,
-      // Prueba temporal para validar canal TEK en modo RESTlet.
-      actual_setup_time: useRestletMode ? FIXED_SETUP_MINUTES_FOR_TEST : 0,
+      actual_setup_time: pendingSetupDelta,
       actual_run_time: pendingRunDelta,
       completed_quantity: pendingQtyDelta,
+      absolute_actual_setup_time: actual_setup_time,
       absolute_actual_run_time: actual_run_time,
       absolute_completed_quantity: completed_quantity
     });

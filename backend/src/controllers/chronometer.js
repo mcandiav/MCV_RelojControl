@@ -53,6 +53,13 @@ function operarioMayControlTimer(req, timer) {
   return Number(timer.current_user_id) === Number(req.userId);
 }
 
+function normalizeTimerMode(input, fallback = 'RUN') {
+  const mode = String(input || '').trim().toUpperCase();
+  if (mode === 'SETUP') return 'SETUP';
+  if (mode === 'RUN') return 'RUN';
+  return fallback;
+}
+
 async function assertTimerControlOrRespond(req, timer, res) {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
@@ -328,6 +335,7 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
 exports.startTimer = async function startTimer(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
+  const requestedMode = normalizeTimerMode(req.body && req.body.timer_mode, 'SETUP');
 
   const operation = await WorkOrderOperation.findByPk(work_order_operation_id);
   if (!operation) return res.status(404).json({ message: 'Operation not found.' });
@@ -363,6 +371,7 @@ exports.startTimer = async function startTimer(req, res) {
       station_id: req.stationId || null,
       current_user_id: currentUser.id,
       status: 'ACTIVE',
+      timer_mode: requestedMode,
       active_since: new Date(),
       last_event_at: new Date(),
       total_elapsed_seconds: 0,
@@ -379,6 +388,7 @@ exports.startTimer = async function startTimer(req, res) {
     timer.current_user_id = currentUser.id;
     if (req.stationId) timer.station_id = req.stationId;
     timer.status = 'ACTIVE';
+    timer.timer_mode = requestedMode;
     timer.active_since = new Date();
     timer.last_event_at = new Date();
     await timer.save();
@@ -389,7 +399,7 @@ exports.startTimer = async function startTimer(req, res) {
     operationId: operation.id,
     userId: currentUser.id,
     eventType: 'START',
-    details: { resource_code: operation.resource_code }
+    details: { resource_code: operation.resource_code, timer_mode: timer.timer_mode }
   });
 
   return res.status(200).json(timer);
@@ -424,6 +434,7 @@ exports.pauseTimer = async function pauseTimer(req, res) {
 exports.resumeTimer = async function resumeTimer(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
+  const requestedMode = normalizeTimerMode(req.body && req.body.timer_mode, 'RUN');
 
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
@@ -446,6 +457,7 @@ exports.resumeTimer = async function resumeTimer(req, res) {
   }
 
   timer.status = 'ACTIVE';
+  timer.timer_mode = requestedMode;
   timer.active_since = new Date();
   timer.last_event_at = new Date();
   timer.current_user_id = req.userId;
@@ -457,7 +469,8 @@ exports.resumeTimer = async function resumeTimer(req, res) {
     timerId: timer.id,
     operationId: timer.work_order_operation_id,
     userId: req.userId,
-    eventType: 'RESUME'
+    eventType: 'RESUME',
+    details: { timer_mode: timer.timer_mode }
   });
 
   return res.status(200).json(timer);
@@ -514,6 +527,52 @@ exports.stopTimer = async function stopTimer(req, res) {
   });
 
   return res.status(200).json(timer);
+};
+
+exports.switchTimerMode = async function switchTimerMode(req, res) {
+  const { work_order_operation_id } = req.body;
+  if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
+  const targetMode = normalizeTimerMode(req.body && req.body.timer_mode, null);
+  if (!targetMode) {
+    return res.status(400).json({ message: 'timer_mode debe ser RUN o SETUP.' });
+  }
+
+  const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
+  if (!timer) return res.status(404).json({ message: 'Timer not found.' });
+  if (timer.status !== 'ACTIVE') {
+    return res.status(400).json({ message: 'Only active timers can change mode.' });
+  }
+  if (!(await assertTimerControlOrRespond(req, timer, res))) return;
+
+  const previousMode = normalizeTimerMode(timer.timer_mode, 'RUN');
+  if (previousMode === targetMode) {
+    return res.status(200).json({
+      work_order_operation_id: timer.work_order_operation_id,
+      timer_mode: previousMode,
+      changed: false
+    });
+  }
+
+  timer.timer_mode = targetMode;
+  timer.last_event_at = new Date();
+  await timer.save();
+
+  await appendEvent({
+    timerId: timer.id,
+    operationId: timer.work_order_operation_id,
+    userId: req.userId,
+    eventType: 'MODE_CHANGE',
+    details: {
+      from_mode: previousMode,
+      timer_mode: targetMode
+    }
+  });
+
+  return res.status(200).json({
+    work_order_operation_id: timer.work_order_operation_id,
+    timer_mode: targetMode,
+    changed: true
+  });
 };
 
 exports.upsertWipOperations = async function upsertWipOperations(req, res) {

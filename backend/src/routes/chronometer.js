@@ -34,6 +34,7 @@ router.post('/netsuite/oauth/clear-cache', [security.verifyToken, security.isAdm
 router.post('/timers/start', security.verifyToken, chronometer.startTimer);
 router.post('/timers/pause', security.verifyToken, chronometer.pauseTimer);
 router.post('/timers/resume', security.verifyToken, chronometer.resumeTimer);
+router.post('/timers/mode', security.verifyToken, chronometer.switchTimerMode);
 router.post('/timers/stop', security.verifyToken, chronometer.stopTimer);
 
 module.exports = router;
