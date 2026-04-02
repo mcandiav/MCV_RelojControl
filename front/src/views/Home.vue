@@ -114,10 +114,6 @@
                   <span class="meta-value">{{ activeShiftLabel }}</span>
                 </div>
                 <div class="meta-item">
-                  <span class="meta-label">Inicio</span>
-                  <span class="meta-value">{{ activeShiftStart }}</span>
-                </div>
-                <div class="meta-item">
                   <span class="meta-label">Fin</span>
                   <span class="meta-value">{{ activeShiftEnd }}</span>
                 </div>
@@ -728,9 +724,9 @@ export default {
       stopQtyPlanned: null,
       stopQtyLoading: false,
       shiftSlotsDraft: [
-        { sequence: 1, hhmm: '07:00', enabled: true },
-        { sequence: 2, hhmm: '15:00', enabled: true },
-        { sequence: 3, hhmm: '23:00', enabled: true }
+        { sequence: 1, hhmm: '08:00', enabled: true },
+        { sequence: 2, hhmm: '17:00', enabled: true },
+        { sequence: 3, hhmm: '03:00', enabled: false }
       ],
       shiftMeta: {
         timezone: '',
@@ -910,34 +906,21 @@ export default {
       return name || '-'
     },
     activeShiftData() {
-      const slots = (Array.isArray(this.shiftSlotsDraft) ? this.shiftSlotsDraft : [])
-        .filter((s) => s && s.enabled !== false && /^\d{2}:\d{2}$/.test(String(s.hhmm || '')))
-        .slice()
-        .sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0))
-      if (slots.length === 0) return { label: '-', start: '-', end: '-' }
-
+      // Modo operativo simplificado: 2 turnos fijos.
+      // Turno 1 termina 17:00, Turno 2 termina 03:00.
       const now = new Date()
       const nowMinutes = now.getHours() * 60 + now.getMinutes()
-      let selectedIndex = -1
-      for (let i = 0; i < slots.length; i += 1) {
-        const [hh, mm] = String(slots[i].hhmm).split(':').map((x) => Number(x))
-        const slotMinutes = (Number.isFinite(hh) ? hh : 0) * 60 + (Number.isFinite(mm) ? mm : 0)
-        if (slotMinutes <= nowMinutes) selectedIndex = i
+      const endTurn1 = 17 * 60 // 17:00
+      const endTurn2 = 3 * 60 // 03:00
+
+      const isTurn1 = nowMinutes >= endTurn2 && nowMinutes < endTurn1
+      if (isTurn1) {
+        return { label: 'Turno 1', end: '17:00' }
       }
-      if (selectedIndex < 0) selectedIndex = slots.length - 1
-      const current = slots[selectedIndex]
-      const next = slots[(selectedIndex + 1) % slots.length]
-      return {
-        label: `Turno ${current.sequence || selectedIndex + 1}`,
-        start: current.hhmm || '-',
-        end: next && next.hhmm ? next.hhmm : '-'
-      }
+      return { label: 'Turno 2', end: '03:00' }
     },
     activeShiftLabel() {
       return this.activeShiftData.label
-    },
-    activeShiftStart() {
-      return this.activeShiftData.start
     },
     activeShiftEnd() {
       return this.activeShiftData.end
@@ -2037,7 +2020,7 @@ export default {
 
 .chrono-meta-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, auto));
+  grid-template-columns: repeat(3, minmax(120px, auto));
   gap: 8px;
 }
 
