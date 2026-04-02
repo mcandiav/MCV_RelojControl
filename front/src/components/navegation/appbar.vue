@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div>
     <v-app-bar color="blue" dense dark>
       <v-menu offset-y>
@@ -21,9 +21,15 @@
         </v-list>
       </v-menu>
 
-      <v-toolbar-title class="d-flex align-center">
-        <img :src="atOnceLogo" alt="At-Once" class="app-logo">
-        <span>{{ appTitle }}</span>
+      <v-toolbar-title class="brand-title">
+        <span class="brand-cluster">
+          <img src="/logo.png" alt="Bignotti" class="app-logo app-logo--bignotti">
+          <span class="brand-word">BIGNOTTI</span>
+        </span>
+        <span class="brand-cluster">
+          <img :src="atOnceLogo" alt="At-Once" class="app-logo app-logo--atonce">
+          <span class="brand-word">{{ cronometroTitle }}</span>
+        </span>
       </v-toolbar-title>
 
       <v-spacer></v-spacer>
@@ -51,9 +57,9 @@ export default {
     ...mapGetters({
       isAdmin: 'auth/isAdmin'
     }),
-    appTitle() {
+    cronometroTitle() {
       const buildLabel = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'V2').trim()
-      const base = `BIGNOTTI Cronómetro v3 ${buildLabel}`.trim()
+      const base = `Cronómetro v3 ${buildLabel}`.trim()
       return isTestBuild() ? `${base} [TEST]` : base
     }
   },
@@ -79,7 +85,31 @@ export default {
 .app-logo {
   height: 24px;
   width: auto;
-  margin-right: 8px;
+  margin-right: 6px;
+}
+
+.brand-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-cluster {
+  display: inline-flex;
+  align-items: center;
+}
+
+.brand-word {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.app-logo--bignotti {
+  height: 22px;
+}
+
+.app-logo--atonce {
+  height: 22px;
 }
 
 .salir-btn {
