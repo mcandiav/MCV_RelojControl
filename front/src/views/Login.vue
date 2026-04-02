@@ -4,16 +4,14 @@
       <v-flex xs12 sm8 md6 lg4 xl3>
         <img src="/logo.png" alt="Bignotti" class="login-corner-logo">
 
-
-        <!-- Logo / TÃ­tulo -->
+        <!-- Logo / Título -->
         <div class="text-center mb-6">
           <img :src="atOnceLogo" alt="At-Once" class="login-atonce-logo mb-3">
           <div class="display-1 font-weight-bold white--text">BIGNOTTI</div>
-          <div class="subtitle-1 white--text opacity-70">CronÃ³metro v3</div>
+          <div class="subtitle-1 white--text opacity-70">Cronómetro v3</div>
         </div>
 
         <v-card class="rounded-xl elevation-10">
-
           <!-- Selector de modo -->
           <v-tabs v-model="modo" grow color="primary" slider-color="primary">
             <v-tab class="tab-grande">
@@ -27,17 +25,13 @@
           </v-tabs>
 
           <v-tabs-items v-model="modo">
-
-            <!-- ======================== -->
-            <!-- MODO OPERARIO            -->
-            <!-- ======================== -->
+            <!-- MODO OPERARIO -->
             <v-tab-item>
               <v-card-text class="pa-4">
-
                 <!-- PASO 1: Seleccionar nombre -->
                 <div v-if="!operarioSeleccionado">
                   <div class="text-subtitle-1 font-weight-bold text-center mb-3 grey--text text--darken-2">
-                    TocÃ¡ tu nombre
+                    Tocá tu nombre
                   </div>
                   <div v-if="cargandoOperarios" class="text-center py-4">
                     <v-progress-circular indeterminate color="primary"></v-progress-circular>
@@ -89,7 +83,7 @@
                     >&bull;</span>
                   </div>
 
-                  <!-- Teclado numÃ©rico -->
+                  <!-- Teclado numérico -->
                   <v-row no-gutters class="pin-teclado">
                     <v-col cols="4" v-for="(num, idx) in teclado" :key="idx">
                       <v-btn
@@ -98,9 +92,9 @@
                         x-large
                         block
                         class="tecla ma-1"
-                        :color="num === 'âŒ«' ? 'error' : 'grey lighten-3'"
+                        :color="num === '⌫' ? 'error' : 'grey lighten-3'"
                         :elevation="2"
-                        :loading="cargando && num !== 'âŒ«'"
+                        :loading="cargando && num !== '⌫'"
                       >
                         <span class="tecla-texto">{{ num }}</span>
                       </v-btn>
@@ -112,13 +106,10 @@
                     {{ error.message }}
                   </v-alert>
                 </div>
-
               </v-card-text>
             </v-tab-item>
 
-            <!-- ======================== -->
-            <!-- MODO ADMINISTRADOR       -->
-            <!-- ======================== -->
+            <!-- MODO ADMINISTRADOR -->
             <v-tab-item>
               <v-card-text class="pa-6">
                 <v-text-field
@@ -134,7 +125,7 @@
 
                 <v-text-field
                   v-model="password"
-                  label="ContraseÃ±a"
+                  label="Contraseña"
                   :type="mostrarPassword ? 'text' : 'password'"
                   outlined
                   rounded
@@ -166,9 +157,7 @@
                 </v-btn>
               </v-card-actions>
             </v-tab-item>
-
           </v-tabs-items>
-
         </v-card>
       </v-flex>
     </v-layout>
@@ -186,18 +175,15 @@ export default {
     return {
       atOnceLogo,
       modo: 0,
-      // Operario
       operarios: [],
       operarioSeleccionado: null,
       pin: '',
-      teclado: [1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, 'âŒ«'],
+      teclado: [1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, '⌫'],
       cargandoOperarios: false,
       errorOperarios: '',
-      // Admin
       username: '',
       password: '',
       mostrarPassword: false,
-      // Compartido
       cargando: false,
       error: { status: false, message: '' }
     }
@@ -226,15 +212,15 @@ export default {
         this.operarios = Array.isArray(res.data) ? res.data : []
       } catch (e) {
         console.error('Error cargando operarios', e)
-        const base = String(axios.defaults.baseURL || '').trim() || '(vacÃ­o)'
+        const base = String(axios.defaults.baseURL || '').trim() || '(vacío)'
         const onHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
         const baseEsLocal = /localhost|127\.0\.0\.1/i.test(base)
         const msg =
           (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
           (e.message === 'Network Error'
             ? onHttps && baseEsLocal
-              ? `Sin respuesta del API. El sitio es HTTPS (${window.location.host}) pero axios usa baseURL "${base}" (localhost). El build del front debe incluir VUE_APP_API_URL=https://reloj-api.at-once.cl/ â€” reconstruÃ­/redeploy el contenedor front (Dockerfile ARG).`
-              : `Sin respuesta del API (Network Error). baseURL axios: "${base}". RevisÃ¡ F12 â†’ Red: la peticiÃ³n a /auth/operarios, que el API estÃ© arriba y la URL sea la del servidor (no localhost en producciÃ³n).`
+              ? `Sin respuesta del API. El sitio es HTTPS (${window.location.host}) pero axios usa baseURL "${base}" (localhost). El build del front debe incluir VUE_APP_API_URL=https://reloj-api.at-once.cl/ — reconstruí/redeploy el contenedor front (Dockerfile ARG).`
+              : `Sin respuesta del API (Network Error). baseURL axios: "${base}". Revisá F12 → Red: la petición a /auth/operarios, que el API esté arriba y la URL sea la del servidor (no localhost en producción).`
             : null) ||
           'No se pudo cargar la lista de operarios.'
         this.errorOperarios = msg
@@ -253,7 +239,7 @@ export default {
     presionarTecla(tecla) {
       if (this.cargando) return
       this.error = { status: false, message: '' }
-      if (tecla === 'âŒ«') {
+      if (tecla === '⌫') {
         this.pin = this.pin.slice(0, -1)
         return
       }
@@ -271,7 +257,7 @@ export default {
         await this.signIn({ username: this.operarioSeleccionado.username, password: this.pin })
         this.routeAfterLogin()
       } catch {
-        this.error = { status: true, message: 'PIN incorrecto. IntentÃ¡ de nuevo.' }
+        this.error = { status: true, message: 'PIN incorrecto. Intentá de nuevo.' }
         this.pin = ''
       } finally {
         this.cargando = false
@@ -280,7 +266,7 @@ export default {
 
     async ingresar() {
       if (!this.username || !this.password) {
-        this.error = { status: true, message: 'CompletÃ¡ usuario y contraseÃ±a.' }
+        this.error = { status: true, message: 'Completá usuario y contraseña.' }
         return
       }
       this.cargando = true
@@ -288,11 +274,12 @@ export default {
         await this.signIn({ username: this.username, password: this.password })
         this.routeAfterLogin()
       } catch {
-        this.error = { status: true, message: 'Usuario o contraseÃ±a incorrectos.' }
+        this.error = { status: true, message: 'Usuario o contraseña incorrectos.' }
       } finally {
         this.cargando = false
       }
     },
+
     routeAfterLogin() {
       if (isTestBuild()) {
         this.$router.push('/diagnostic')
@@ -391,5 +378,3 @@ export default {
   }
 }
 </style>
-
-
