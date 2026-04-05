@@ -137,6 +137,21 @@ VUE_APP_API_URL=https://reloj-api.at-once.cl/
 
 > **Importante (mar 2026):** `front/.env.production` no está en el ZIP de GitHub (gitignore). El **`front/Dockerfile`** define por defecto `ARG VUE_APP_API_URL=https://reloj-api.at-once.cl/` para que el build en EasyPanel **no** empaquete `axios` apuntando a `http://localhost:8000` (eso rompe el sitio en HTTPS: pantalla en blanco o login roto). Podés sobrescribir el ARG en EasyPanel si cambia el dominio del API.
 
+#### Identidad visual corporativa (abr 2026)
+
+El UI del Cronómetro quedó alineado con **https://www.bignottihnos.cl** (colores y tipografías coherentes con el `styles.css` del sitio institucional).
+
+| Qué | Dónde |
+|-----|--------|
+| Colores del tema Vuetify (primary, secondary, accent, anchor, etc.) | `front/src/plugins/vuetify.js` |
+| Variables CSS, fuentes en `.v-application`, fondo `#F5F5F5` | `front/src/styles/bignotti-brand.css` (import en `front/src/main.js`) |
+| Fuentes web | `front/public/index.html` (Google Fonts: Lato, Montserrat, Roboto Condensed, Roboto) |
+| Login (fondo oscuro tipo hero, acento naranja, botones operario en primary) | `front/src/views/Login.vue` |
+| App bar crema, texto oscuro, botón Salir outlined primary | `front/src/components/navegation/appbar.vue` |
+| Título “CRONÓMETRO” en color primario | `front/src/views/Home.vue` |
+
+No se requieren variables de entorno nuevas para el tema. Tras un `git pull` en la rama **`V2`**, **rebuild** del servicio **`reloj-front`** en EasyPanel para ver los cambios en `reloj.at-once.cl`.
+
 **Terminal compartida (varios operarios, mismo PC):** el front envía **`x-station-id`** en todas las peticiones. Se genera una vez en `localStorage` (`reloj_station_id`) por navegador; el tablero de cronómetros activos filtra por ese valor (columna **`station_id`** en `operation_timers`), no solo por usuario. Opcional en build: **`VUE_APP_STATION_ID`** (fijo por máquina en Docker/EasyPanel, p. ej. `LINEA-ME-01`). **Pausa / stop / resume** (y **Play** sobre un timer en pausa) rechazan otra terminal con `403`. **Tablero protector:** lista todas las tareas activas/pausadas de la terminal; vista **2×2** con **carrusel** si hay más de 4 (`VUE_APP_IDLE_BOARD_SLOTS`, máx. 4). **Carrusel automático** cada **2 s** por defecto (`VUE_APP_IDLE_BOARD_CAROUSEL_SEC`, rango 1–120).
 
 ---
@@ -183,6 +198,8 @@ Si el front está en **`https://reloj.at-once.cl`** y en el navegador el bundle 
 | `backend/Dockerfile` | Nuevo — build y run del backend en Node 16 Alpine |
 | `front/Dockerfile` | Nuevo — build Vue + serve con nginx (multi-stage) |
 | `front/nginx.conf` | Nuevo — configuración nginx para SPA (Vue Router) |
+| `front/src/styles/bignotti-brand.css` | Estilos globales de marca (fuentes, fondo, variables CSS) |
+| `front/src/plugins/vuetify.js` | Tema claro corporativo (`#FF5722`, `#212121`, etc.) |
 
 ---
 

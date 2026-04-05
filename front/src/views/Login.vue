@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <v-container fluid fill-height class="login-bg">
     <v-layout align-center justify-center>
       <v-flex xs12 sm8 md6 lg4 xl3>
@@ -7,7 +7,7 @@
         <!-- Logo / Título -->
         <div class="text-center mb-6">
           <img :src="atOnceLogo" alt="At-Once" class="login-atonce-logo mb-3">
-          <div class="display-1 font-weight-bold white--text">BIGNOTTI</div>
+          <div class="display-1 font-weight-bold login-hero-title">BIGNOTTI</div>
           <div class="subtitle-1 white--text opacity-70">Cronómetro v3</div>
         </div>
 
@@ -51,7 +51,7 @@
                         block
                         x-large
                         class="nombre-btn mb-2"
-                        color="blue darken-4"
+                        color="primary"
                         dark
                         elevation="2"
                       >
@@ -293,9 +293,24 @@ export default {
 
 <style scoped>
 .login-bg {
-  background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%);
+  background: linear-gradient(160deg, #2c2c2c 0%, #212121 40%, #181818 100%);
   min-height: 100vh;
   position: relative;
+}
+
+.login-hero-title {
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+
+.login-hero-title::after {
+  content: '';
+  display: block;
+  width: 72px;
+  height: 3px;
+  margin: 12px auto 0;
+  background: linear-gradient(90deg, #ff6b35, #ffa726);
+  border-radius: 2px;
 }
 
 .login-corner-logo {
@@ -348,7 +363,7 @@ export default {
 }
 
 .pin-punto--activo {
-  color: #1a237e;
+  color: #ff5722;
 }
 
 .pin-teclado {

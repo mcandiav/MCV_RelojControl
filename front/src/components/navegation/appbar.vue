@@ -1,6 +1,6 @@
-﻿<template>
+<template>
   <div>
-    <v-app-bar color="blue" dense dark>
+    <v-app-bar class="bignotti-app-bar" color="#f7f5f2" dense elevation="0">
       <v-menu offset-y>
         <template v-slot:activator="{ on, attrs }">
           <v-app-bar-nav-icon v-bind="attrs" v-on="on" />
@@ -34,7 +34,7 @@
 
       <v-spacer></v-spacer>
 
-      <v-btn @click.prevent="signOut" outlined class="salir-btn">
+      <v-btn @click.prevent="signOut" outlined color="primary" class="salir-btn">
         <v-icon left>mdi-logout</v-icon>
         Salir
       </v-btn>
@@ -102,6 +102,7 @@ export default {
 .brand-word {
   font-weight: 700;
   letter-spacing: 0.02em;
+  color: #212121;
 }
 
 .app-logo--bignotti {
@@ -114,5 +115,10 @@ export default {
 
 .salir-btn {
   min-height: 36px;
+}
+
+.bignotti-app-bar {
+  border-bottom: 1px solid #e0ddd8;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
 }
 </style>

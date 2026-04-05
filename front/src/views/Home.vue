@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <v-app>
     <!-- Tablero protector: siempre 2x2 visibles; si hay mas de 4 tareas, carrusel (flechas / teclado). -->
     <transition name="fade">
@@ -104,7 +104,7 @@
               <div class="chrono-brand">
                 <img :src="logoSrc" alt="Logo Cronometro" class="chrono-logo" />
                 <div class="chrono-brand-text">
-                  <div class="chrono-title">CRONÓMETRO</div>
+                  <div class="chrono-title primary--text">CRONÓMETRO</div>
                   <div class="chrono-subtitle">Operación en planta</div>
                 </div>
               </div>
