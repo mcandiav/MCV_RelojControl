@@ -29,7 +29,9 @@
               :class="{
                 'idle-quadrant--empty': !cell,
                 'idle-quadrant--active': cell && cell.status === 'ACTIVE',
-                'idle-quadrant--paused': cell && cell.status === 'PAUSED'
+                'idle-quadrant--paused': cell && cell.status === 'PAUSED',
+                'idle-quadrant--phase-setup': cell && extractTimerMode(cell) === 'SETUP',
+                'idle-quadrant--phase-run': cell && extractTimerMode(cell) !== 'SETUP'
               }"
             >
               <template v-if="cell">
@@ -2351,6 +2353,15 @@ export default {
   padding: 12px;
   overflow: hidden;
   background: #161b22;
+}
+
+/* Fondo distinto según fase del cronómetro (tablero 2×2): setup = frío, run = tono producción. */
+.idle-quadrant--phase-setup {
+  background: linear-gradient(155deg, #1e3a5f 0%, #152d4d 42%, #0f243d 100%);
+}
+
+.idle-quadrant--phase-run {
+  background: linear-gradient(155deg, #1a2218 0%, #141b14 48%, #0f140f 100%);
 }
 
 .idle-quadrant--empty {
