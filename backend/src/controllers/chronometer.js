@@ -333,7 +333,31 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
 };
 
 /**
- * Tablero de reporte: cronómetros en pausa o detenidos (toda la planta). Solo administradores.
+ * Estado operativo para reporte admin (todas las operaciones WIP en ME/ES).
+ * Orden de precedencia: Iniciado / Pausado / Terminado pend. sync / Detenido / No iniciado.
+ */
+function computeReportRowStatus(timer, hasPendingSync) {
+  if (!timer) {
+    if (hasPendingSync) {
+      return { code: 'TERMINADO_PEND_SYNC', sort: 60, label: 'Terminado (pend. sinc.)' };
+    }
+    return { code: 'NO_INICIADO', sort: 10, label: 'No iniciado' };
+  }
+  const s = String(timer.status || '').toUpperCase();
+  if (s === 'ACTIVE') return { code: 'INICIADO', sort: 30, label: 'Iniciado' };
+  if (s === 'PAUSED') return { code: 'PAUSADO', sort: 40, label: 'Pausado' };
+  if (s === 'STOPPED') {
+    if (hasPendingSync) {
+      return { code: 'TERMINADO_PEND_SYNC', sort: 60, label: 'Terminado (pend. sinc.)' };
+    }
+    return { code: 'DETENIDO', sort: 50, label: 'Detenido' };
+  }
+  return { code: 'DESCONOCIDO', sort: 99, label: s || '—' };
+}
+
+/**
+ * Reporte admin: mismo universo que el WIP en MariaDB (operaciones por á ME/ES),
+ * más estado de cronómetro y si hay totales pendientes de sincronizar.
  */
 exports.getReportBoard = async function getReportBoard(req, res) {
   const currentUser = await getCurrentUser(req);
@@ -349,19 +373,80 @@ exports.getReportBoard = async function getReportBoard(req, res) {
 
   const limit = Math.min(2000, Math.max(1, parseInt(String(req.query.limit || '500'), 10) || 500));
 
-  const timers = await OperationTimer.findAll({
-    where: { status: { [Op.in]: ['PAUSED', 'STOPPED'] } },
-    include: [
-      { model: WorkOrderOperation, required: true },
-      { model: User, required: false }
+  const operations = await WorkOrderOperation.findAll({
+    where: { area: { [Op.in]: ['ME', 'ES'] } },
+    order: [
+      ['ot_number', 'ASC'],
+      ['operation_sequence', 'ASC']
     ],
-    order: [['updatedAt', 'DESC']],
     limit
   });
 
+  const opIds = operations.map((o) => o.id);
+
+  let timers = [];
+  if (opIds.length > 0) {
+    timers = await OperationTimer.findAll({
+      where: { work_order_operation_id: { [Op.in]: opIds } },
+      include: [{ model: User, required: false }]
+    });
+  }
+  const timerByOpId = new Map(timers.map((t) => [t.work_order_operation_id, t]));
+
+  const pendingSyncIds = new Set();
+  if (opIds.length > 0) {
+    const pendingTotals = await OperationTimeTotal.findAll({
+      where: {
+        work_order_operation_id: { [Op.in]: opIds },
+        sync_status: 'PENDING'
+      },
+      attributes: ['work_order_operation_id']
+    });
+    pendingTotals.forEach((row) => pendingSyncIds.add(row.work_order_operation_id));
+  }
+
+  const rows = operations.map((operation) => {
+    const op = operation.get({ plain: true });
+    const timer = timerByOpId.get(operation.id);
+    const hasPendingSync = pendingSyncIds.has(operation.id);
+    const st = computeReportRowStatus(timer, hasPendingSync);
+    const mode = timer ? normalizeTimerMode(timer.timer_mode, 'RUN') : null;
+    const u = timer && timer.User ? timer.User : null;
+    const operator = u ? [u.name, u.lastname].filter(Boolean).join(' ').trim() : '';
+
+    return {
+      row_key: `${op.ot_number}|${op.operation_sequence}|${op.resource_code}`,
+      ot_number: op.ot_number,
+      operation_sequence: op.operation_sequence,
+      operation_name: op.operation_name,
+      resource_code: op.resource_code,
+      area: op.area,
+      planned_setup_minutes: op.planned_setup_minutes,
+      planned_operation_minutes: op.planned_operation_minutes,
+      planned_quantity: op.planned_quantity,
+      actual_setup_time: op.actual_setup_time,
+      actual_run_time: op.actual_run_time,
+      completed_quantity: op.completed_quantity,
+      netsuite_operation_id: op.netsuite_operation_id,
+      source_status: op.source_status,
+      last_synced_at: op.last_synced_at,
+      report_status_code: st.code,
+      report_status_label: st.label,
+      report_status_sort: st.sort,
+      timer_mode: mode,
+      timer_mode_sort: mode === 'SETUP' ? 2 : mode === 'RUN' ? 1 : 0,
+      station_id: timer ? timer.station_id : null,
+      last_event_at: timer ? timer.last_event_at : null,
+      total_elapsed_seconds: timer ? accumulateElapsedSeconds(timer) : null,
+      operator: operator || null,
+      sync_pending: hasPendingSync,
+      sync_pending_sort: hasPendingSync ? 1 : 0
+    };
+  });
+
   return res.status(200).json({
-    count: timers.length,
-    timers: timers.map((t) => t.toJSON())
+    count: rows.length,
+    rows
   });
 };
 

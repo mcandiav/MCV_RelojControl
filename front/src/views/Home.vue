@@ -550,7 +550,8 @@
                   <div>
                     <div class="text-subtitle-1 font-weight-bold">Reporte</div>
                     <p class="text-body-2 grey--text text--darken-1 mb-0">
-                      Cronómetros en pausa o detenidos (toda la planta). Ordená por columnas y exportá a Excel.
+                      Mismo listado WIP que MariaDB (NetSuite OUT), con estado de cronómetro y sync pendiente.
+                      Ordená por columnas y exportá a Excel.
                     </p>
                   </div>
                   <div class="d-flex flex-wrap" style="gap:8px">
@@ -558,7 +559,7 @@
                       <v-icon left>mdi-refresh</v-icon>
                       Actualizar
                     </v-btn>
-                    <v-btn color="secondary" :disabled="!reportItems.length || loadingReport" @click="exportReportExcel">
+                    <v-btn color="secondary" :disabled="!reportRows.length || loadingReport" @click="exportReportExcel">
                       <v-icon left>mdi-microsoft-excel</v-icon>
                       Descargar Excel
                     </v-btn>
@@ -567,18 +568,19 @@
                 <v-alert v-if="reportError" type="error" dense outlined class="mb-3">{{ reportError }}</v-alert>
                 <v-data-table
                   :headers="reportHeaders"
-                  :items="reportItems"
+                  :items="reportRows"
+                  item-key="row_key"
                   :loading="loadingReport"
                   :options.sync="reportTableOptions"
                   :footer-props="{ itemsPerPageOptions: [25, 50, 100, 200, -1] }"
                   class="compact-table report-data-table elevation-0"
                   dense
                 >
-                  <template v-slot:item.status="{ value }">
-                    {{ statusReportLabel(value) }}
+                  <template v-slot:item.report_status_sort="{ item }">
+                    {{ item.report_status_label }}
                   </template>
-                  <template v-slot:item.timer_mode="{ value }">
-                    {{ value === 'SETUP' ? 'Configuración' : 'Producción' }}
+                  <template v-slot:item.timer_mode_sort="{ item }">
+                    {{ formatReportTimerMode(item.timer_mode) }}
                   </template>
                   <template v-slot:item.planned_setup_minutes="{ item }">
                     {{ formatMinutesAsHHMM(item.planned_setup_minutes) }}
@@ -592,15 +594,27 @@
                   <template v-slot:item.actual_run_time="{ item }">
                     {{ formatMinutesAsHHMM(item.actual_run_time) }}
                   </template>
+                  <template v-slot:item.netsuite_operation_id="{ item }">
+                    {{ item.netsuite_operation_id != null && item.netsuite_operation_id !== '' ? item.netsuite_operation_id : '—' }}
+                  </template>
+                  <template v-slot:item.sync_pending_sort="{ item }">
+                    {{ item.sync_pending ? 'Sí' : 'No' }}
+                  </template>
+                  <template v-slot:item.operator="{ item }">
+                    {{ item.operator || '—' }}
+                  </template>
+                  <template v-slot:item.station_id="{ item }">
+                    {{ item.station_id || '—' }}
+                  </template>
                   <template v-slot:item.last_event_at="{ item }">
                     {{ formatReportDate(item.last_event_at) }}
                   </template>
                   <template v-slot:item.total_elapsed_seconds="{ item }">
-                    {{ formatElapsedFromSeconds(item.total_elapsed_seconds) }}
+                    {{ item.total_elapsed_seconds != null ? formatElapsedFromSeconds(item.total_elapsed_seconds) : '—' }}
                   </template>
                   <template v-slot:no-data>
                     <div class="py-6 text-center grey--text">
-                      No hay registros en pausa o detenidos, o aún no se cargó el reporte.</div>
+                      No hay operaciones WIP cargadas o aún no se cargó el reporte.</div>
                   </template>
                 </v-data-table>
               </v-card>
@@ -833,18 +847,18 @@ export default {
       nsWipRows: [],
       nsWipRowsError: '',
       nsWipFilter: '',
-      reportTimers: [],
+      reportRows: [],
       loadingReport: false,
       reportError: '',
       reportTableOptions: {
         page: 1,
         itemsPerPage: 50,
-        sortBy: ['last_event_at'],
-        sortDesc: [true]
+        sortBy: ['ot_number'],
+        sortDesc: [false]
       },
       reportHeaders: [
-        { text: 'Estado', value: 'status', sortable: true },
-        { text: 'Modo', value: 'timer_mode', sortable: true },
+        { text: 'Estado cronómetro', value: 'report_status_sort', sortable: true },
+        { text: 'Modo', value: 'timer_mode_sort', sortable: true },
         { text: 'OT', value: 'ot_number', sortable: true },
         { text: 'Seq', value: 'operation_sequence', sortable: true, align: 'end' },
         { text: 'Operación', value: 'operation_name', sortable: true },
@@ -852,10 +866,13 @@ export default {
         { text: 'Área', value: 'area', sortable: true },
         { text: 'Plan setup', value: 'planned_setup_minutes', sortable: true, align: 'end' },
         { text: 'Plan run', value: 'planned_operation_minutes', sortable: true, align: 'end' },
+        { text: 'Plan qty', value: 'planned_quantity', sortable: true, align: 'end' },
         { text: 'Real setup', value: 'actual_setup_time', sortable: true, align: 'end' },
         { text: 'Real run', value: 'actual_run_time', sortable: true, align: 'end' },
-        { text: 'Cant. plan', value: 'planned_quantity', sortable: true, align: 'end' },
-        { text: 'Cant. hecha', value: 'completed_quantity', sortable: true, align: 'end' },
+        { text: 'Comp qty', value: 'completed_quantity', sortable: true, align: 'end' },
+        { text: 'NS Op ID', value: 'netsuite_operation_id', sortable: true },
+        { text: 'Estado NS', value: 'source_status', sortable: true },
+        { text: 'Sync pend.', value: 'sync_pending_sort', sortable: true, align: 'center' },
         { text: 'Operario', value: 'operator', sortable: true },
         { text: 'Terminal', value: 'station_id', sortable: true },
         { text: 'Último evento', value: 'last_event_at', sortable: true },
@@ -997,32 +1014,6 @@ export default {
     },
     axiosBaseUrlDisplay() {
       return String((axios.defaults && axios.defaults.baseURL) || '(sin baseURL)')
-    },
-    reportItems() {
-      return (this.reportTimers || []).map((t) => {
-        const op = t.WorkOrderOperation || {}
-        const u = t.User || {}
-        return {
-          id: t.id,
-          status: t.status,
-          timer_mode: (t.timer_mode && String(t.timer_mode).toUpperCase()) || 'RUN',
-          ot_number: op.ot_number || '',
-          operation_sequence: op.operation_sequence,
-          operation_name: op.operation_name || '',
-          resource_code: t.resource_code || op.resource_code || '',
-          area: op.area || '',
-          planned_setup_minutes: op.planned_setup_minutes,
-          planned_operation_minutes: op.planned_operation_minutes,
-          actual_setup_time: op.actual_setup_time,
-          actual_run_time: op.actual_run_time,
-          planned_quantity: op.planned_quantity,
-          completed_quantity: op.completed_quantity,
-          operator: [u.name, u.lastname].filter(Boolean).join(' ').trim() || '—',
-          station_id: t.station_id || '—',
-          last_event_at: t.last_event_at,
-          total_elapsed_seconds: t.total_elapsed_seconds != null ? Number(t.total_elapsed_seconds) : 0
-        }
-      })
     },
     browserOrigin() {
       if (typeof window === 'undefined') return 'â€”'
@@ -1715,10 +1706,10 @@ export default {
       this.reportError = ''
       try {
         const res = await axios.get('/chronometer/board/report', { params: { limit: 500 } })
-        const raw = res.data && res.data.timers
-        this.reportTimers = Array.isArray(raw) ? raw : []
+        const raw = res.data && res.data.rows
+        this.reportRows = Array.isArray(raw) ? raw : []
       } catch (e) {
-        this.reportTimers = []
+        this.reportRows = []
         this.reportError =
           (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
           'No fue posible cargar el reporte.'
@@ -1726,11 +1717,12 @@ export default {
         this.loadingReport = false
       }
     },
-    statusReportLabel(status) {
-      const u = String(status || '').toUpperCase()
-      if (u === 'PAUSED') return 'Pausa'
-      if (u === 'STOPPED') return 'Detenido'
-      return status || '—'
+    formatReportTimerMode(mode) {
+      if (mode == null || mode === '') return '—'
+      const u = String(mode).toUpperCase()
+      if (u === 'SETUP') return 'Configuración'
+      if (u === 'RUN') return 'Producción'
+      return String(mode)
     },
     formatReportDate(iso) {
       if (!iso) return '—'
@@ -1740,16 +1732,16 @@ export default {
     },
     async exportReportExcel() {
       const opts = this.reportTableOptions || {}
-      const sortBy = (opts.sortBy && opts.sortBy[0]) || 'last_event_at'
+      const sortBy = (opts.sortBy && opts.sortBy[0]) || 'ot_number'
       const sortDesc = !!(opts.sortDesc && opts.sortDesc[0])
-      let rows = [...this.reportItems]
+      let rows = [...this.reportRows]
       if (sortBy && rows.length) {
         rows = orderBy(rows, [sortBy], [sortDesc ? 'desc' : 'asc'])
       }
       const wb = new ExcelJS.Workbook()
       const ws = wb.addWorksheet('Reporte')
       ws.addRow([
-        'Estado',
+        'Estado cronómetro',
         'Modo',
         'OT',
         'Seq',
@@ -1758,19 +1750,22 @@ export default {
         'Área',
         'Plan setup (HH:MM)',
         'Plan run (HH:MM)',
+        'Plan qty',
         'Real setup (HH:MM)',
         'Real run (HH:MM)',
-        'Cant. plan',
-        'Cant. hecha',
+        'Comp qty',
+        'NS Op ID',
+        'Estado NS',
+        'Sync pendiente',
         'Operario',
         'Terminal',
         'Último evento',
-        'Acumulado (HH:MM:SS)'
+        'Tiempo acum. (HH:MM:SS)'
       ])
       for (const r of rows) {
         ws.addRow([
-          this.statusReportLabel(r.status),
-          r.timer_mode === 'SETUP' ? 'Configuración' : 'Producción',
+          r.report_status_label || '',
+          this.formatReportTimerMode(r.timer_mode),
           r.ot_number,
           r.operation_sequence,
           r.operation_name,
@@ -1778,14 +1773,17 @@ export default {
           r.area,
           this.formatMinutesAsHHMM(r.planned_setup_minutes),
           this.formatMinutesAsHHMM(r.planned_operation_minutes),
+          r.planned_quantity != null ? r.planned_quantity : '',
           this.formatMinutesAsHHMM(r.actual_setup_time),
           this.formatMinutesAsHHMM(r.actual_run_time),
-          r.planned_quantity != null ? r.planned_quantity : '',
           r.completed_quantity != null ? r.completed_quantity : '',
-          r.operator,
-          r.station_id,
+          r.netsuite_operation_id != null && r.netsuite_operation_id !== '' ? r.netsuite_operation_id : '',
+          r.source_status || '',
+          r.sync_pending ? 'Sí' : 'No',
+          r.operator || '',
+          r.station_id || '',
           this.formatReportDate(r.last_event_at),
-          this.formatElapsedFromSeconds(r.total_elapsed_seconds)
+          r.total_elapsed_seconds != null ? this.formatElapsedFromSeconds(r.total_elapsed_seconds) : ''
         ])
       }
       const buf = await wb.xlsx.writeBuffer()
