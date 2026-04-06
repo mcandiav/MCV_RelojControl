@@ -186,6 +186,87 @@ function resolveAreaFromResource(resourceCode) {
   return null;
 }
 
+function toSafeMinutes(value) {
+  if (value == null || value === '') return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.floor(n));
+}
+
+function computeLiveModeSeconds(timer) {
+  if (!timer) return { setupSeconds: 0, runSeconds: 0 };
+  if (String(timer.status || '').toUpperCase() !== 'ACTIVE') {
+    return { setupSeconds: 0, runSeconds: 0 };
+  }
+  if (!timer.active_since) return { setupSeconds: 0, runSeconds: 0 };
+
+  const startMs = new Date(timer.active_since).getTime();
+  if (!Number.isFinite(startMs)) return { setupSeconds: 0, runSeconds: 0 };
+
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  const mode = normalizeTimerMode(timer.timer_mode, 'RUN');
+  if (mode === 'SETUP') {
+    return { setupSeconds: elapsedSeconds, runSeconds: 0 };
+  }
+  return { setupSeconds: 0, runSeconds: elapsedSeconds };
+}
+
+async function buildEventTotalsByOperationIds(operationIds) {
+  const ids = Array.from(
+    new Set(
+      (operationIds || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )
+  );
+  const totalsByOpId = new Map();
+  if (ids.length === 0) return totalsByOpId;
+
+  const allEvents = await TimerEvent.findAll({
+    where: { work_order_operation_id: { [Op.in]: ids } },
+    order: [['work_order_operation_id', 'ASC'], ['event_at', 'ASC']]
+  });
+
+  const grouped = new Map();
+  for (const ev of allEvents) {
+    const opId = Number(ev.work_order_operation_id);
+    if (!Number.isInteger(opId)) continue;
+    if (!grouped.has(opId)) grouped.set(opId, []);
+    grouped.get(opId).push(ev);
+  }
+
+  for (const opId of ids) {
+    const totals = computeTotalsFromEvents(grouped.get(opId) || []);
+    totalsByOpId.set(opId, {
+      setupSeconds: Math.max(0, Number(totals.total_setup_seconds || 0)),
+      runSeconds: Math.max(0, Number(totals.total_run_seconds || 0))
+    });
+  }
+
+  return totalsByOpId;
+}
+
+function mergeOperationActualsForView(operationPlain, timer, eventTotalsByOpId) {
+  const op = operationPlain ? { ...operationPlain } : {};
+  const opId = Number(op.id);
+  const eventTotals = Number.isInteger(opId) ? eventTotalsByOpId.get(opId) : null;
+  const liveTotals = computeLiveModeSeconds(timer);
+
+  const setupDeltaSeconds =
+    Math.max(0, Number((eventTotals && eventTotals.setupSeconds) || 0)) + liveTotals.setupSeconds;
+  const runDeltaSeconds =
+    Math.max(0, Number((eventTotals && eventTotals.runSeconds) || 0)) + liveTotals.runSeconds;
+
+  const baseSetupMinutes = toSafeMinutes(op.actual_setup_time);
+  const baseRunMinutes = toSafeMinutes(op.actual_run_time);
+  const setupDeltaMinutes = Math.max(0, Math.floor(setupDeltaSeconds / 60));
+  const runDeltaMinutes = Math.max(0, Math.floor(runDeltaSeconds / 60));
+
+  op.actual_setup_time = baseSetupMinutes + setupDeltaMinutes;
+  op.actual_run_time = baseRunMinutes + runDeltaMinutes;
+  return op;
+}
+
 /**
  * Lista operaciones del área del usuario con estado de cronómetro (misma pantalla que en main: "Listado de procesos").
  * Debe existir la ruta GET /chronometer/operations ANTES de /chronometer/operations/:otNumber.
@@ -224,12 +305,14 @@ exports.listOperations = async function listOperations(req, res) {
     });
   }
   const timerByOperationId = new Map(timers.map((timer) => [timer.work_order_operation_id, timer]));
+  const eventTotalsByOpId = await buildEventTotalsByOperationIds(operations.map((op) => op.id));
   let rows = operations.map((operation) => {
     const op = operation.toJSON();
     const timer = timerByOperationId.get(operation.id);
     const elapsed = timer ? accumulateElapsedSeconds(timer) : 0;
+    const opWithComputedActuals = mergeOperationActualsForView(op, timer, eventTotalsByOpId);
     return {
-      ...op,
+      ...opWithComputedActuals,
       status: timer ? timer.status : 'STOPPED',
       elapsed_seconds: elapsed
     };
@@ -277,12 +360,14 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
     });
   }
   const timerByOperationId = new Map(timers.map((timer) => [timer.work_order_operation_id, timer]));
+  const eventTotalsByOpId = await buildEventTotalsByOperationIds(operations.map((op) => op.id));
   const operationsWithState = operations.map((operation) => {
     const op = operation.toJSON();
     const timer = timerByOperationId.get(operation.id);
     const elapsed = timer ? accumulateElapsedSeconds(timer) : 0;
+    const opWithComputedActuals = mergeOperationActualsForView(op, timer, eventTotalsByOpId);
     return {
-      ...op,
+      ...opWithComputedActuals,
       status: timer ? timer.status : 'STOPPED',
       elapsed_seconds: elapsed
     };
@@ -328,8 +413,23 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
     include: [WorkOrderOperation, User],
     order: [['updatedAt', 'DESC']]
   });
+  const opIds = timers
+    .map((timer) => Number(timer.work_order_operation_id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  const eventTotalsByOpId = await buildEventTotalsByOperationIds(opIds);
+  const rows = timers.map((timer) => {
+    const plain = timer.toJSON();
+    if (plain && plain.WorkOrderOperation) {
+      plain.WorkOrderOperation = mergeOperationActualsForView(
+        plain.WorkOrderOperation,
+        timer,
+        eventTotalsByOpId
+      );
+    }
+    return plain;
+  });
 
-  return res.status(200).json(timers);
+  return res.status(200).json(rows);
 };
 
 /**
@@ -404,10 +504,12 @@ exports.getReportBoard = async function getReportBoard(req, res) {
     });
     pendingTotals.forEach((row) => pendingSyncIds.add(row.work_order_operation_id));
   }
+  const eventTotalsByOpId = await buildEventTotalsByOperationIds(opIds);
 
   const rows = operations.map((operation) => {
     const op = operation.get({ plain: true });
     const timer = timerByOpId.get(operation.id);
+    const opWithComputedActuals = mergeOperationActualsForView(op, timer, eventTotalsByOpId);
     const hasPendingSync = pendingSyncIds.has(operation.id);
     const st = computeReportRowStatus(timer, hasPendingSync);
     const mode = timer ? normalizeTimerMode(timer.timer_mode, 'RUN') : null;
@@ -415,21 +517,21 @@ exports.getReportBoard = async function getReportBoard(req, res) {
     const operator = u ? [u.name, u.lastname].filter(Boolean).join(' ').trim() : '';
 
     return {
-      row_key: `${op.ot_number}|${op.operation_sequence}|${op.resource_code}`,
-      ot_number: op.ot_number,
-      operation_sequence: op.operation_sequence,
-      operation_name: op.operation_name,
-      resource_code: op.resource_code,
-      area: op.area,
-      planned_setup_minutes: op.planned_setup_minutes,
-      planned_operation_minutes: op.planned_operation_minutes,
-      planned_quantity: op.planned_quantity,
-      actual_setup_time: op.actual_setup_time,
-      actual_run_time: op.actual_run_time,
-      completed_quantity: op.completed_quantity,
-      netsuite_operation_id: op.netsuite_operation_id,
-      source_status: op.source_status,
-      last_synced_at: op.last_synced_at,
+      row_key: `${opWithComputedActuals.ot_number}|${opWithComputedActuals.operation_sequence}|${opWithComputedActuals.resource_code}`,
+      ot_number: opWithComputedActuals.ot_number,
+      operation_sequence: opWithComputedActuals.operation_sequence,
+      operation_name: opWithComputedActuals.operation_name,
+      resource_code: opWithComputedActuals.resource_code,
+      area: opWithComputedActuals.area,
+      planned_setup_minutes: opWithComputedActuals.planned_setup_minutes,
+      planned_operation_minutes: opWithComputedActuals.planned_operation_minutes,
+      planned_quantity: opWithComputedActuals.planned_quantity,
+      actual_setup_time: opWithComputedActuals.actual_setup_time,
+      actual_run_time: opWithComputedActuals.actual_run_time,
+      completed_quantity: opWithComputedActuals.completed_quantity,
+      netsuite_operation_id: opWithComputedActuals.netsuite_operation_id,
+      source_status: opWithComputedActuals.source_status,
+      last_synced_at: opWithComputedActuals.last_synced_at,
       report_status_code: st.code,
       report_status_label: st.label,
       report_status_sort: st.sort,
