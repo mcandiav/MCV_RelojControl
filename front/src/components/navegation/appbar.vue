@@ -15,6 +15,9 @@
           <v-list-item v-if="isAdmin" @click="goToTab('sistema')">
             <v-list-item-title>Sistema</v-list-item-title>
           </v-list-item>
+          <v-list-item v-if="isAdmin" @click="goToTab('reporte')">
+            <v-list-item-title>Reporte</v-list-item-title>
+          </v-list-item>
           <v-list-item v-if="isAdmin" @click="goToTab('sincronizacion')">
             <v-list-item-title>Sincronización</v-list-item-title>
           </v-list-item>

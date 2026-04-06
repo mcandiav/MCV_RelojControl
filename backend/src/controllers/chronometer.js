@@ -332,6 +332,39 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
   return res.status(200).json(timers);
 };
 
+/**
+ * Tablero de reporte: cronómetros en pausa o detenidos (toda la planta). Solo administradores.
+ */
+exports.getReportBoard = async function getReportBoard(req, res) {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
+
+  const roleName =
+    currentUser.Role && currentUser.Role.name
+      ? String(currentUser.Role.name).trim().toLowerCase()
+      : '';
+  if (roleName !== 'admin') {
+    return res.status(403).json({ message: 'Solo administradores pueden ver el reporte.' });
+  }
+
+  const limit = Math.min(2000, Math.max(1, parseInt(String(req.query.limit || '500'), 10) || 500));
+
+  const timers = await OperationTimer.findAll({
+    where: { status: { [Op.in]: ['PAUSED', 'STOPPED'] } },
+    include: [
+      { model: WorkOrderOperation, required: true },
+      { model: User, required: false }
+    ],
+    order: [['updatedAt', 'DESC']],
+    limit
+  });
+
+  return res.status(200).json({
+    count: timers.length,
+    timers: timers.map((t) => t.toJSON())
+  });
+};
+
 exports.startTimer = async function startTimer(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });

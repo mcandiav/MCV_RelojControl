@@ -133,6 +133,7 @@
         <v-tab>Operación</v-tab>
         <v-tab v-if="isAdmin">Usuarios</v-tab>
         <v-tab v-if="isAdmin">Sistema</v-tab>
+        <v-tab v-if="isAdmin">Reporte</v-tab>
         <v-tab v-if="isAdmin">Sincronización</v-tab>
       </v-tabs>
 
@@ -543,6 +544,71 @@
         </v-tab-item>
         <v-tab-item v-if="isAdmin">
           <v-row>
+            <v-col cols="12">
+              <v-card outlined class="pa-4">
+                <div class="d-flex flex-wrap align-center justify-space-between mb-3" style="gap:12px">
+                  <div>
+                    <div class="text-subtitle-1 font-weight-bold">Reporte</div>
+                    <p class="text-body-2 grey--text text--darken-1 mb-0">
+                      Cronómetros en pausa o detenidos (toda la planta). Ordená por columnas y exportá a Excel.
+                    </p>
+                  </div>
+                  <div class="d-flex flex-wrap" style="gap:8px">
+                    <v-btn color="primary" outlined :loading="loadingReport" @click="loadReportBoard">
+                      <v-icon left>mdi-refresh</v-icon>
+                      Actualizar
+                    </v-btn>
+                    <v-btn color="secondary" :disabled="!reportItems.length || loadingReport" @click="exportReportExcel">
+                      <v-icon left>mdi-microsoft-excel</v-icon>
+                      Descargar Excel
+                    </v-btn>
+                  </div>
+                </div>
+                <v-alert v-if="reportError" type="error" dense outlined class="mb-3">{{ reportError }}</v-alert>
+                <v-data-table
+                  :headers="reportHeaders"
+                  :items="reportItems"
+                  :loading="loadingReport"
+                  :options.sync="reportTableOptions"
+                  :footer-props="{ itemsPerPageOptions: [25, 50, 100, 200, -1] }"
+                  class="compact-table report-data-table elevation-0"
+                  dense
+                >
+                  <template v-slot:item.status="{ value }">
+                    {{ statusReportLabel(value) }}
+                  </template>
+                  <template v-slot:item.timer_mode="{ value }">
+                    {{ value === 'SETUP' ? 'Configuración' : 'Producción' }}
+                  </template>
+                  <template v-slot:item.planned_setup_minutes="{ item }">
+                    {{ formatMinutesAsHHMM(item.planned_setup_minutes) }}
+                  </template>
+                  <template v-slot:item.planned_operation_minutes="{ item }">
+                    {{ formatMinutesAsHHMM(item.planned_operation_minutes) }}
+                  </template>
+                  <template v-slot:item.actual_setup_time="{ item }">
+                    {{ formatMinutesAsHHMM(item.actual_setup_time) }}
+                  </template>
+                  <template v-slot:item.actual_run_time="{ item }">
+                    {{ formatMinutesAsHHMM(item.actual_run_time) }}
+                  </template>
+                  <template v-slot:item.last_event_at="{ item }">
+                    {{ formatReportDate(item.last_event_at) }}
+                  </template>
+                  <template v-slot:item.total_elapsed_seconds="{ item }">
+                    {{ formatElapsedFromSeconds(item.total_elapsed_seconds) }}
+                  </template>
+                  <template v-slot:no-data>
+                    <div class="py-6 text-center grey--text">
+                      No hay registros en pausa o detenidos, o aún no se cargó el reporte.</div>
+                  </template>
+                </v-data-table>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-tab-item>
+        <v-tab-item v-if="isAdmin">
+          <v-row>
             <v-col cols="12" md="8">
               <v-card outlined class="pa-4">
                 <div class="text-subtitle-1 font-weight-bold mb-2">Sincronizacion operativa</div>
@@ -651,6 +717,8 @@
 
 <script>
 import axios from 'axios'
+import orderBy from 'lodash/orderBy'
+import ExcelJS from 'exceljs'
 import '@mdi/font/css/materialdesignicons.css'
 import appbar from '@/components/navegation/appbar.vue'
 import logoCronometro from '@/assets/at-once-logo.png'
@@ -765,6 +833,34 @@ export default {
       nsWipRows: [],
       nsWipRowsError: '',
       nsWipFilter: '',
+      reportTimers: [],
+      loadingReport: false,
+      reportError: '',
+      reportTableOptions: {
+        page: 1,
+        itemsPerPage: 50,
+        sortBy: ['last_event_at'],
+        sortDesc: [true]
+      },
+      reportHeaders: [
+        { text: 'Estado', value: 'status', sortable: true },
+        { text: 'Modo', value: 'timer_mode', sortable: true },
+        { text: 'OT', value: 'ot_number', sortable: true },
+        { text: 'Seq', value: 'operation_sequence', sortable: true, align: 'end' },
+        { text: 'Operación', value: 'operation_name', sortable: true },
+        { text: 'Recurso', value: 'resource_code', sortable: true },
+        { text: 'Área', value: 'area', sortable: true },
+        { text: 'Plan setup', value: 'planned_setup_minutes', sortable: true, align: 'end' },
+        { text: 'Plan run', value: 'planned_operation_minutes', sortable: true, align: 'end' },
+        { text: 'Real setup', value: 'actual_setup_time', sortable: true, align: 'end' },
+        { text: 'Real run', value: 'actual_run_time', sortable: true, align: 'end' },
+        { text: 'Cant. plan', value: 'planned_quantity', sortable: true, align: 'end' },
+        { text: 'Cant. hecha', value: 'completed_quantity', sortable: true, align: 'end' },
+        { text: 'Operario', value: 'operator', sortable: true },
+        { text: 'Terminal', value: 'station_id', sortable: true },
+        { text: 'Último evento', value: 'last_event_at', sortable: true },
+        { text: 'Tiempo acum.', value: 'total_elapsed_seconds', sortable: true, align: 'end' }
+      ],
       snackbar: false,
       snackbarText: '',
       snackbarColor: 'success',
@@ -777,6 +873,9 @@ export default {
     this.refreshBoard()
     this.loadAreaOperations()
     this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
+    this.$nextTick(() => {
+      if (this.isAdmin && this.tabKeyByIndex(this.activeTab) === 'reporte') this.loadReportBoard()
+    })
   },
   mounted() {
     if (this.idleBoardEnabled) {
@@ -841,6 +940,7 @@ export default {
     },
     activeTab() {
       this.syncRouteTab()
+      if (this.isAdmin && this.tabKeyByIndex(this.activeTab) === 'reporte') this.loadReportBoard()
     }
   },
   computed: {
@@ -897,6 +997,32 @@ export default {
     },
     axiosBaseUrlDisplay() {
       return String((axios.defaults && axios.defaults.baseURL) || '(sin baseURL)')
+    },
+    reportItems() {
+      return (this.reportTimers || []).map((t) => {
+        const op = t.WorkOrderOperation || {}
+        const u = t.User || {}
+        return {
+          id: t.id,
+          status: t.status,
+          timer_mode: (t.timer_mode && String(t.timer_mode).toUpperCase()) || 'RUN',
+          ot_number: op.ot_number || '',
+          operation_sequence: op.operation_sequence,
+          operation_name: op.operation_name || '',
+          resource_code: t.resource_code || op.resource_code || '',
+          area: op.area || '',
+          planned_setup_minutes: op.planned_setup_minutes,
+          planned_operation_minutes: op.planned_operation_minutes,
+          actual_setup_time: op.actual_setup_time,
+          actual_run_time: op.actual_run_time,
+          planned_quantity: op.planned_quantity,
+          completed_quantity: op.completed_quantity,
+          operator: [u.name, u.lastname].filter(Boolean).join(' ').trim() || '—',
+          station_id: t.station_id || '—',
+          last_event_at: t.last_event_at,
+          total_elapsed_seconds: t.total_elapsed_seconds != null ? Number(t.total_elapsed_seconds) : 0
+        }
+      })
     },
     browserOrigin() {
       if (typeof window === 'undefined') return 'â€”'
@@ -1025,7 +1151,8 @@ export default {
       if (key === 'operacion') return 0
       if (key === 'usuarios') return this.isAdmin ? 1 : 0
       if (key === 'sistema') return this.isAdmin ? 2 : 0
-      if (key === 'sincronizacion') return this.isAdmin ? 3 : 0
+      if (key === 'reporte') return this.isAdmin ? 3 : 0
+      if (key === 'sincronizacion') return this.isAdmin ? 4 : 0
       return 0
     },
     tabKeyByIndex(indexRaw) {
@@ -1033,7 +1160,8 @@ export default {
       if (index === 0) return 'operacion'
       if (index === 1 && this.isAdmin) return 'usuarios'
       if (index === 2 && this.isAdmin) return 'sistema'
-      if (index === 3 && this.isAdmin) return 'sincronizacion'
+      if (index === 3 && this.isAdmin) return 'reporte'
+      if (index === 4 && this.isAdmin) return 'sincronizacion'
       return 'operacion'
     },
     applyRouteTab() {
@@ -1580,6 +1708,97 @@ export default {
       } catch (error) {
         this.errorBoard = (error.response && error.response.data && error.response.data.message) || 'No fue posible cargar el tablero.'
       }
+    },
+    async loadReportBoard() {
+      if (!this.isAdmin) return
+      this.loadingReport = true
+      this.reportError = ''
+      try {
+        const res = await axios.get('/chronometer/board/report', { params: { limit: 500 } })
+        const raw = res.data && res.data.timers
+        this.reportTimers = Array.isArray(raw) ? raw : []
+      } catch (e) {
+        this.reportTimers = []
+        this.reportError =
+          (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
+          'No fue posible cargar el reporte.'
+      } finally {
+        this.loadingReport = false
+      }
+    },
+    statusReportLabel(status) {
+      const u = String(status || '').toUpperCase()
+      if (u === 'PAUSED') return 'Pausa'
+      if (u === 'STOPPED') return 'Detenido'
+      return status || '—'
+    },
+    formatReportDate(iso) {
+      if (!iso) return '—'
+      const d = new Date(iso)
+      if (!Number.isFinite(d.getTime())) return '—'
+      return d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+    },
+    async exportReportExcel() {
+      const opts = this.reportTableOptions || {}
+      const sortBy = (opts.sortBy && opts.sortBy[0]) || 'last_event_at'
+      const sortDesc = !!(opts.sortDesc && opts.sortDesc[0])
+      let rows = [...this.reportItems]
+      if (sortBy && rows.length) {
+        rows = orderBy(rows, [sortBy], [sortDesc ? 'desc' : 'asc'])
+      }
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet('Reporte')
+      ws.addRow([
+        'Estado',
+        'Modo',
+        'OT',
+        'Seq',
+        'Operación',
+        'Recurso',
+        'Área',
+        'Plan setup (HH:MM)',
+        'Plan run (HH:MM)',
+        'Real setup (HH:MM)',
+        'Real run (HH:MM)',
+        'Cant. plan',
+        'Cant. hecha',
+        'Operario',
+        'Terminal',
+        'Último evento',
+        'Acumulado (HH:MM:SS)'
+      ])
+      for (const r of rows) {
+        ws.addRow([
+          this.statusReportLabel(r.status),
+          r.timer_mode === 'SETUP' ? 'Configuración' : 'Producción',
+          r.ot_number,
+          r.operation_sequence,
+          r.operation_name,
+          r.resource_code,
+          r.area,
+          this.formatMinutesAsHHMM(r.planned_setup_minutes),
+          this.formatMinutesAsHHMM(r.planned_operation_minutes),
+          this.formatMinutesAsHHMM(r.actual_setup_time),
+          this.formatMinutesAsHHMM(r.actual_run_time),
+          r.planned_quantity != null ? r.planned_quantity : '',
+          r.completed_quantity != null ? r.completed_quantity : '',
+          r.operator,
+          r.station_id,
+          this.formatReportDate(r.last_event_at),
+          this.formatElapsedFromSeconds(r.total_elapsed_seconds)
+        ])
+      }
+      const buf = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const pad = (n) => String(n).padStart(2, '0')
+      const now = new Date()
+      const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`
+      a.download = `reporte-cronometro-${stamp}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
     },
     async timerAction(action, operationId) {
       try {

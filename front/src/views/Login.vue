@@ -20,7 +20,7 @@
             </v-tab>
             <v-tab class="tab-grande">
               <v-icon left>mdi-shield-account</v-icon>
-              Administrador
+              Log-in
             </v-tab>
           </v-tabs>
 

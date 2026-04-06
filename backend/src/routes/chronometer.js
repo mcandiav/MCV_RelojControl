@@ -9,6 +9,7 @@ const security = require('../middlewares/authJwt');
 router.get('/operations', security.verifyToken, chronometer.listOperations);
 router.get('/operations/:otNumber', security.verifyToken, chronometer.getOperationsByOt);
 router.get('/board/active', security.verifyToken, chronometer.getActiveBoard);
+router.get('/board/report', security.verifyToken, chronometer.getReportBoard);
 router.delete('/operations/:id', [security.verifyToken, security.isAdmin], chronometer.deleteOperation);
 
 router.post('/wip/upsert', [security.verifyToken, security.isAdmin], chronometer.upsertWipOperations);
