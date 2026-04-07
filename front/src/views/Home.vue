@@ -583,12 +583,12 @@
                     </p>
                   </div>
                   <div class="d-flex flex-wrap" style="gap:8px">
-                    <v-btn color="primary" outlined :loading="reportView === 'sync' ? loadingSyncRuns : loadingReport" @click="reportView === 'sync' ? loadSyncRuns() : loadReportBoard()">
+                    <v-btn color="primary" outlined :loading="reportView === 1 ? loadingSyncRuns : loadingReport" @click="reportView === 1 ? loadSyncRuns() : loadReportBoard()">
                       <v-icon left>mdi-refresh</v-icon>
                       Actualizar
                     </v-btn>
                     <v-btn
-                      v-if="reportView === 'ops'"
+                      v-if="reportView === 0"
                       color="secondary"
                       :disabled="!reportRows.length || loadingReport"
                       @click="exportReportExcel"
@@ -599,11 +599,11 @@
                   </div>
                 </div>
                 <v-tabs v-model="reportView" grow color="primary" slider-color="primary" class="mb-3">
-                  <v-tab value="ops">Operaciones</v-tab>
-                  <v-tab value="sync">Sincronizaciones</v-tab>
+                  <v-tab>Operaciones</v-tab>
+                  <v-tab>Sincronizaciones</v-tab>
                 </v-tabs>
 
-                <div v-if="reportView === 'ops'">
+                <div v-if="reportView === 0">
                   <v-alert v-if="reportError" type="error" dense outlined class="mb-3">{{ reportError }}</v-alert>
                   <v-data-table
                     :headers="reportHeaders"
@@ -963,7 +963,7 @@ export default {
       reportRows: [],
       loadingReport: false,
       reportError: '',
-      reportView: 'ops',
+      reportView: 0,
       syncRuns: [],
       loadingSyncRuns: false,
       syncRunsError: '',
@@ -1083,6 +1083,12 @@ export default {
     },
     '$route.query.tab'() {
       this.applyRouteTab()
+    },
+    reportView(val) {
+      // 0 = Operaciones, 1 = Sincronizaciones
+      if (!this.isAdmin) return
+      if (val === 0) this.loadReportBoard()
+      else if (val === 1) this.loadSyncRuns()
     },
     activeTab() {
       this.syncRouteTab()
