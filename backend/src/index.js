@@ -12,6 +12,8 @@ require('./models/operation_timer');
 require('./models/timer_event');
 require('./models/operation_time_total');
 require('./models/shift_close_slot');
+require('./models/sync_run');
+require('./models/sync_run_step');
 
 const authRoutes = require('./routes/auth');
 const chronometerRoutes = require('./routes/chronometer');

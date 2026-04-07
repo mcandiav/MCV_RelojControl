@@ -117,6 +117,10 @@
                   <span class="meta-value">{{ activeShiftLabel }}</span>
                 </div>
                 <div class="meta-item">
+                  <span class="meta-label">Hora</span>
+                  <span class="meta-value">{{ currentTimeHHMM }}</span>
+                </div>
+                <div class="meta-item">
                   <span class="meta-label">Fin</span>
                   <span class="meta-value">{{ activeShiftEnd }}</span>
                 </div>
@@ -420,7 +424,7 @@
                     </div>
                     <div class="meta-item">
                       <span class="meta-label">Hora actual</span>
-                      <span class="meta-value">{{ currentTimeHHMMSS }}</span>
+                      <span class="meta-value">{{ currentTimeHHMM }}</span>
                     </div>
                     <div class="meta-item">
                       <span class="meta-label">Fin</span>
@@ -574,73 +578,118 @@
                   <div>
                     <div class="text-subtitle-1 font-weight-bold">Reporte</div>
                     <p class="text-body-2 grey--text text--darken-1 mb-0">
-                      Mismo listado WIP que MariaDB (NetSuite OUT), con estádo de cronómetro y sync pendiente.
-                      Ordena por columnas y exportá a Excel.
+                      Mismo listado WIP que MariaDB (NetSuite OUT), con estado de cronómetro y sync pendiente.
+                      Ordena por columnas y exporta a Excel.
                     </p>
                   </div>
                   <div class="d-flex flex-wrap" style="gap:8px">
-                    <v-btn color="primary" outlined :loading="loadingReport" @click="loadReportBoard">
+                    <v-btn color="primary" outlined :loading="reportView === 'sync' ? loadingSyncRuns : loadingReport" @click="reportView === 'sync' ? loadSyncRuns() : loadReportBoard()">
                       <v-icon left>mdi-refresh</v-icon>
                       Actualizar
                     </v-btn>
-                    <v-btn color="secondary" :disabled="!reportRows.length || loadingReport" @click="exportReportExcel">
+                    <v-btn
+                      v-if="reportView === 'ops'"
+                      color="secondary"
+                      :disabled="!reportRows.length || loadingReport"
+                      @click="exportReportExcel"
+                    >
                       <v-icon left>mdi-microsoft-excel</v-icon>
                       Descargar Excel
                     </v-btn>
                   </div>
                 </div>
-                <v-alert v-if="reportError" type="error" dense outlined class="mb-3">{{ reportError }}</v-alert>
-                <v-data-table
-                  :headers="reportHeaders"
-                  :items="reportRows"
-                  item-key="row_key"
-                  :loading="loadingReport"
-                  :options.sync="reportTableOptions"
-                  :footer-props="{ itemsPerPageOptions: [25, 50, 100, 200, -1] }"
-                  class="compact-table report-data-table elevation-0"
-                  dense
-                >
-                  <template v-slot:item.report_status_sort="{ item }">
-                    {{ item.report_status_label }}
-                  </template>
-                  <template v-slot:item.timer_mode_sort="{ item }">
-                    {{ formatReportTimerMode(item.timer_mode) }}
-                  </template>
-                  <template v-slot:item.planned_setup_minutes="{ item }">
-                    {{ formatMinutesAsHHMM(item.planned_setup_minutes) }}
-                  </template>
-                  <template v-slot:item.planned_operation_minutes="{ item }">
-                    {{ formatMinutesAsHHMM(item.planned_operation_minutes) }}
-                  </template>
-                  <template v-slot:item.actual_setup_time="{ item }">
-                    {{ formatMinutesAsHHMM(item.actual_setup_time) }}
-                  </template>
-                  <template v-slot:item.actual_run_time="{ item }">
-                    {{ formatMinutesAsHHMM(item.actual_run_time) }}
-                  </template>
-                  <template v-slot:item.netsuite_operation_id="{ item }">
-                    {{ item.netsuite_operation_id != null && item.netsuite_operation_id !== '' ? item.netsuite_operation_id : '—' }}
-                  </template>
-                  <template v-slot:item.sync_pending_sort="{ item }">
-                    {{ item.sync_pending ? 'Sí' : 'No' }}
-                  </template>
-                  <template v-slot:item.operator="{ item }">
-                    {{ item.operator || '—' }}
-                  </template>
-                  <template v-slot:item.station_id="{ item }">
-                    {{ item.station_id || '—' }}
-                  </template>
-                  <template v-slot:item.last_event_at="{ item }">
-                    {{ formatReportDate(item.last_event_at) }}
-                  </template>
-                  <template v-slot:item.total_elapsed_seconds="{ item }">
-                    {{ item.total_elapsed_seconds != null ? formatElapsedFromSeconds(item.total_elapsed_seconds) : '—' }}
-                  </template>
-                  <template v-slot:no-data>
-                    <div class="py-6 text-center grey--text">
-                      No hay operaciones WIP cargadas o aún no se cargó el reporte.</div>
-                  </template>
-                </v-data-table>
+                <v-tabs v-model="reportView" grow color="primary" slider-color="primary" class="mb-3">
+                  <v-tab value="ops">Operaciones</v-tab>
+                  <v-tab value="sync">Sincronizaciones</v-tab>
+                </v-tabs>
+
+                <div v-if="reportView === 'ops'">
+                  <v-alert v-if="reportError" type="error" dense outlined class="mb-3">{{ reportError }}</v-alert>
+                  <v-data-table
+                    :headers="reportHeaders"
+                    :items="reportRows"
+                    item-key="row_key"
+                    :loading="loadingReport"
+                    :options.sync="reportTableOptions"
+                    :footer-props="{ itemsPerPageOptions: [25, 50, 100, 200, -1] }"
+                    class="compact-table report-data-table elevation-0"
+                    dense
+                  >
+                    <template v-slot:item.report_status_sort="{ item }">
+                      {{ item.report_status_label }}
+                    </template>
+                    <template v-slot:item.timer_mode_sort="{ item }">
+                      {{ formatReportTimerMode(item.timer_mode) }}
+                    </template>
+                    <template v-slot:item.planned_setup_minutes="{ item }">
+                      {{ formatMinutesAsHHMM(item.planned_setup_minutes) }}
+                    </template>
+                    <template v-slot:item.planned_operation_minutes="{ item }">
+                      {{ formatMinutesAsHHMM(item.planned_operation_minutes) }}
+                    </template>
+                    <template v-slot:item.actual_setup_time="{ item }">
+                      {{ formatMinutesAsHHMM(item.actual_setup_time) }}
+                    </template>
+                    <template v-slot:item.actual_run_time="{ item }">
+                      {{ formatMinutesAsHHMM(item.actual_run_time) }}
+                    </template>
+                    <template v-slot:item.netsuite_operation_id="{ item }">
+                      {{ item.netsuite_operation_id != null && item.netsuite_operation_id !== '' ? item.netsuite_operation_id : '—' }}
+                    </template>
+                    <template v-slot:item.sync_pending_sort="{ item }">
+                      {{ item.sync_pending ? 'Sí' : 'No' }}
+                    </template>
+                    <template v-slot:item.operator="{ item }">
+                      {{ item.operator || '—' }}
+                    </template>
+                    <template v-slot:item.station_id="{ item }">
+                      {{ item.station_id || '—' }}
+                    </template>
+                    <template v-slot:item.last_event_at="{ item }">
+                      {{ formatReportDate(item.last_event_at) }}
+                    </template>
+                    <template v-slot:item.total_elapsed_seconds="{ item }">
+                      {{ item.total_elapsed_seconds != null ? formatElapsedFromSeconds(item.total_elapsed_seconds) : '—' }}
+                    </template>
+                    <template v-slot:no-data>
+                      <div class="py-6 text-center grey--text">
+                        No hay operaciones WIP cargadas o aún no se cargó el reporte.</div>
+                    </template>
+                  </v-data-table>
+                </div>
+
+                <div v-else>
+                  <v-alert v-if="syncRunsError" type="error" dense outlined class="mb-3">{{ syncRunsError }}</v-alert>
+                  <v-data-table
+                    :headers="syncRunHeaders"
+                    :items="syncRuns"
+                    item-key="id"
+                    dense
+                    class="compact-table elevation-0"
+                    :loading="loadingSyncRuns"
+                    :footer-props="{ itemsPerPageOptions: [10, 25, 50, 100] }"
+                  >
+                    <template v-slot:item.status="{ item }">
+                      <v-chip small :color="syncRunChipColor(item)" dark>{{ item.status }}</v-chip>
+                    </template>
+                    <template v-slot:item.warning="{ item }">
+                      <span v-if="item.warning" class="warning--text font-weight-bold">Sí</span>
+                      <span v-else>—</span>
+                    </template>
+                    <template v-slot:item.started_at="{ item }">
+                      {{ formatReportDate(item.started_at) }}
+                    </template>
+                    <template v-slot:item.duration_ms="{ item }">
+                      {{ item.duration_ms != null ? `${Math.round(item.duration_ms / 1000)}s` : '—' }}
+                    </template>
+                    <template v-slot:item.actions="{ item }">
+                      <v-btn x-small color="primary" outlined @click="openSyncRunDetail(item)">Ver detalle</v-btn>
+                    </template>
+                    <template v-slot:no-data>
+                      <div class="py-6 text-center grey--text">No hay sincronizaciones registradas.</div>
+                    </template>
+                  </v-data-table>
+                </div>
               </v-card>
             </v-col>
           </v-row>
@@ -749,6 +798,44 @@
           <v-spacer />
           <v-btn text :disabled="loadingEditUser" @click="closeEditUserDialog">Cancelar</v-btn>
           <v-btn color="primary" :loading="loadingEditUser" @click="saveEditUser">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="syncRunDetailDialog" max-width="900">
+      <v-card>
+        <v-card-title class="text-h6">Detalle de sincronización</v-card-title>
+        <v-card-text>
+          <div class="text-caption grey--text mb-2" v-if="syncRunDetail">
+            ID {{ syncRunDetail.id }} · {{ formatReportDate(syncRunDetail.started_at) }} · {{ syncRunDetail.flow_type }} · {{ syncRunDetail.status }}
+          </div>
+          <v-simple-table dense v-if="syncRunDetailSteps.length">
+            <thead>
+              <tr>
+                <th>Etapa</th>
+                <th>Estado</th>
+                <th>Inicio</th>
+                <th>Duración</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in syncRunDetailSteps" :key="'step-' + s.id">
+                <td class="font-weight-medium">{{ s.step_name }}</td>
+                <td>{{ s.status }}</td>
+                <td>{{ formatReportDate(s.started_at) }}</td>
+                <td>{{ s.duration_ms != null ? `${Math.round(s.duration_ms / 1000)}s` : '—' }}</td>
+                <td class="text-caption" style="max-width:420px; white-space:normal;">
+                  {{ s.error_message || '—' }}
+                </td>
+              </tr>
+            </tbody>
+          </v-simple-table>
+          <div v-else class="grey--text">Sin detalle.</div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text @click="syncRunDetailDialog = false">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -876,6 +963,22 @@ export default {
       reportRows: [],
       loadingReport: false,
       reportError: '',
+      reportView: 'ops',
+      syncRuns: [],
+      loadingSyncRuns: false,
+      syncRunsError: '',
+      syncRunHeaders: [
+        { text: 'Inicio', value: 'started_at', sortable: true },
+        { text: 'Tipo', value: 'flow_type', sortable: true },
+        { text: 'Trigger', value: 'trigger', sortable: true },
+        { text: 'Estado', value: 'status', sortable: true },
+        { text: 'Warning', value: 'warning', sortable: true },
+        { text: 'Duración', value: 'duration_ms', sortable: true, align: 'end' },
+        { text: 'Acción', value: 'actions', sortable: false }
+      ],
+      syncRunDetailDialog: false,
+      syncRunDetail: null,
+      syncRunDetailSteps: [],
       reportTableOptions: {
         page: 1,
         itemsPerPage: 50,
@@ -1083,12 +1186,11 @@ export default {
     activeShiftEnd() {
       return this.activeShiftData.end
     },
-    currentTimeHHMMSS() {
+    currentTimeHHMM() {
       const d = new Date(this.nowTick || Date.now())
       const hh = String(d.getHours()).padStart(2, '0')
       const mm = String(d.getMinutes()).padStart(2, '0')
-      const ss = String(d.getSeconds()).padStart(2, '0')
-      return `${hh}:${mm}:${ss}`
+      return `${hh}:${mm}`
     },
     /** HTTPS en planta + API en http://localhost o http://cualquiera â†’ bloqueo inmediato del navegador. */
     apiUrlBrokenOnHttps() {
@@ -1782,6 +1884,48 @@ export default {
       if (!Number.isFinite(d.getTime())) return '—'
       return d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
     },
+    syncRunChipColor(item) {
+      const st = String((item && item.status) || '').toUpperCase()
+      if (st === 'SUCCESS') return 'success'
+      if (st === 'ERROR') return 'error'
+      if (st === 'RUNNING') return 'warning'
+      return 'grey'
+    },
+    async loadSyncRuns() {
+      if (!this.isAdmin) return
+      this.loadingSyncRuns = true
+      this.syncRunsError = ''
+      try {
+        const res = await axios.get('/chronometer/netsuite/sync-runs', { params: { limit: 50 } })
+        const runs = res.data && res.data.runs
+        this.syncRuns = Array.isArray(runs) ? runs : []
+      } catch (e) {
+        this.syncRuns = []
+        this.syncRunsError =
+          (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
+          'No fue posible cargar el log de sincronizaciones.'
+      } finally {
+        this.loadingSyncRuns = false
+      }
+    },
+    async openSyncRunDetail(item) {
+      if (!item || !item.id) return
+      this.syncRunDetailDialog = true
+      this.syncRunDetail = item
+      this.syncRunDetailSteps = []
+      try {
+        const res = await axios.get(`/chronometer/netsuite/sync-runs/${encodeURIComponent(item.id)}`)
+        this.syncRunDetail = res.data && res.data.run ? res.data.run : item
+        this.syncRunDetailSteps = (res.data && Array.isArray(res.data.steps)) ? res.data.steps : []
+      } catch (e) {
+        this.syncRunDetailSteps = []
+        this.showSnack(
+          (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
+            'No fue posible cargar el detalle de la sincronización.',
+          'error'
+        )
+      }
+    },
     async exportReportExcel() {
       const opts = this.reportTableOptions || {}
       const sortBy = (opts.sortBy && opts.sortBy[0]) || 'ot_number'
@@ -2291,7 +2435,7 @@ export default {
 
 .chrono-meta-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(120px, auto));
+  grid-template-columns: repeat(4, minmax(120px, auto));
   gap: 8px;
 }
 

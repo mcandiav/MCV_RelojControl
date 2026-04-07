@@ -30,6 +30,8 @@ router.post('/netsuite/pull-dataset', [security.verifyToken, security.isAdmin], 
 router.post('/netsuite/push-actuals', [security.verifyToken, security.isAdmin], netsuiteSync.pushActuals);
 router.post('/netsuite/sync-official', [security.verifyToken, security.isAdmin], netsuiteSync.officialSync);
 router.post('/netsuite/sync-operational', [security.verifyToken, security.isAdmin], netsuiteSync.operationalSync);
+router.get('/netsuite/sync-runs', [security.verifyToken, security.isAdmin], netsuiteSync.listSyncRuns);
+router.get('/netsuite/sync-runs/:id', [security.verifyToken, security.isAdmin], netsuiteSync.getSyncRun);
 router.post('/netsuite/oauth/clear-cache', [security.verifyToken, security.isAdmin], netsuiteSync.clearOAuthCache);
 
 router.post('/timers/start', security.verifyToken, chronometer.startTimer);

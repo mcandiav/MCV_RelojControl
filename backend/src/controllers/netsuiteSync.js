@@ -7,6 +7,8 @@ const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
 const { buildActualsPayload } = require('../services/netsuite/buildActualsPayload');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
+const SyncRun = require('../models/sync_run');
+const SyncRunStep = require('../models/sync_run_step');
 let netsuitePushInFlight = false;
 let netsuiteOperationalSyncInFlight = false;
 
@@ -105,6 +107,59 @@ function explainSequelizeError(err) {
   if (err.parent && err.parent.sqlMessage) return String(err.parent.sqlMessage);
   if (err.original && err.original.sqlMessage) return String(err.original.sqlMessage);
   return String(err.message || err);
+}
+
+function safeJsonStringify(obj) {
+  try {
+    return JSON.stringify(obj);
+  } catch (e) {
+    return JSON.stringify({ error: 'stringify_failed', message: String(e && e.message ? e.message : e) });
+  }
+}
+
+async function createSyncRun({ flowType, trigger, req }) {
+  return SyncRun.create({
+    flow_type: flowType,
+    trigger,
+    status: 'RUNNING',
+    started_at: new Date(),
+    requested_by_user_id: req && req.userId ? Number(req.userId) : null,
+    station_id: req && req.stationId ? String(req.stationId) : null,
+    warning: false,
+    summary_json: null,
+    error_message: null
+  });
+}
+
+async function createSyncStep(syncRunId, stepName, payload) {
+  return SyncRunStep.create({
+    sync_run_id: syncRunId,
+    step_name: stepName,
+    status: 'RUNNING',
+    started_at: new Date(),
+    result_json: payload != null ? safeJsonStringify(payload) : null
+  });
+}
+
+async function finishSyncStep(step, { ok, result, errorMessage }) {
+  if (!step) return;
+  step.status = ok ? 'SUCCESS' : 'ERROR';
+  step.finished_at = new Date();
+  step.duration_ms = step.started_at ? Math.max(0, Date.now() - new Date(step.started_at).getTime()) : null;
+  if (result != null) step.result_json = safeJsonStringify(result);
+  if (!ok && errorMessage) step.error_message = String(errorMessage);
+  await step.save();
+}
+
+async function finishSyncRun(run, { ok, summary, errorMessage, warning }) {
+  if (!run) return;
+  run.status = ok ? 'SUCCESS' : 'ERROR';
+  run.finished_at = new Date();
+  run.duration_ms = run.started_at ? Math.max(0, Date.now() - new Date(run.started_at).getTime()) : null;
+  run.warning = !!warning;
+  if (summary != null) run.summary_json = safeJsonStringify(summary);
+  if (!ok && errorMessage) run.error_message = String(errorMessage);
+  await run.save();
 }
 
 async function assertNoActiveTimers() {
@@ -483,13 +538,23 @@ exports.operationalSync = async function operationalSync(req, res) {
   netsuitePushInFlight = true;
   const startedAt = Date.now();
 
+  let syncRun = null;
+  let stepStop = null;
+  let stepPush = null;
+  let stepWait = null;
+  let stepPull = null;
+
   try {
     const { runShiftClose } = require('./chronometer');
+    syncRun = await createSyncRun({ flowType: 'operational', trigger: 'manual', req });
 
     // 1) detener todos los relojes primero (sin sync automática embebida)
+    stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL' });
     const shift = await runShiftClose('manual_operational_sync', { skipNetsuiteSync: true });
+    await finishSyncStep(stepStop, { ok: true, result: shift });
 
     // 2) push de deltas a NetSuite
+    stepPush = await createSyncStep(syncRun.id, 'PUSH', { note: 'pushActualsBatch(buildActualsPayload())' });
     const { items } = await buildActualsPayload();
     let netsuitePush = null;
     let markedSuccessfulPushes = 0;
@@ -497,18 +562,38 @@ exports.operationalSync = async function operationalSync(req, res) {
       netsuitePush = await pushActualsBatch(items);
       markedSuccessfulPushes = await markSuccessfulPushes(items, netsuitePush);
     }
+    await finishSyncStep(stepPush, {
+      ok: true,
+      result: { itemCount: items.length, markedSuccessfulPushes, netsuite: netsuitePush }
+    });
 
     // 3) esperar ventana operacional antes del pull
+    stepWait = await createSyncStep(syncRun.id, 'WAIT', { delaySecondsApplied: delaySeconds });
     if (delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+    await finishSyncStep(stepWait, { ok: true, result: { delaySecondsApplied: delaySeconds } });
 
     // 4) pull + replace: verdad desde NetSuite
+    stepPull = await createSyncStep(syncRun.id, 'PULL', { note: 'fetchFullDataset + replaceAllWipRows' });
     const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
     const replaced = await replaceAllWipRows(rows);
+    await finishSyncStep(stepPull, { ok: true, result: { totalRows, imported: replaced.imported } });
+
+    const summary = {
+      elapsedMs: Date.now() - startedAt,
+      delaySecondsApplied: delaySeconds,
+      shift,
+      push: { itemCount: items.length, markedSuccessfulPushes },
+      pull: { totalRows, imported: replaced.imported }
+    };
+    const warning = Array.isArray(netsuitePush && netsuitePush.results)
+      ? netsuitePush.results.some((r) => r && r.success === false)
+      : false;
+    await finishSyncRun(syncRun, { ok: true, summary, warning });
 
     return res.status(200).json({
-      message: 'Sincronizacion operativa completada.',
+      message: 'Sincronización operativa completada.',
       elapsedMs: Date.now() - startedAt,
       delaySecondsApplied: delaySeconds,
       shift,
@@ -524,10 +609,24 @@ exports.operationalSync = async function operationalSync(req, res) {
     });
   } catch (err) {
     const detail = err.response && err.response.data ? err.response.data : explainSequelizeError(err);
+    try {
+      const msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
+      if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
+      if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
+      if (stepStop && stepStop.status === 'RUNNING') await finishSyncStep(stepStop, { ok: false, errorMessage: msg });
+      if (syncRun) {
+        await finishSyncRun(syncRun, {
+          ok: false,
+          errorMessage: msg,
+          summary: { elapsedMs: Date.now() - startedAt, delaySecondsApplied: delaySeconds }
+        });
+      }
+    } catch (_) {}
     return res.status(200).json({
       ok: false,
       httpStatus: 502,
-      message: 'Fallo en sincronizacion operativa.',
+      message: 'Fallo en sincronización operativa.',
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
   } finally {
@@ -539,6 +638,29 @@ exports.operationalSync = async function operationalSync(req, res) {
 exports.clearOAuthCache = async function clearOAuthCacheController(req, res) {
   clearTokenCache();
   return res.status(200).json({ message: 'Token cache cleared.' });
+};
+
+/** Log: últimas sincronizaciones (admin). */
+exports.listSyncRuns = async function listSyncRuns(req, res) {
+  const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
+  const rows = await SyncRun.findAll({
+    order: [['started_at', 'DESC']],
+    limit
+  });
+  return res.status(200).json({ count: rows.length, runs: rows.map((r) => r.toJSON()) });
+};
+
+/** Log: detalle de una sincronización (admin). */
+exports.getSyncRun = async function getSyncRun(req, res) {
+  const id = Number(req.params.id || 0);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: 'id inválido' });
+  const run = await SyncRun.findByPk(id);
+  if (!run) return res.status(404).json({ message: 'No encontrado' });
+  const steps = await SyncRunStep.findAll({
+    where: { sync_run_id: id },
+    order: [['started_at', 'ASC']]
+  });
+  return res.status(200).json({ run: run.toJSON(), steps: steps.map((s) => s.toJSON()) });
 };
 
 /** Diagnóstico: listar datasets visibles por REST. */
