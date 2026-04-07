@@ -1193,10 +1193,19 @@ export default {
       return this.activeShiftData.end
     },
     currentTimeHHMM() {
-      const d = new Date(this.nowTick || Date.now())
-      const hh = String(d.getHours()).padStart(2, '0')
-      const mm = String(d.getMinutes()).padStart(2, '0')
-      return `${hh}:${mm}`
+      try {
+        return new Intl.DateTimeFormat('es-CL', {
+          timeZone: 'America/Santiago',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(new Date(this.nowTick || Date.now()))
+      } catch (e) {
+        const d = new Date(this.nowTick || Date.now())
+        const hh = String(d.getHours()).padStart(2, '0')
+        const mm = String(d.getMinutes()).padStart(2, '0')
+        return `${hh}:${mm}`
+      }
     },
     /** HTTPS en planta + API en http://localhost o http://cualquiera â†’ bloqueo inmediato del navegador. */
     apiUrlBrokenOnHttps() {
@@ -1888,7 +1897,15 @@ export default {
       if (!iso) return '—'
       const d = new Date(iso)
       if (!Number.isFinite(d.getTime())) return '—'
-      return d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+      try {
+        return new Intl.DateTimeFormat('es-CL', {
+          timeZone: 'America/Santiago',
+          dateStyle: 'short',
+          timeStyle: 'short'
+        }).format(d)
+      } catch (e) {
+        return d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+      }
     },
     syncRunChipColor(item) {
       const st = String((item && item.status) || '').toUpperCase()
