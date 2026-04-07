@@ -47,7 +47,7 @@
                 </div>
                 <div class="q-metric-block">
                   <div class="time-bar-label">
-                    Run:
+                    Ejecución:
                     {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_run_time) || 0) }}
                     / {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_operation_minutes) || 0) }}
                   </div>
@@ -63,7 +63,7 @@
                 </div>
                 <div class="q-metric-block">
                   <div class="time-bar-label">
-                    Setup:
+                    Montaje:
                     {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_setup_time) || 0) }}
                     / {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_setup_minutes) || 0) }}
                   </div>
@@ -78,7 +78,8 @@
                   </div>
                 </div>
                 <div class="q-qty">
-                  Q: {{ (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).completed_quantity) != null ? quadrantLinkedOp(cell).completed_quantity : '-' }}
+                  Cant. completada / entrada:
+                  {{ (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).completed_quantity) != null ? quadrantLinkedOp(cell).completed_quantity : '-' }}
                   / {{ (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_quantity) != null ? quadrantLinkedOp(cell).planned_quantity : '-' }}
                 </div>
                 <div class="q-res">{{ cell.resource_code }}</div>
@@ -92,7 +93,7 @@
           </div>
         </div>
         <div class="idle-board-footer" @click="closeIdleBoard">
-          Toca aqui para cerrar · Esc · Carrusel cada {{ idleBoardCarouselSeconds }}s si hay varias paginas · Datos cada {{ boardPollSeconds }}s
+          Toca aquí para cerrar · Esc · Carrusel cada {{ idleBoardCarouselSeconds }}s si hay varias paginas · Datos cada {{ boardPollSeconds }}s
         </div>
       </div>
     </transition>
@@ -174,9 +175,9 @@
                         <th>Secuencia</th>
                         <th>Operación</th>
                         <th>Recurso</th>
-                        <th>Cantidad</th>
-                        <th>CONFIGURACIÓN</th>
-                        <th>PRODUCCIÓN</th>
+                        <th>Cantidad completada / entrada</th>
+                        <th>MONTAJE</th>
+                        <th>EJECUCIÓN</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -247,7 +248,7 @@
                     </tbody>
                   </v-simple-table>
                 </div>
-                <div v-else class="grey--text">No hay cronometros activos.</div>
+                <div v-else class="grey--text">No hay cronómetros activos.</div>
               </v-card>
             </v-col>
           </v-row>
@@ -266,9 +267,9 @@
                         <th>Secuencia</th>
                         <th>Operación</th>
                         <th>Recurso</th>
-                        <th>Cantidad</th>
-                        <th>CONFIGURACIÓN</th>
-                        <th>PRODUCCIÓN</th>
+                        <th>Cantidad completada / entrada</th>
+                        <th>MONTAJE</th>
+                        <th>EJECUCIÓN</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -344,7 +345,7 @@
                 <v-text-field v-model.trim="newUser.username" :counter="USER_RULES.usernameMax" :maxlength="USER_RULES.usernameMax" label="Usuario" dense outlined />
                 <v-text-field v-model="newUser.password" :counter="USER_RULES.passwordLen" :maxlength="USER_RULES.passwordLen" label="Contraseña / PIN (4 dígitos)" dense outlined type="password" />
                 <v-select v-model="newUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
-                <v-select v-model="newUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Área" dense outlined />
+                <v-select v-model="newUser.WorkplaceId" :items="workplacesUi" item-text="nameUi" item-value="id" label="Área" dense outlined />
                 <v-btn color="primary" :loading="loadingCreateUser" @click="crearUsuario">Crear usuario</v-btn>
               </v-card>
             </v-col>
@@ -369,7 +370,7 @@
                       <td>{{ u.name }} {{ u.lastname }}</td>
                       <td>{{ u.username }}</td>
                       <td>{{ u.Role && u.Role.name }}</td>
-                      <td>{{ u.Workplace && u.Workplace.name }}</td>
+                      <td>{{ formatAreaName(u.Workplace && u.Workplace.name) }}</td>
                       <td>
                         <v-btn x-small color="primary" class="mr-1" @click="openEditUserDialog(u)">Editar</v-btn>
                         <v-btn x-small color="error" @click="eliminarUsuario(u.id)">Eliminar</v-btn>
@@ -402,14 +403,37 @@
                   </v-btn>
                 </div>
 
-                <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automaticos</div>
+                <div class="text-subtitle-1 font-weight-bold mb-2">Cierres de turno automáticos</div>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Tres horarios (zona {{ shiftMeta.timezone || '-' }}). Se programan cron jobs en el servidor al guardar.
                   Los flags globales vienen de variables de entorno del API (<code>NS_SHIFT_BATCH_ENABLED</code>,
                   <code>NS_AUTO_STOP_AT_SHIFT_END</code>).
                 </p>
+                <v-sheet outlined class="pa-3 mb-3" style="border-radius: 10px; background: #fafafa;">
+                  <div class="text-caption text-uppercase font-weight-medium grey--text text--darken-1 mb-2">
+                    Estado del turno
+                  </div>
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="meta-item">
+                      <span class="meta-label">Turno</span>
+                      <span class="meta-value">{{ activeShiftLabel }}</span>
+                    </div>
+                    <div class="meta-item">
+                      <span class="meta-label">Hora actual</span>
+                      <span class="meta-value">{{ currentTimeHHMMSS }}</span>
+                    </div>
+                    <div class="meta-item">
+                      <span class="meta-label">Fin</span>
+                      <span class="meta-value">{{ activeShiftEnd }}</span>
+                    </div>
+                    <div class="meta-item">
+                      <span class="meta-label">Operador</span>
+                      <span class="meta-value">{{ operatorLabel }}</span>
+                    </div>
+                  </div>
+                </v-sheet>
                 <v-alert v-if="shiftMeta.shift_batch_enabled === false || shiftMeta.auto_stop_at_shift_end === false" type="warning" dense outlined class="mb-3">
-                  El planificador esta deshabilitado por configuracion del servidor; igual podes editar y guardar horarios para cuando se active.
+                  El planificador está deshabilitado por configuración del servidor; igual puedes editar y guardar horarios para cuando se active.
                 </v-alert>
                 <v-alert v-if="shiftScheduleError" type="error" dense class="mb-3">{{ shiftScheduleError }}</v-alert>
                 <div v-for="slot in shiftSlotsDraft" :key="'s-' + slot.sequence" class="d-flex flex-wrap align-center mb-3" style="gap: 12px">
@@ -445,20 +469,20 @@
                 </div>
                 <v-alert v-if="apiUrlBrokenOnHttps" type="error" dense prominent class="mb-3">
                   La app carga en <strong>HTTPS</strong> pero axios apunta a <code>{{ axiosBaseUrlDisplay }}</code>.
-                  El navegador bloquea eso (mixed content) y veras <strong>Network Error</strong> al instante.
-                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacio en EasyPanel.
+                  El navegador bloquea eso (mixed content) y verás <strong>Network Error</strong> al instante.
+                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacío en EasyPanel.
                 </v-alert>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> · Origen web: <code>{{ browserOrigin }}</code>
                 </p>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Pull: dataset <strong>MCV_cronometro_out</strong> (desde el navegador o con script en el host:
-                  <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la maquina donde corras el script.
+                  <code>backend/scripts/netsuite-pull-standalone.js</code>). Push: RESTlet IN. Variables <code>NETSUITE_*</code> en el API o en la máquina donde corras el script.
                 </p>
                 <v-btn class="mr-2 mb-2" small outlined :loading="loadingCorsPing" @click="testApiCorsPing">
-                  Probar conexion API
+                  Probar conexión API
                 </v-btn>
-                <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integracion</v-btn>
+                <v-btn class="mr-2 mb-2" small outlined :loading="loadingNsStatus" @click="loadNsStatus">Estado integración</v-btn>
                 <v-simple-table v-if="nsStatus" dense class="mb-3 ns-status-table">
                   <tbody>
                     <tr v-for="row in nsStatusFlat" :key="row.key">
@@ -494,7 +518,7 @@
                   outlined
                   hide-details
                   class="mb-2"
-                  label="Filtrar (OT, operación, recurso, área o estado)"
+                  label="Filtrar (OT, operación, recurso, área o estádo)"
                 />
                 <div class="text-caption grey--text mb-2">
                   Mostrando {{ filteredNsWipRows.length }} de {{ nsWipRows.length }} filas.
@@ -509,12 +533,12 @@
                         <th>Operacion</th>
                         <th>Recurso</th>
                         <th>Área</th>
-                        <th>Plan setup (HH:MM)</th>
-                        <th>Plan run (HH:MM)</th>
-                        <th>Plan qty</th>
-                        <th>Real setup (HH:MM)</th>
-                        <th>Real run (HH:MM)</th>
-                        <th>Comp qty</th>
+                        <th>Tiempo de montaje (HH:MM)</th>
+                        <th>Tiempo de ejecución (HH:MM)</th>
+                        <th>Cantidad de entrada</th>
+                        <th>Tiempo de montaje real (HH:MM)</th>
+                        <th>Tiempo de ejecución real (HH:MM)</th>
+                        <th>Cantidad completada</th>
                         <th>NS Op ID</th>
                         <th>Status</th>
                       </tr>
@@ -550,8 +574,8 @@
                   <div>
                     <div class="text-subtitle-1 font-weight-bold">Reporte</div>
                     <p class="text-body-2 grey--text text--darken-1 mb-0">
-                      Mismo listado WIP que MariaDB (NetSuite OUT), con estado de cronómetro y sync pendiente.
-                      Ordená por columnas y exportá a Excel.
+                      Mismo listado WIP que MariaDB (NetSuite OUT), con estádo de cronómetro y sync pendiente.
+                      Ordena por columnas y exportá a Excel.
                     </p>
                   </div>
                   <div class="d-flex flex-wrap" style="gap:8px">
@@ -625,16 +649,18 @@
           <v-row>
             <v-col cols="12" md="8">
               <v-card outlined class="pa-4">
-                <div class="text-subtitle-1 font-weight-bold mb-2">Sincronizacion operativa</div>
+                <div class="text-subtitle-1 font-weight-bold mb-2">Sincronización operativa</div>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   Flujo: detener todos los relojes -> push a NetSuite -> esperar -> pull + replace desde NetSuite.
                 </p>
                 <v-alert type="warning" dense outlined class="mb-3">
-                  Esta sincronizacion puede demorar hasta 3 minutos.
+                  Esta sincronización puede demorar hasta 3 minutos.
                 </v-alert>
                 <v-text-field
                   v-model.number="nsOperationalDelaySeconds"
                   label="Espera entre push y pull (segundos)"
+                  hint="Recomendación: 10–20s normal. Usa 60s si hay muchos relojes o el push tarda más."
+                  persistent-hint
                   type="number"
                   min="0"
                   max="120"
@@ -651,7 +677,7 @@
                   :disabled="loadingNsOperationalSync"
                   @click="runOperationalSync"
                 >
-                  Ejecutar cierre + sincronizacion
+                  Ejecutar cierre + sincronización
                 </v-btn>
                 <v-alert v-if="nsOperationalLastResult" type="info" dense outlined class="mt-3 mb-0 text-left">
                   <pre class="ns-json">{{ nsOperationalLastResult }}</pre>
@@ -673,10 +699,10 @@
     <!-- Stop: cantidad terminada (opcional) -->
     <v-dialog v-model="stopQtyDialog" max-width="420" persistent>
       <v-card>
-        <v-card-title class="text-h6">Detener cronometro</v-card-title>
+        <v-card-title class="text-h6">Detener cronómetro</v-card-title>
         <v-card-text>
           <p class="body-2 mb-3">
-            Podes registrar la <strong>cantidad terminada</strong> de esta operacion al cerrar. Si no cargas nada, solo se detiene el cronometro y no se cambia el valor en base.
+            Puedes registrar la <strong>cantidad terminada</strong> de esta operación al cerrar. Si no cargas nada, solo se detiene el cronómetro y no se cambia el valor en base.
           </p>
           <v-text-field
             v-model="stopQtyValue"
@@ -717,7 +743,7 @@
           <v-text-field v-model.trim="editUser.username" :counter="USER_RULES.usernameMax" :maxlength="USER_RULES.usernameMax" label="Usuario" dense outlined />
           <v-text-field v-model="editUser.password" :counter="USER_RULES.passwordLen" :maxlength="USER_RULES.passwordLen" label="Nueva contraseña / PIN (opcional, 4 dígitos)" dense outlined type="password" />
           <v-select v-model="editUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
-          <v-select v-model="editUser.WorkplaceId" :items="workplaces" item-text="name" item-value="id" label="Área" dense outlined />
+          <v-select v-model="editUser.WorkplaceId" :items="workplacesUi" item-text="nameUi" item-value="id" label="Área" dense outlined />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -864,12 +890,12 @@ export default {
         { text: 'Operación', value: 'operation_name', sortable: true },
         { text: 'Recurso', value: 'resource_code', sortable: true },
         { text: 'Área', value: 'area', sortable: true },
-        { text: 'Plan setup', value: 'planned_setup_minutes', sortable: true, align: 'end' },
-        { text: 'Plan run', value: 'planned_operation_minutes', sortable: true, align: 'end' },
-        { text: 'Plan qty', value: 'planned_quantity', sortable: true, align: 'end' },
-        { text: 'Real setup', value: 'actual_setup_time', sortable: true, align: 'end' },
-        { text: 'Real run', value: 'actual_run_time', sortable: true, align: 'end' },
-        { text: 'Comp qty', value: 'completed_quantity', sortable: true, align: 'end' },
+        { text: 'Tiempo de montaje', value: 'planned_setup_minutes', sortable: true, align: 'end' },
+        { text: 'Tiempo de ejecución', value: 'planned_operation_minutes', sortable: true, align: 'end' },
+        { text: 'Cantidad de entrada', value: 'planned_quantity', sortable: true, align: 'end' },
+        { text: 'Tiempo de montaje real', value: 'actual_setup_time', sortable: true, align: 'end' },
+        { text: 'Tiempo de ejecución real', value: 'actual_run_time', sortable: true, align: 'end' },
+        { text: 'Cantidad completada', value: 'completed_quantity', sortable: true, align: 'end' },
         { text: 'NS Op ID', value: 'netsuite_operation_id', sortable: true },
         { text: 'Estado NS', value: 'source_status', sortable: true },
         { text: 'Sync pend.', value: 'sync_pending_sort', sortable: true, align: 'center' },
@@ -965,6 +991,19 @@ export default {
       user: 'auth/user',
       isAdmin: 'auth/isAdmin'
     }),
+    workplacesUi() {
+      const rows = Array.isArray(this.workplaces) ? this.workplaces : []
+      return rows
+        .filter((w) => {
+          const raw = w && w.name != null ? String(w.name).trim().toUpperCase() : ''
+          return raw !== 'IN'
+        })
+        .map((w) => {
+          const raw = w && w.name != null ? String(w.name).trim().toUpperCase() : ''
+          const isTodos = raw === 'ALL' || raw === 'BOTH'
+          return { ...w, nameUi: isTodos ? 'Todos' : (w && w.name ? String(w.name) : '') }
+        })
+    },
     idleBoardEnabled() {
       return String(process.env.VUE_APP_IDLE_BOARD_ENABLED || 'true').toLowerCase() !== 'false'
     },
@@ -1044,6 +1083,13 @@ export default {
     activeShiftEnd() {
       return this.activeShiftData.end
     },
+    currentTimeHHMMSS() {
+      const d = new Date(this.nowTick || Date.now())
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      const ss = String(d.getSeconds()).padStart(2, '0')
+      return `${hh}:${mm}:${ss}`
+    },
     /** HTTPS en planta + API en http://localhost o http://cualquiera â†’ bloqueo inmediato del navegador. */
     apiUrlBrokenOnHttps() {
       if (typeof window === 'undefined') return false
@@ -1106,6 +1152,12 @@ export default {
     }
   },
   methods: {
+    formatAreaName(name) {
+      const raw = name != null ? String(name).trim().toUpperCase() : ''
+      if (raw === 'IN') return 'Todos'
+      if (raw === 'ALL' || raw === 'BOTH') return 'Todos'
+      return name != null ? String(name) : '—'
+    },
     validateUserDraft(user, { requirePassword }) {
       const name = String((user && user.name) || '').trim()
       const lastname = String((user && user.lastname) || '').trim()
@@ -1469,8 +1521,8 @@ export default {
     activeLaneText(item) {
       const status = this.extractStatus(item)
       const mode = this.extractTimerMode(item)
-      if (status === 'ACTIVE') return mode === 'SETUP' ? 'Cronometrando ahora: CONFIGURACIÓN' : 'Cronometrando ahora: PRODUCCIÓN'
-      if (status === 'PAUSED') return mode === 'SETUP' ? 'Pausado en: CONFIGURACIÓN' : 'Pausado en: PRODUCCIÓN'
+      if (status === 'ACTIVE') return mode === 'SETUP' ? 'Cronometrando ahora: MONTAJE' : 'Cronometrando ahora: EJECUCIÓN'
+      if (status === 'PAUSED') return mode === 'SETUP' ? 'Pausado en: MONTAJE' : 'Pausado en: EJECUCIÓN'
       return 'Detenido'
     },
     rowStatusClass(item) {
@@ -1653,7 +1705,7 @@ export default {
         this.operations = res.data.operations || []
         if (this.operations.length === 0) {
           this.emptyOpsHint =
-            'No hay operaciones para esta OT en tu área o la OT no está cargada. Con datos de prueba: Seed WIP o POST upsert (ver backend/scripts) y busca OT1 â€¦ OT9.'
+            'No hay operaciones para esta OT en tu área o la OT no está cargada. Con datos de prueba: Seed WIP o POST upsert (ver backend/scripts) y busca OT1 … OT9.'
         }
       } catch (error) {
         const d = error.response && error.response.data
@@ -1748,12 +1800,12 @@ export default {
         'Operación',
         'Recurso',
         'Área',
-        'Plan setup (HH:MM)',
-        'Plan run (HH:MM)',
-        'Plan qty',
-        'Real setup (HH:MM)',
-        'Real run (HH:MM)',
-        'Comp qty',
+        'Tiempo de montaje (HH:MM)',
+        'Tiempo de ejecución (HH:MM)',
+        'Cantidad de entrada',
+        'Tiempo de montaje real (HH:MM)',
+        'Tiempo de ejecución real (HH:MM)',
+        'Cantidad completada',
         'NS Op ID',
         'Estado NS',
         'Sync pendiente',
@@ -1794,7 +1846,7 @@ export default {
       const pad = (n) => String(n).padStart(2, '0')
       const now = new Date()
       const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`
-      a.download = `reporte-cronometro-${stamp}.xlsx`
+      a.download = `reporte-cronómetro-${stamp}.xlsx`
       a.click()
       URL.revokeObjectURL(url)
     },
@@ -1860,7 +1912,7 @@ export default {
         this.lastSeedResponse = JSON.stringify(res.data, null, 2)
         const ots = res.data && res.data.ot_numbers ? res.data.ot_numbers.join(', ') : ''
         const n = res.data && res.data.total != null ? res.data.total : '?'
-        alert(`Seed WIP OK. Filas: ${n}. OTs: ${ots || '(sin ot_numbers en respuesta â€” backend viejo)'}`)
+        alert(`Seed WIP OK. Filas: ${n}. OTs: ${ots || '(sin ot_numbers en respuestá â€” backend viejo)'}`)
       } catch (error) {
         const msg = (error.response && error.response.data && error.response.data.message) || 'Error al ejecutar seed.'
         alert(msg)
@@ -1920,7 +1972,7 @@ export default {
       this.snackbarColor = color
       this.snackbar = true
     },
-    /** Mensaje legible cuando axios no recibe respuesta (timeout, CORS, URL mal, SSL). */
+    /** Mensaje legible cuando axios no recibe respuestá (timeout, CORS, URL mal, SSL). */
     netsuiteAxiosErrorPayload(error) {
       if (error && error.code === 'ECONNABORTED') {
         return {
@@ -1932,7 +1984,7 @@ export default {
         const base = String(axios.defaults.baseURL || '').replace(/\/$/, '')
         const httpsOk = /^https:/i.test(base)
         const pasos = [
-          `AbrÃ­ en una pestaÃ±a nueva: ${base}/health â€” si el navegador marca certificado invÃ¡lido, el problema es TLS (no CORS).`,
+          `AbrÃ­ en una pestáÃ±a nueva: ${base}/health â€” si el navegador marca certificado invÃ¡lido, el problema es TLS (no CORS).`,
           `Desde acÃ¡ usÃ¡ el botÃ³n Â«Probar conexiÃ³n APIÂ» (GET ${base}/cors-ping, sin JWT).`,
           'Si /health abre bien pero axios falla: otra red/VPN, antivirus, bloqueo DNS o proxy frente a reloj-api.'
         ]
@@ -1941,7 +1993,7 @@ export default {
         }
         return {
           message:
-            'Network Error: no hubo respuesta HTTP usable. Tu baseURL ya es HTTPS hacia reloj-api â†’ suele ser certificado TLS, red/firewall o DNS, no la variable VUE_APP_API_URL.',
+            'Network Error: no hubo respuestá HTTP usable. Tu baseURL ya es HTTPS hacia reloj-api â†’ suele ser certificado TLS, red/firewall o DNS, no la variable VUE_APP_API_URL.',
           code: 'NETWORK_ERROR',
           axios_baseURL: axios.defaults.baseURL || null,
           pasos
@@ -2019,7 +2071,7 @@ export default {
       try {
         const res = await axios.get(url, { timeout: 25000 })
         this.nsLastResult = JSON.stringify(
-          { ok: true, url, respuesta: res.data },
+          { ok: true, url, respuestá: res.data },
           null,
           2
         )
@@ -2043,7 +2095,7 @@ export default {
         this.nsStatus = null
         const fromApi = error.response && error.response.data && error.response.data.message
         const net = !error.response ? this.netsuiteAxiosErrorPayload(error) : null
-        const msg = fromApi || (net && net.message) || 'Error al leer estado NetSuite.'
+        const msg = fromApi || (net && net.message) || 'Error al leer estádo NetSuite.'
         this.showSnack(msg, 'error')
       } finally {
         this.loadingNsStatus = false
@@ -2180,7 +2232,7 @@ export default {
           { timeout: NETSUITE_AXIOS_TIMEOUT_MS }
         )
         this.nsOperationalLastResult = JSON.stringify(res.data, null, 2)
-        this.showSnack('Sincronizacion operativa completada.')
+        this.showSnack('Sincronización operativa completada.')
         await this.refreshBoard()
         const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
         if (digits) await this.buscarOperaciones()
@@ -2769,8 +2821,6 @@ export default {
   }
 }
 </style>
-
-
 
 
 

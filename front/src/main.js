@@ -37,7 +37,7 @@ if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     console.error(
       '[Cronómetro] API URL incompatible con HTTPS:',
       bu,
-      '→ Revisá public/api-config.js en el servidor, o rebuild con VUE_APP_API_URL=https://reloj-api.at-once.cl/'
+      '→ Revisa public/api-config.js en el servidor, o rebuild con VUE_APP_API_URL=https://reloj-api.at-once.cl/'
     )
   }
 }
