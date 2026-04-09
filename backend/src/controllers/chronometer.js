@@ -165,7 +165,10 @@ async function runShiftClose(trigger = 'manual', options = {}) {
   if (trigger === 'scheduler') {
     const { logSchedulerShiftCloseOperational } = require('./netsuiteSync');
     const logOutcome = await logSchedulerShiftCloseOperational(result, {
-      runNetSuitePhases: shouldRunNetsuiteSync
+      // Contrato: la sincronización automática es el MISMO flujo que la manual (STOP->PUSH->WAIT->PULL).
+      // El scheduler se registra solo si NS_SHIFT_BATCH_ENABLED + NS_AUTO_STOP_AT_SHIFT_END, por lo que aquí
+      // siempre intentamos ejecutar fases NetSuite (si está configurado). Si no, queda trazado como ERROR en el log.
+      runNetSuitePhases: true
     });
     result.operationalSyncLog = logOutcome;
     if (logOutcome.netsuiteSync) {

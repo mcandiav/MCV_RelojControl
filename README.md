@@ -132,7 +132,14 @@ Endpoint:
 
 - `POST /chronometer/netsuite/sync-operational`
 
-Secuencia:
+### Contrato (manual y automático)
+
+- **NO existen 2 procesos independientes**. La sincronización es **una sola** (misma secuencia y mismo log),
+  con distintos **triggers**:
+  - **manual**: botón de admin (endpoint `sync-operational`)
+  - **scheduler**: cierre automático de turno (hasta 3 horarios configurables por gerencia)
+
+Secuencia (idéntica en ambos):
 
 1. detener relojes activos/pausados,
 2. push a NetSuite,
@@ -147,6 +154,8 @@ El backend registra cada sincronización operativa como un **run** con **4 etapa
 - `PUSH` (publicar deltas a NetSuite)
 - `WAIT` (espera `pull_delay_seconds`)
 - `PULL` (pull + replace WIP)
+
+El cierre automático de turno genera el mismo log con `trigger: scheduler`.
 
 Endpoints:
 

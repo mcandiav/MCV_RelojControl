@@ -337,8 +337,10 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 
 - El envío de tiempos a NetSuite se hace en **batch al cierre de turno**.
 - Se envía el **total acumulado de tiempo real por operación** del turno.
-- La ejecución del cierre de turno se programa a las **17:00** en zona horaria `America/Santiago`.
+- La ejecución del cierre de turno se programa por **hasta 3 horarios configurables** (slots) en zona horaria `America/Santiago`.
 - Al cierre de turno se ejecuta **detención automática de todos los cronómetros activos**.
+- **Contrato**: la sincronización automática del cierre de turno es **el mismo flujo** que la sincronización operativa manual
+  (STOP → PUSH → WAIT → PULL) y queda registrada en el mismo log (`sync_runs` / `sync_run_steps`) con `trigger: scheduler`.
 
 **Parámetros de control**
 
@@ -348,6 +350,7 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 | `NS_AUTO_STOP_AT_SHIFT_END` | Detiene automáticamente cronómetros al cierre | `true` |
 | `NS_TIMEZONE` | Zona horaria oficial de ejecución | `America/Santiago` |
 | `NS_RETRY_ENABLED` | Habilita reintentos si falla el envío del batch | `true` |
+| `NS_OPERATIONAL_PULL_DELAY_SECONDS` | Espera entre PUSH y PULL (0–120) | `60` |
 
 > Nota: la política exacta de reintentos (cantidad e intervalo) queda pendiente de definición funcional.
 

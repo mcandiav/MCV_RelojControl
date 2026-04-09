@@ -809,6 +809,10 @@
           <div class="text-caption grey--text mb-2" v-if="syncRunDetail">
             ID {{ syncRunDetail.id }} · {{ formatReportDate(syncRunDetail.started_at) }} · {{ syncRunDetail.flow_type }} · {{ syncRunDetail.status }}
           </div>
+          <div v-if="syncRunDetail && syncRunDetail.summary_json" class="mb-3">
+            <div class="text-subtitle-2 font-weight-bold mb-1">Resumen</div>
+            <pre class="sync-json">{{ prettyJson(syncRunDetail.summary_json) }}</pre>
+          </div>
           <v-simple-table dense v-if="syncRunDetailSteps.length">
             <thead>
               <tr>
@@ -816,15 +820,24 @@
                 <th>Estado</th>
                 <th>Inicio</th>
                 <th>Duración</th>
+                <th>Resultado</th>
                 <th>Error</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in syncRunDetailSteps" :key="'step-' + s.id">
+              <tr
+                v-for="s in syncRunDetailSteps"
+                :key="'step-' + s.id"
+                style="cursor:pointer"
+                @click="selectedSyncRunStep = s"
+              >
                 <td class="font-weight-medium">{{ s.step_name }}</td>
                 <td>{{ s.status }}</td>
                 <td>{{ formatReportDate(s.started_at) }}</td>
                 <td>{{ s.duration_ms != null ? `${Math.round(s.duration_ms / 1000)}s` : '—' }}</td>
+                <td class="text-caption" style="max-width:260px; white-space:normal;">
+                  {{ s.result_json ? 'Ver' : '—' }}
+                </td>
                 <td class="text-caption" style="max-width:420px; white-space:normal;">
                   {{ s.error_message || '—' }}
                 </td>
@@ -832,6 +845,13 @@
             </tbody>
           </v-simple-table>
           <div v-else class="grey--text">Sin detalle.</div>
+
+          <div v-if="selectedSyncRunStep && selectedSyncRunStep.result_json" class="mt-3">
+            <div class="text-subtitle-2 font-weight-bold mb-1">
+              Resultado etapa {{ selectedSyncRunStep.step_name }}
+            </div>
+            <pre class="sync-json">{{ prettyJson(selectedSyncRunStep.result_json) }}</pre>
+          </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -979,6 +999,7 @@ export default {
       syncRunDetailDialog: false,
       syncRunDetail: null,
       syncRunDetailSteps: [],
+      selectedSyncRunStep: null,
       reportTableOptions: {
         page: 1,
         itemsPerPage: 50,
@@ -1936,6 +1957,7 @@ export default {
       this.syncRunDetailDialog = true
       this.syncRunDetail = item
       this.syncRunDetailSteps = []
+      this.selectedSyncRunStep = null
       try {
         const res = await axios.get(`/chronometer/netsuite/sync-runs/${encodeURIComponent(item.id)}`)
         this.syncRunDetail = res.data && res.data.run ? res.data.run : item
@@ -1947,6 +1969,16 @@ export default {
             'No fue posible cargar el detalle de la sincronización.',
           'error'
         )
+      }
+    },
+    prettyJson(value) {
+      if (value == null || value === '') return '—'
+      if (typeof value === 'object') return JSON.stringify(value, null, 2)
+      const s = String(value)
+      try {
+        return JSON.stringify(JSON.parse(s), null, 2)
+      } catch (e) {
+        return s
       }
     },
     async exportReportExcel() {
@@ -2420,6 +2452,19 @@ export default {
 </script>
 
 <style scoped>
+.sync-json {
+  background: #0b1020;
+  color: #e8edff;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.35;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .chrono-header {
   display: flex;
   flex-wrap: wrap;
