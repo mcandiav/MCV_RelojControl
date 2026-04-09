@@ -152,6 +152,31 @@ El UI del Cronómetro quedó alineado con **https://www.bignottihnos.cl** (color
 
 No se requieren variables de entorno nuevas para el tema. Tras un `git pull` en la rama **`V2`**, **rebuild** del servicio **`reloj-front`** en EasyPanel para ver los cambios en `reloj.at-once.cl`.
 
+#### Reporte admin + log de sincronizaciones (abr 2026)
+
+En la pestaña **Reporte** (solo administradores) existen dos vistas:
+
+- **Operaciones**: listado WIP (mismo universo que “WIP sincronizado en MariaDB”), con estado de cronómetro y “sync pendiente”.
+- **Sincronizaciones**: log persistente de sincronizaciones operativas con etapas **STOP / PUSH / WAIT / PULL**, estado y warning.
+
+Backend:
+
+- Tablas nuevas en MariaDB (creadas por Sequelize con `db.sync({ alter: true })`):
+  - `sync_runs`
+  - `sync_run_steps`
+- Endpoints (admin):
+  - `GET /chronometer/netsuite/sync-runs`
+  - `GET /chronometer/netsuite/sync-runs/:id`
+
+Requiere **rebuild/redeploy de backend + front** para que:
+
+- el backend registre corridas,
+- el front muestre el tablero de log.
+
+#### Hora Chile (horario de invierno)
+
+La UI formatea la hora y fechas del log usando zona horaria fija **`America/Santiago`** para evitar desfase cuando el kiosco/PC no aplica correctamente el cambio de horario.
+
 **Terminal compartida (varios operarios, mismo PC):** el front envía **`x-station-id`** en todas las peticiones. Se genera una vez en `localStorage` (`reloj_station_id`) por navegador; el tablero de cronómetros activos filtra por ese valor (columna **`station_id`** en `operation_timers`), no solo por usuario. Opcional en build: **`VUE_APP_STATION_ID`** (fijo por máquina en Docker/EasyPanel, p. ej. `LINEA-ME-01`). **Pausa / stop / resume** (y **Play** sobre un timer en pausa) rechazan otra terminal con `403`. **Tablero protector:** lista todas las tareas activas/pausadas de la terminal; vista **2×2** con **carrusel** si hay más de 4 (`VUE_APP_IDLE_BOARD_SLOTS`, máx. 4). **Carrusel automático** cada **2 s** por defecto (`VUE_APP_IDLE_BOARD_CAROUSEL_SEC`, rango 1–120).
 
 ---
@@ -214,10 +239,10 @@ Si el front está en **`https://reloj.at-once.cl`** y en el navegador el bundle 
 ### Workplaces
 | id | name |
 |----|------|
-| 1 | IN |
+| 1 | IN *(legacy / no usar en UI; se trata como Todos)* |
 | 2 | ES |
 | 3 | ME |
-| 4 | ALL |
+| 4 | ALL *(se muestra como “Todos” en UI)* |
 
 ### Usuario admin
 | Campo | Valor |

@@ -4,6 +4,8 @@
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |---|---|---|---|---|
+| 2026-04-07 | Se agrega **Reporte admin** con dos vistas: **Operaciones (WIP)** y **Log de sincronizaciones** (stop/push/wait/pull) con estado + warning. | Necesidad operativa de auditoría y diagnóstico de sincronizaciones. | Requiere rebuild/redeploy **backend + front**. Se crean tablas nuevas en MariaDB vía `db.sync({ alter: true })`. | `backend/src/controllers/netsuiteSync.js`, `backend/src/models/sync_run*.js`, `front/src/views/Home.vue` |
+| 2026-04-07 | Se fija el formateo de hora/fechas a **Chile** (`America/Santiago`) en la UI. | Evitar desfase por cambio de horario de invierno cuando el PC/kiosco está mal configurado. | Afecta visualización (header Operación y fechas del log). | `front/src/views/Home.vue` |
 | 2026-04-05 | El front adopta paleta, tipografías y cabecera alineadas al sitio corporativo **bignottihnos.cl** (referencia: `styles.css` público del sitio). | Unificar marca visual entre web institucional y Cronómetro. | Solo capa de presentación (Vuetify + CSS global + vistas login/home/app bar). Rebuild del contenedor front para desplegar. | `front/src/plugins/vuetify.js`, `front/src/styles/bignotti-brand.css`, `front/public/index.html`, `Login.vue`, `appbar.vue`, `Home.vue` |
 | 2026-04-05 | Se ordena la documentación final del proyecto y se consolida el contrato NetSuite vigente. | El proyecto ya está terminado y había referencias históricas que mezclaban Dataset con Saved Search. | Se aclara la fuente OUT oficial, el contrato de datos y el flujo operativo final. | Estado actual, integración NetSuite, contrato de datos, documentos relacionados |
 | 2026-03-31 | Se consolida el flujo operativo oficial Stop -> Push -> Pull(+replace). | Alinear operación real del sistema con la documentación. | Define el orden de sincronización recomendado. | Estado actual, sincronización operativa |
@@ -136,6 +138,20 @@ Secuencia:
 2. push a NetSuite,
 3. esperar (`pull_delay_seconds`),
 4. pull + replace WIP.
+
+### Log de sincronizaciones (admin)
+
+El backend registra cada sincronización operativa como un **run** con **4 etapas**:
+
+- `STOP` (detener relojes)
+- `PUSH` (publicar deltas a NetSuite)
+- `WAIT` (espera `pull_delay_seconds`)
+- `PULL` (pull + replace WIP)
+
+Endpoints:
+
+- `GET /chronometer/netsuite/sync-runs` (lista)
+- `GET /chronometer/netsuite/sync-runs/:id` (detalle + etapas)
 
 ## Controles admin en Sistema
 

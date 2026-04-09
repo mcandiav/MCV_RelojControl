@@ -5,6 +5,7 @@
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |---|---|---|---|---|
+| 2026-04-07 | Se agrega log persistente de sincronizaciones operativas (STOP/PUSH/WAIT/PULL) y vista admin en Reporte. | Auditoría y diagnóstico del flujo Stop -> Push -> Pull(+replace). | Nuevas tablas y endpoints; front muestra log. | Flujo de sincronización, modelo de datos, capa de presentación |
 | 2026-04-05 | Se ordena la arquitectura final del proyecto y se consolida el contrato NetSuite vigente. | El proyecto ya está terminado y la documentación mezclaba decisiones históricas con vigentes. | Queda una lectura única y estable de la arquitectura final. | Objetivo, integración NetSuite, flujo operativo, referencias |
 | 2026-03-31 | Se consolida el flujo Stop -> Push -> Pull(+replace). | Alinear operación y documentación. | Define la secuencia oficial de sincronización. | Flujo oficial de sincronización |
 | 2026-03-28 | Se cierra la decisión de OUT por Saved Search. | Dataset no garantizaba granularidad correcta. | Se corrige la fuente de extracción NetSuite -> Cronometro. | Integración NetSuite OUT |
@@ -53,7 +54,9 @@ Toda referencia anterior a Dataset como fuente oficial OUT debe leerse como hist
 - Vista Usuarios
 - Vista Sistema (NetSuite y controles admin)
 - Vista Sincronización operativa (stop -> push -> pull)
+- Vista Reporte (admin): Operaciones WIP + Log de sincronizaciones
 - **Identidad visual (2026-04-05):** Vue 2 + Vuetify 2 con tema claro alineado al sitio corporativo **bignottihnos.cl** (primario `#FF5722`, secundario `#212121`, app bar `#f7f5f2`, fondo de aplicación `#F5F5F5`). Tipografías: **Lato** / **Roboto Condensed** (+ Montserrat y Roboto como respaldo), cargadas desde `front/public/index.html`. Implementación: `front/src/plugins/vuetify.js`, `front/src/styles/bignotti-brand.css`, ajustes en login, barra superior y cabecera de operación.
+- Hora Chile: el front formatea hora/fechas con zona `America/Santiago` para evitar desfase por horario de invierno cuando el PC/kiosco está mal configurado.
 
 ### 4.3 Capa de integración NetSuite
 
@@ -85,6 +88,8 @@ Toda referencia anterior a Dataset como fuente oficial OUT debe leerse como hist
 - `operation_timers`
 - `timer_events`
 - `operation_time_totals`
+- `sync_runs` (log de sincronizaciones)
+- `sync_run_steps` (etapas STOP/PUSH/WAIT/PULL)
 
 ### 6.2 Reglas de datos
 

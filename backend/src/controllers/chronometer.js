@@ -162,7 +162,22 @@ async function runShiftClose(trigger = 'manual', options = {}) {
     ? false
     : config.NETSUITE_PUSH_ON_SHIFT_CLOSE;
 
-  if (shouldRunNetsuiteSync) {
+  if (trigger === 'scheduler') {
+    const { logSchedulerShiftCloseOperational } = require('./netsuiteSync');
+    const logOutcome = await logSchedulerShiftCloseOperational(result, {
+      runNetSuitePhases: shouldRunNetsuiteSync
+    });
+    result.operationalSyncLog = logOutcome;
+    if (logOutcome.netsuiteSync) {
+      result.netsuiteSyncEnabled = true;
+      result.netsuiteSync = logOutcome.netsuiteSync;
+    } else if (logOutcome.netsuiteSyncError) {
+      result.netsuiteSyncEnabled = logOutcome.netsuiteSyncEnabled === true;
+      result.netsuiteSyncError = logOutcome.netsuiteSyncError;
+    } else {
+      result.netsuiteSyncEnabled = false;
+    }
+  } else if (shouldRunNetsuiteSync) {
     try {
       const { runOfficialSyncFlow } = require('./netsuiteSync');
       result.netsuiteSync = await runOfficialSyncFlow();

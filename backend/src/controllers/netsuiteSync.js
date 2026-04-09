@@ -9,6 +9,7 @@ const { buildActualsPayload } = require('../services/netsuite/buildActualsPayloa
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
 const SyncRun = require('../models/sync_run');
 const SyncRunStep = require('../models/sync_run_step');
+const config = require('../config/config');
 let netsuitePushInFlight = false;
 let netsuiteOperationalSyncInFlight = false;
 
@@ -160,6 +161,190 @@ async function finishSyncRun(run, { ok, summary, errorMessage, warning }) {
   if (summary != null) run.summary_json = safeJsonStringify(summary);
   if (!ok && errorMessage) run.error_message = String(errorMessage);
   await run.save();
+}
+
+function clampOperationalPullDelaySeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return config.NS_OPERATIONAL_PULL_DELAY_SECONDS;
+  return Math.max(0, Math.min(120, Math.floor(n)));
+}
+
+/**
+ * PUSH + WAIT + PULL con pasos en sync_run_steps (después de STOP ya cerrado).
+ */
+async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, startedAt, shift }) {
+  const delayMs = delaySeconds * 1000;
+  let stepPush = null;
+  let stepWait = null;
+  let stepPull = null;
+  try {
+    stepPush = await createSyncStep(syncRun.id, 'PUSH', { note: 'pushActualsBatch(buildActualsPayload())' });
+    const { items } = await buildActualsPayload();
+    let netsuitePush = null;
+    let markedSuccessfulPushes = 0;
+    if (items.length > 0) {
+      netsuitePush = await pushActualsBatch(items);
+      markedSuccessfulPushes = await markSuccessfulPushes(items, netsuitePush);
+    }
+    await finishSyncStep(stepPush, {
+      ok: true,
+      result: { itemCount: items.length, markedSuccessfulPushes, netsuite: netsuitePush }
+    });
+
+    stepWait = await createSyncStep(syncRun.id, 'WAIT', { delaySecondsApplied: delaySeconds });
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    await finishSyncStep(stepWait, { ok: true, result: { delaySecondsApplied: delaySeconds } });
+
+    stepPull = await createSyncStep(syncRun.id, 'PULL', { note: 'fetchFullDataset + replaceAllWipRows' });
+    const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
+    const replaced = await replaceAllWipRows(rows);
+    await finishSyncStep(stepPull, { ok: true, result: { totalRows, imported: replaced.imported } });
+
+    const summary = {
+      elapsedMs: Date.now() - startedAt,
+      delaySecondsApplied: delaySeconds,
+      shift,
+      push: { itemCount: items.length, markedSuccessfulPushes },
+      pull: { totalRows, imported: replaced.imported }
+    };
+    const warning = Array.isArray(netsuitePush && netsuitePush.results)
+      ? netsuitePush.results.some((r) => r && r.success === false)
+      : false;
+    await finishSyncRun(syncRun, { ok: true, summary, warning });
+
+    return {
+      shift,
+      delaySecondsApplied: delaySeconds,
+      items,
+      netsuitePush,
+      markedSuccessfulPushes,
+      totalRows,
+      replaced,
+      elapsedMs: Date.now() - startedAt
+    };
+  } catch (err) {
+    const detail = err.response && err.response.data ? err.response.data : explainSequelizeError(err);
+    const msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    try {
+      if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
+      if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
+      if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
+      await finishSyncRun(syncRun, {
+        ok: false,
+        errorMessage: msg,
+        summary: { elapsedMs: Date.now() - startedAt, delaySecondsApplied: delaySeconds, shift }
+      });
+    } catch (_) {}
+    throw err;
+  }
+}
+
+/**
+ * Cierre de turno programado: mismo log que sync operativa (STOP + opcional PUSH/WAIT/PULL).
+ */
+async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhases }) {
+  const delaySeconds = clampOperationalPullDelaySeconds(config.NS_OPERATIONAL_PULL_DELAY_SECONDS);
+  const startedAt = Date.now();
+
+  if (!runNetSuitePhases) {
+    const syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
+    await finishSyncRun(syncRun, {
+      ok: true,
+      summary: {
+        shift: shiftSummary,
+        netsuitePhasesSkipped: true,
+        reason: 'NETSUITE_PUSH_ON_SHIFT_CLOSE_disabled'
+      }
+    });
+    return { syncRunId: syncRun.id, netsuitePhasesSkipped: true, netsuiteSyncEnabled: false };
+  }
+
+  if (netsuiteOperationalSyncInFlight || netsuitePushInFlight) {
+    const syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
+    const errMsg = 'Ya hay una sincronizacion/push en curso. Espera a que termine.';
+    await finishSyncRun(syncRun, {
+      ok: false,
+      errorMessage: errMsg,
+      summary: { shift: shiftSummary, delaySecondsApplied: delaySeconds }
+    });
+    console.error('Scheduled shift close NetSuite phases skipped (sync in flight):', errMsg);
+    return {
+      syncRunId: syncRun.id,
+      netsuiteSyncEnabled: true,
+      netsuiteSyncError: errMsg,
+      conflict: true
+    };
+  }
+
+  if (!isNetsuiteConfigured()) {
+    const syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
+    const errMsg =
+      'NetSuite no esta configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.';
+    await finishSyncRun(syncRun, {
+      ok: false,
+      errorMessage: errMsg,
+      summary: { shift: shiftSummary }
+    });
+    console.error('Scheduled shift close NetSuite phases failed:', errMsg);
+    return {
+      syncRunId: syncRun.id,
+      netsuiteSyncEnabled: true,
+      netsuiteSyncError: errMsg,
+      netsuiteNotConfigured: true
+    };
+  }
+
+  netsuiteOperationalSyncInFlight = true;
+  netsuitePushInFlight = true;
+  let syncRun = null;
+  try {
+    syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
+
+    const out = await runOperationalPushWaitPullLogged(syncRun, {
+      delaySeconds,
+      startedAt,
+      shift: shiftSummary
+    });
+
+    const itemCount = out.items.length;
+    const netsuiteSync = {
+      pushed: itemCount,
+      pushSkipped: itemCount === 0,
+      imported: out.replaced.imported,
+      totalRows: out.totalRows,
+      maxRowsApplied: null,
+      netsuitePush: out.netsuitePush
+    };
+
+    return {
+      syncRunId: syncRun.id,
+      netsuiteSyncEnabled: true,
+      netsuiteSync,
+      delaySecondsApplied: delaySeconds,
+      elapsedMs: out.elapsedMs
+    };
+  } catch (error) {
+    const msg = error.message || String(error);
+    console.error('NetSuite operational sync after scheduled shift close failed:', msg);
+    return {
+      syncRunId: syncRun ? syncRun.id : null,
+      netsuiteSyncEnabled: true,
+      netsuiteSyncError: msg
+    };
+  } finally {
+    netsuiteOperationalSyncInFlight = false;
+    netsuitePushInFlight = false;
+  }
 }
 
 async function assertNoActiveTimers() {
@@ -530,9 +715,8 @@ exports.operationalSync = async function operationalSync(req, res) {
 
   const delaySecondsRaw = req.body && req.body.pull_delay_seconds;
   const delaySeconds = Number.isFinite(Number(delaySecondsRaw))
-    ? Math.max(0, Math.min(120, Math.floor(Number(delaySecondsRaw))))
-    : 10;
-  const delayMs = delaySeconds * 1000;
+    ? clampOperationalPullDelaySeconds(delaySecondsRaw)
+    : config.NS_OPERATIONAL_PULL_DELAY_SECONDS;
 
   netsuiteOperationalSyncInFlight = true;
   netsuitePushInFlight = true;
@@ -540,82 +724,42 @@ exports.operationalSync = async function operationalSync(req, res) {
 
   let syncRun = null;
   let stepStop = null;
-  let stepPush = null;
-  let stepWait = null;
-  let stepPull = null;
 
   try {
     const { runShiftClose } = require('./chronometer');
     syncRun = await createSyncRun({ flowType: 'operational', trigger: 'manual', req });
 
-    // 1) detener todos los relojes primero (sin sync automática embebida)
     stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL' });
     const shift = await runShiftClose('manual_operational_sync', { skipNetsuiteSync: true });
     await finishSyncStep(stepStop, { ok: true, result: shift });
 
-    // 2) push de deltas a NetSuite
-    stepPush = await createSyncStep(syncRun.id, 'PUSH', { note: 'pushActualsBatch(buildActualsPayload())' });
-    const { items } = await buildActualsPayload();
-    let netsuitePush = null;
-    let markedSuccessfulPushes = 0;
-    if (items.length > 0) {
-      netsuitePush = await pushActualsBatch(items);
-      markedSuccessfulPushes = await markSuccessfulPushes(items, netsuitePush);
-    }
-    await finishSyncStep(stepPush, {
-      ok: true,
-      result: { itemCount: items.length, markedSuccessfulPushes, netsuite: netsuitePush }
+    const out = await runOperationalPushWaitPullLogged(syncRun, {
+      delaySeconds,
+      startedAt,
+      shift
     });
-
-    // 3) esperar ventana operacional antes del pull
-    stepWait = await createSyncStep(syncRun.id, 'WAIT', { delaySecondsApplied: delaySeconds });
-    if (delayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-    await finishSyncStep(stepWait, { ok: true, result: { delaySecondsApplied: delaySeconds } });
-
-    // 4) pull + replace: verdad desde NetSuite
-    stepPull = await createSyncStep(syncRun.id, 'PULL', { note: 'fetchFullDataset + replaceAllWipRows' });
-    const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
-    const replaced = await replaceAllWipRows(rows);
-    await finishSyncStep(stepPull, { ok: true, result: { totalRows, imported: replaced.imported } });
-
-    const summary = {
-      elapsedMs: Date.now() - startedAt,
-      delaySecondsApplied: delaySeconds,
-      shift,
-      push: { itemCount: items.length, markedSuccessfulPushes },
-      pull: { totalRows, imported: replaced.imported }
-    };
-    const warning = Array.isArray(netsuitePush && netsuitePush.results)
-      ? netsuitePush.results.some((r) => r && r.success === false)
-      : false;
-    await finishSyncRun(syncRun, { ok: true, summary, warning });
 
     return res.status(200).json({
       message: 'Sincronización operativa completada.',
-      elapsedMs: Date.now() - startedAt,
+      elapsedMs: out.elapsedMs,
       delaySecondsApplied: delaySeconds,
-      shift,
+      shift: out.shift,
       push: {
-        itemCount: items.length,
-        markedSuccessfulPushes,
-        netsuite: netsuitePush
+        itemCount: out.items.length,
+        markedSuccessfulPushes: out.markedSuccessfulPushes,
+        netsuite: out.netsuitePush
       },
       pull: {
-        totalRows,
-        imported: replaced.imported
+        totalRows: out.totalRows,
+        imported: out.replaced.imported
       }
     });
   } catch (err) {
     const detail = err.response && err.response.data ? err.response.data : explainSequelizeError(err);
     try {
       const msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
-      if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
-      if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
-      if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
       if (stepStop && stepStop.status === 'RUNNING') await finishSyncStep(stepStop, { ok: false, errorMessage: msg });
-      if (syncRun) {
+      if (syncRun && syncRun.status === 'RUNNING') {
         await finishSyncRun(syncRun, {
           ok: false,
           errorMessage: msg,
@@ -750,6 +894,7 @@ exports.peekDataset = async function peekDataset(req, res) {
 };
 
 exports.runOfficialSyncFlow = runOfficialSyncFlow;
+exports.logSchedulerShiftCloseOperational = logSchedulerShiftCloseOperational;
 
 
 

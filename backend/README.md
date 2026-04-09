@@ -82,6 +82,9 @@ Endpoints (cabecera JWT de **admin**):
 | POST | `/chronometer/netsuite/pull-dataset` | Nombre legado; hoy ejecuta pull + upsert desde Saved Search OUT |
 | POST | `/chronometer/netsuite/push-actuals` | Push de los 3 datos vigentes hacia NetSuite (`NETSUITE_PUSH_MODE=import_ot`, `workorder_completion` o `restlet`) |
 | POST | `/chronometer/netsuite/sync-official` | Flujo oficial: push confirmado + pull + replace total WIP |
+| POST | `/chronometer/netsuite/sync-operational` | Flujo operativo: stop -> push -> wait -> pull(+replace) |
+| GET | `/chronometer/netsuite/sync-runs` | Log de sincronizaciones (lista) |
+| GET | `/chronometer/netsuite/sync-runs/:id` | Log de sincronizaciones (detalle por etapas STOP/PUSH/WAIT/PULL) |
 | POST | `/chronometer/netsuite/oauth/clear-cache` | Invalida token en memoria |
 
 | GET | `/chronometer/admin/shift-schedule` | Tres horarios de cierre (admin) |

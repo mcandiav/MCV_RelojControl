@@ -945,7 +945,7 @@ export default {
       nsStatus: null,
       nsLastResult: '',
       nsOperationalLastResult: '',
-      nsOperationalDelaySeconds: 10,
+      nsOperationalDelaySeconds: 60,
       opsColWidths: {
         ot: 22,
         resource: 15,
@@ -2390,7 +2390,7 @@ export default {
       this.nsOperationalLastResult = ''
       const delay = Number.isFinite(Number(this.nsOperationalDelaySeconds))
         ? Math.max(0, Math.min(120, Math.floor(Number(this.nsOperationalDelaySeconds))))
-        : 10
+        : 60
       this.nsOperationalDelaySeconds = delay
       try {
         const res = await axios.post(
