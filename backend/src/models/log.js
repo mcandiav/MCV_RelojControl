@@ -31,10 +31,4 @@ const logSchema = sequelize.define('Log', {
 // Definir relacion de uno a muchos con la tabla User
 logSchema.belongsTo(User, { foreignKey: 'user_id' });
 
-sequelize.sync().then(() => {
-    console.log('Tabla User creada exitosamente!');
-  }).catch((error) => {
-    console.error('No se puede crear la tabla: ', error);
-  });
-  
-  module.exports = logSchema
+module.exports = logSchema

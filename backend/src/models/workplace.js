@@ -21,10 +21,4 @@ const workplaceSchema = sequelize.define('Workplace', {
 workplaceSchema.hasMany(User);
 User.belongsTo(workplaceSchema);
 
-sequelize.sync().then(() => {
-    console.log('Tabla workplace creada exitosamente!');
-}).catch((error) => {
-    console.error('No se puede crear la tabla: ', error);
-});
-  
 module.exports = workplaceSchema

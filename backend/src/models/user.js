@@ -44,10 +44,4 @@ userSchema.prototype.validPassword = function(password, hash){
     return bcrypt.compareSync(password, this.password);
 }
 
-sequelize.sync().then(() => {
-  console.log('Tabla User creada exitosamente!');
-}).catch((error) => {
-  console.error('No se puede crear la tabla: ', error);
-});
-
 module.exports = userSchema

@@ -22,10 +22,4 @@ const roleSchema = sequelize.define('Role', {
   roleSchema.hasMany(User);
   User.belongsTo(roleSchema);
 
-sequelize.sync().then(() => {
-    console.log('Tabla Role creada exitosamente!');
-}).catch((error) => {
-    console.error('No se puede crear la tabla: ', error);
-});
-  
 module.exports = roleSchema
