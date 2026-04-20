@@ -5,6 +5,19 @@
 
 ---
 
+## Nota arquitectónica vigente (2026-04-19)
+
+Desde esta fecha, el proyecto debe leerse con este criterio de despliegue:
+
+- existe **una sola versión cerrada del programa**,
+- sandbox y productivo deben convivir con el **mismo código**,
+- las diferencias entre entornos deben vivir solo en **configuración de entorno**,
+- no se debe mantener una variante SB y otra PROD del frontend o backend.
+
+En particular, el frontend debe resolver la URL del API por configuración del despliegue del entorno y no por un dominio real fijado en archivos versionados.
+
+---
+
 ## Infraestructura
 
 | Componente | Detalle |
@@ -22,8 +35,8 @@
 |------------|---------|
 | Repo producción (NO TOCAR) | https://github.com/mcandiav/RelojControl |
 | Repo sandbox | https://github.com/mcandiav/MCV_RelojControl |
-| Rama de trabajo sandbox (EasyPanel) | **`V2`** — aquí se itera y se despliega el cronómetro v2 |
-| Rama `main` | Reservada para **congelar la versión final** al salir a producción (misma versión probada que `V2`, sin merges improvisados) |
+| Rama de trabajo sandbox (EasyPanel) | **`V3`** — aquí se itera y se despliega la versión vigente |
+| Rama `main` | Reservada para **congelar la versión final** al salir a producción (misma versión probada que `V3`, sin merges improvisados) |
 | Remote local producción | `origin` |
 | Remote local sandbox | `sandbox` (si está configurado) |
 
@@ -31,9 +44,9 @@
 ```bash
 git add .
 git commit -m "descripción del cambio"
-git push origin V2
+git push origin V3
 ```
-*(Si el remoto `sandbox` apunta al mismo repo, puede usarse `git push sandbox V2` según la configuración local.)*
+*(Si el remoto `sandbox` apunta al mismo repo, puede usarse `git push sandbox V3` según la configuración local.)*
 
 ### Congelación — baseline antes del refactor de UI (mar 2026)
 
@@ -63,8 +76,17 @@ git push origin v2-freeze-pre-ui
 
 | Servicio | Dominio |
 |----------|---------|
-| Frontend | `reloj.at-once.cl` |
-| Backend API | `reloj-api.at-once.cl` |
+| Frontend sandbox | `reloj-sb.at-once.cl` |
+| API operativa vigente (sandbox) | `https://reloj-api.at-once.cl/` |
+| Frontend productivo | `reloj.at-once.cl` |
+| API operativa vigente (productivo) | `https://reloj-api.at-once.cl/` |
+ 
+> **Definición cerrada del frontend:**  
+> Sandbox: `reloj-sb.at-once.cl`  
+> Productivo: `reloj.at-once.cl`
+
+> **Decisión ejecutiva operativa:** se mantiene sin cambios la API vigente  
+> para ambos dominios frontend: `https://reloj-api.at-once.cl/`.
 
 ---
 
@@ -107,7 +129,7 @@ git push origin v2-freeze-pre-ui
 | Repo | `https://github.com/mcandiav/MCV_RelojControl` |
 | Carpeta build | `backend/` |
 | Puerto interno | `8000` |
-| Dominio | `reloj-api.at-once.cl` |
+| Dominio público dedicado | No requerido (se publica por ruta `/api` del dominio frontend del entorno) |
 
 **Variables de entorno del backend:**
 ```
@@ -121,6 +143,8 @@ JWT_SECRET=api-secret-od
 DELETE_SECRET=b1234
 ```
 
+> En productivo deben existir **secretos propios** y separados de sandbox. La similitud de estructura no implica reutilizar secretos.
+
 ### 3. Frontend (reloj-front)
 | Campo | Valor |
 |-------|-------|
@@ -128,14 +152,22 @@ DELETE_SECRET=b1234
 | Repo | `https://github.com/mcandiav/MCV_RelojControl` |
 | Carpeta build | `front/` |
 | Puerto interno | `80` |
-| Dominio | `reloj.at-once.cl` |
+| Dominio | `reloj-sb.at-once.cl` |
 
-**Build argument del frontend (EasyPanel / Docker):**
+**Configuración del frontend vigente (operación actual):**
+
+- El servicio front está operativo sin variables de entorno adicionales en EasyPanel.
+- La API actualmente utilizada por la app es `https://reloj-api.at-once.cl/`.
+- No se aplican cambios de app mientras SB/PROD se mantengan estables.
+
+**Referencia de variable (solo si se decide forzar explícitamente en un build):**
 ```
 VUE_APP_API_URL=https://reloj-api.at-once.cl/
 ```
 
-> **Importante (mar 2026):** `front/.env.production` no está en el ZIP de GitHub (gitignore). El **`front/Dockerfile`** define por defecto `ARG VUE_APP_API_URL=https://reloj-api.at-once.cl/` para que el build en EasyPanel **no** empaquete `axios` apuntando a `http://localhost:8000` (eso rompe el sitio en HTTPS: pantalla en blanco o login roto). Podés sobrescribir el ARG en EasyPanel si cambia el dominio del API.
+> **Decisión arquitectónica obligatoria:** el repo debe servir para SB y PROD con el mismo código. Si el frontend queda amarrado a un dominio fijo del repo, se rompe ese principio.
+
+> **Importante (mar-abr 2026):** `front/.env.production` no es una fuente suficiente para separar entornos. El despliegue debe tomar su `VUE_APP_API_URL` desde EasyPanel / build args del entorno correspondiente.
 
 #### Identidad visual corporativa (abr 2026)
 
@@ -150,14 +182,19 @@ El UI del Cronómetro quedó alineado con **https://www.bignottihnos.cl** (color
 | App bar crema, texto oscuro, botón Salir outlined primary | `front/src/components/navegation/appbar.vue` |
 | Título “CRONÓMETRO” en color primario | `front/src/views/Home.vue` |
 
-No se requieren variables de entorno nuevas para el tema. Tras un `git pull` en la rama **`V2`**, **rebuild** del servicio **`reloj-front`** en EasyPanel para ver los cambios en `reloj.at-once.cl`.
+No se requieren variables de entorno nuevas para el tema. Tras un `git pull` en la rama **`V3`**, **rebuild** del servicio del entorno correspondiente en EasyPanel usando la URL de API del mismo entorno.
 
 #### Reporte admin + log de sincronizaciones (abr 2026)
 
-En la pestaña **Reporte** (solo administradores) existen dos vistas:
+En la pestaña **Reporte** (solo administradores) existen tres vistas:
 
 - **Operaciones**: listado WIP (mismo universo que “WIP sincronizado en MariaDB”), con estado de cronómetro y “sync pendiente”.
 - **Sincronizaciones**: log persistente de sincronizaciones operativas con etapas **STOP / PUSH / WAIT / PULL**, estado y warning.
+- **Log NetSuite**: comparación por operación para validar lo que debería verse en NetSuite tras el push/import:
+  - `T_mon_base`, `T_mon_enviado`, `T_mon_netsuite`
+  - `T_eje_base`, `T_eje_enviado`, `T_eje_netsuite`
+  - `Qty_base`, `Qty_enviado`, `Qty_netsuite`
+  - con OT/Seq/Operación/Recurso/Área/SyncRunId/Fecha/Estado.
 
 Backend:
 
@@ -167,6 +204,7 @@ Backend:
 - Endpoints (admin):
   - `GET /chronometer/netsuite/sync-runs`
   - `GET /chronometer/netsuite/sync-runs/:id`
+  - `GET /chronometer/netsuite/push-log`
 
 Requiere **rebuild/redeploy de backend + front** para que:
 
@@ -192,11 +230,11 @@ En este proyecto **el API Express siempre escucha en el puerto `8000`** (`backen
 | **Proxy del front hacia el API** | En **`front/vue.config.js`** → `devServer.proxy` debe apuntar a **`http://localhost:8000`** para que rutas relativas (`/auth/operarios`, etc.) lleguen al backend. |
 | **Axios sin `.env` local** | En **`front/src/main.js`**, fallback: **`http://localhost:8000/`** vía `VUE_APP_API_URL`. |
 
-**Producción / EasyPanel:** el front compilado **no** usa ese proxy; usa **`VUE_APP_API_URL`** (HTTPS del API). Los problemas “en un entorno anda y en otro no” suelen ser mezclar **proxy dev (8000)** con **URL empaquetada distinta** o un **`vue.config.js` apuntando a un puerto incorrecto**.
+**Producción / EasyPanel:** el front compilado **no** usa ese proxy; usa **`VUE_APP_API_URL`** o `window.__CRONOMETRO_API_BASE__` del entorno de despliegue.
 
 ### Login: “Network Error” / operarios no cargan (HTTPS)
 
-Si el front está en **`https://reloj.at-once.cl`** y en el navegador el bundle sigue con **`axios.defaults.baseURL = http://localhost:8000/`**, el pedido va al **localhost de la PC del usuario** → falla siempre. **Causa:** imagen del front buildada **sin** `VUE_APP_API_URL` (o build local subido a nginx). **Qué hacer:** rebuild del servicio front en EasyPanel asegurando **`ARG`/`ENV` `VUE_APP_API_URL=https://reloj-api.at-once.cl/`** (el `front/Dockerfile` ya lo trae por defecto si construís desde ese archivo). Tras redeploy, en F12 → Red la URL de `/auth/operarios` debe ser **`https://reloj-api.at-once.cl/auth/operarios`**.
+Si el front de un entorno está en HTTPS y el bundle/config sigue con el API de otro entorno o con `http://localhost:8000/`, el pedido va al destino equivocado y falla. La URL efectiva del API del front debe coincidir con el entorno desplegado.
 
 ---
 
@@ -259,12 +297,8 @@ Si el front está en **`https://reloj.at-once.cl`** y en el navegador el bundle 
 
 ### URL del backend en el frontend
 - **Build local:** Vue CLI usa `front/.env.production` si existe (útil en desarrollo).
-- **Build en EasyPanel (ZIP GitHub):** ese archivo **a menudo no va** en el repo; el **`front/Dockerfile`** incorpora **`ARG VUE_APP_API_URL`** con default `https://reloj-api.at-once.cl/` para que `npm run build` empaquete bien la URL sin depender del `.env`.
-- En EasyPanel se puede **sobrescribir** el build-arg si el dominio del API cambia.
-
-```
-VUE_APP_API_URL=https://reloj-api.at-once.cl/
-```
+- **Build por entorno:** el despliegue correcto debe inyectar `VUE_APP_API_URL` del entorno correspondiente.
+- **Principio vigente:** el repo no debe fijar el dominio final de SB o PROD como fuente de verdad del front.
 
 ---
 
@@ -277,9 +311,9 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 
 ## Git, despliegue y lecciones aprendidas (mar 2026)
 
-### Ramas: `V2` vs `main`
-- El **trabajo diario** en sandbox debe hacerse en **`V2`** (EasyPanel: front y API apuntando a esa rama).
-- **`main`** no es obligatoria mientras dure el desarrollo; al **cerrar** y pasar a producción, se **alinea `main` al mismo commit** que la `V2` final probada (“copiar la versión buena”), en lugar de merges grandes que mezclan historiales divergentes y pueden reintroducir regresiones.
+### Ramas: `V3` vs `main`
+- El **trabajo diario** en sandbox debe hacerse en **`V3`** (EasyPanel: front y API apuntando a esa rama).
+- **`main`** no es obligatoria mientras dure el desarrollo; al **cerrar** y pasar a producción, se **alinea `main` al mismo commit** que la `V3` final probada (“copiar la versión buena”), en lugar de merges grandes que mezclan historiales divergentes y pueden reintroducir regresiones.
 
 ### MariaDB vs rebuild de contenedores
 - **Rebuild** de `reloj-api` / `reloj-front` **no borra** MariaDB si el volumen de datos persiste.
@@ -287,37 +321,32 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 
 ### Front: caché y archivos JS (Vue)
 - Tras cada deploy, el `index.html` referencia **chunks con hash** (`chunk-vendors.xxxxx.js`). Si el navegador guarda un **HTML viejo** y pide **JS que ya no existe**, el servidor puede devolver **`index.html` en lugar del `.js`** → consola: `Unexpected token '<'`.
-- **Mitigación:** `Ctrl+Shift+R` (recarga forzada), incógnito, o borrar datos del sitio para `reloj.at-once.cl`.
-- En el repo, **`front/nginx.conf`** evita servir `index.html` como si fuera un `.js`/`.css` faltante (404 en `/js/` y `/css/`) y reduce caché agresiva del `index.html` donde aplica.
+- **Mitigación:** `Ctrl+Shift+R` (recarga forzada), incógnito, o borrar datos del sitio para el dominio del entorno correspondiente.
 
-### Build del front desde GitHub (ZIP)
-- **`front/.env.production`** suele **no** estar en el archivo que descarga EasyPanel (gitignore). Sin variable en build, el bundle puede quedar con **`http://localhost:8000`** → HTTPS roto / pantalla en blanco.
-- **`front/Dockerfile`** define **`ARG`/`ENV` `VUE_APP_API_URL`** con valor por defecto del sandbox para que el build desde GitHub sea correcto sin depender del `.env` local.
+### Build del front por entorno
+- El front debe construirse con la URL del API del mismo entorno.
+- Si el valor viene fijo del repo o de defaults no controlados, se rompe el principio de una sola versión cerrada para SB y PROD.
 
 ### API: arranque y healthcheck (Docker)
 - Si el proceso solo abre el puerto **después** de un `db.sync({ alter: true })` largo, un **healthcheck** agresivo puede mandar **SIGTERM** y reinicios en bucle.
 - Patrón sano: puerto HTTP abierto pronto + rutas **`/` / `/health`** que respondan durante el arranque; **`CMD`** con **`node build/index.js`** (evitar `npm` como PID 1) mejora el manejo de señales.
 
 ### Cambios de código y alcance
-- Ampliar un cambio pedido con “mejoras” extra (nginx, seed, auth, etc.) sin acordarlo antes aumenta el riesgo de **regresiones** y **pérdida de tiempo**. Convención del proyecto: **discutir → acordar → implementar**; un problema (ej. lista de operarios) debe **aislarse** (log de API, red del navegador) antes de tocar datos demo o tablas.
-
-### Poblar WIP (OT de prueba) sin redeploy
-- MariaDB **no** recibe `POST` HTTP. Para cargar operaciones WIP desde Windows: **`POST /chronometer/wip/upsert`** al API con JWT **admin** y JSON `{ "operations": [ ... ] }`.
-- En el repo: `backend/scripts/wip-upsert-ot1-9.json` + instrucciones en `backend/scripts/README-wip-upsert-ot1-9.md` (PowerShell / curl).
+- Ampliar un cambio pedido con “mejoras” extra sin acordarlo antes aumenta riesgo de regresiones. Convención del proyecto: **discutir → acordar → implementar**.
 
 ---
 
 ## Notas importantes
 
 - El repo de **producción NO se toca**. Todos los cambios van al repo sandbox.
-- La base de datos de producción es **SQL Server (MSSQL)**. El sandbox usa **MariaDB**.
+- La base de datos de producción histórica es **SQL Server (MSSQL)**. El sandbox documentado aquí usa **MariaDB**.
 - El flujo con NetSuite es **manual**: Excel entra → operarios trabajan → CSV sale → se sube a NetSuite.
 - A futuro se puede automatizar usando la **NetSuite REST API** (OAuth 2.0).
 - Las credenciales de NetSuite (sandbox y productivo) las administra Miguel.
 
 ---
 
-## Configuración específica de Cronómetro / Integración NetSuite (v2)
+## Configuración específica de Cronómetro / Integración NetSuite (v3)
 
 ### 1) Polling de búsqueda de OTs en WIP
 
@@ -376,7 +405,7 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 - Una sola operación activa por máquina (máquina = recurso).
 - Tablero adaptativo de cronómetros activos como pantalla principal.
 
-### 5) Datos y persistencia (Cronómetro v2)
+### 5) Datos y persistencia (Cronómetro v3)
 
 **Se reutiliza del modelo actual**
 
@@ -393,7 +422,7 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 - Modelo de consolidación por operación y turno para integración.
 - Staging de envío a NetSuite para trazabilidad de lotes de cierre.
 
-### 6) Integración NetSuite (regla funcional v2)
+### 6) Integración NetSuite (regla funcional v3)
 
 - **Se busca desde NetSuite**: OTs en WIP y sus operaciones/ruteo con recurso asociado.
 - **Se mantiene en NetSuite**: tiempos planificados de montaje y operación.
