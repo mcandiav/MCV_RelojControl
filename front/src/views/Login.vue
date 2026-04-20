@@ -219,7 +219,7 @@ export default {
           (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
           (e.message === 'Network Error'
             ? onHttps && baseEsLocal
-              ? `Sin respuesta del API. El sitio es HTTPS (${window.location.host}) pero axios usa baseURL "${base}" (localhost). El build del front debe incluir VUE_APP_API_URL=https://reloj-api.at-once.cl/ — reconstruí/redeploy el contenedor front (Dockerfile ARG).`
+              ? `Sin respuesta del API. El sitio es HTTPS (${window.location.host}) pero axios usa baseURL "${base}" (localhost). El build del front debe incluir VUE_APP_API_URL con la URL HTTPS del ambiente. Reconstrui/redeploy el contenedor front (Dockerfile ARG).`
               : `Sin respuesta del API (Network Error). baseURL axios: "${base}". Revisa F12 → Red: la petición a /auth/operarios, que el API esté arriba y la URL sea la del servidor (no localhost en producción).`
             : null) ||
           'No se pudo cargar la lista de operarios.'
@@ -393,3 +393,4 @@ export default {
   }
 }
 </style>
+

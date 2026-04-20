@@ -474,7 +474,7 @@
                 <v-alert v-if="apiUrlBrokenOnHttps" type="error" dense prominent class="mb-3">
                   La app carga en <strong>HTTPS</strong> pero axios apunta a <code>{{ axiosBaseUrlDisplay }}</code>.
                   El navegador bloquea eso (mixed content) y verás <strong>Network Error</strong> al instante.
-                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL=https://reloj-api.at-once.cl/</code> y sin build-arg vacío en EasyPanel.
+                  Rebuild del <strong>front</strong> con <code>VUE_APP_API_URL</code> apuntando al API HTTPS del ambiente y sin build-arg vacio en EasyPanel.
                 </v-alert>
                 <p class="text-body-2 grey--text text--darken-1 mb-3">
                   URL API actual: <code>{{ axiosBaseUrlDisplay }}</code> · Origen web: <code>{{ browserOrigin }}</code>
@@ -3033,6 +3033,7 @@ export default {
   }
 }
 </style>
+
 
 
 

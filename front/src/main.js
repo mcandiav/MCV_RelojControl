@@ -21,23 +21,34 @@ function resolveApiBaseURL() {
       ? String(window.__CRONOMETRO_API_BASE__).trim()
       : ''
   const env = (process.env.VUE_APP_API_URL && String(process.env.VUE_APP_API_URL).trim()) || ''
-  const raw = w || env || 'http://localhost:8000/'
+  const raw = w || env
+  if (!raw) return ''
   return raw.endsWith('/') ? raw : `${raw}/`
 }
 
-axios.defaults.baseURL = resolveApiBaseURL()
+const resolvedApiBaseURL = resolveApiBaseURL()
+axios.defaults.baseURL = resolvedApiBaseURL
 if (typeof window !== 'undefined') {
   window.__CRONOMETRO_BUILD_PATH__ = getBuildPath()
 }
 
-// Mixed content: página HTTPS no puede llamar a http://localhost — falla en <1s como "Network Error".
+if (!resolvedApiBaseURL) {
+  console.error(
+    '[Cronometro] API URL no configurada. Defini window.__CRONOMETRO_API_BASE__ (runtime) o VUE_APP_API_URL (build).'
+  )
+  axios.interceptors.request.use(() =>
+    Promise.reject(new Error('API URL no configurada. Defini window.__CRONOMETRO_API_BASE__ o VUE_APP_API_URL.'))
+  )
+}
+
+// Mixed content: pagina HTTPS no puede llamar a http://localhost.
 if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
   const bu = String(axios.defaults.baseURL || '')
   if (/localhost|127\.0\.0\.1/i.test(bu) || /^http:\/\//i.test(bu)) {
     console.error(
-      '[Cronómetro] API URL incompatible con HTTPS:',
+      '[Cronometro] API URL incompatible con HTTPS:',
       bu,
-      '→ Revisa public/api-config.js en el servidor, o rebuild con VUE_APP_API_URL=https://reloj-api.at-once.cl/'
+      '-> Revisa public/api-config.js en el servidor o inyecta VUE_APP_API_URL con URL HTTPS del ambiente.'
     )
   }
 }
@@ -59,7 +70,7 @@ function mountApp() {
 store
   .dispatch('auth/attempt', localStorage.getItem(`token_${window.name}`))
   .catch((err) => {
-    console.error('[bootstrap] auth/attempt falló, se monta la app igual:', err)
+    console.error('[bootstrap] auth/attempt fallo, se monta la app igual:', err)
   })
   .finally(() => {
     mountApp()
