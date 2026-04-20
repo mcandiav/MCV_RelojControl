@@ -32,6 +32,7 @@ router.post('/netsuite/sync-official', [security.verifyToken, security.isAdmin],
 router.post('/netsuite/sync-operational', [security.verifyToken, security.isAdmin], netsuiteSync.operationalSync);
 router.get('/netsuite/sync-runs', [security.verifyToken, security.isAdmin], netsuiteSync.listSyncRuns);
 router.get('/netsuite/sync-runs/:id', [security.verifyToken, security.isAdmin], netsuiteSync.getSyncRun);
+router.get('/netsuite/push-log', [security.verifyToken, security.isAdmin], netsuiteSync.listPushLogRows);
 router.post('/netsuite/oauth/clear-cache', [security.verifyToken, security.isAdmin], netsuiteSync.clearOAuthCache);
 
 router.post('/timers/start', security.verifyToken, chronometer.startTimer);

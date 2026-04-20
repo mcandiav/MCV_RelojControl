@@ -583,7 +583,7 @@
                     </p>
                   </div>
                   <div class="d-flex flex-wrap" style="gap:8px">
-                    <v-btn color="primary" outlined :loading="reportView === 1 ? loadingSyncRuns : loadingReport" @click="reportView === 1 ? loadSyncRuns() : loadReportBoard()">
+                    <v-btn color="primary" outlined :loading="reportView === 0 ? loadingReport : (reportView === 1 ? loadingSyncRuns : loadingNsPushLog)" @click="refreshReportCurrent">
                       <v-icon left>mdi-refresh</v-icon>
                       Actualizar
                     </v-btn>
@@ -601,6 +601,7 @@
                 <v-tabs v-model="reportView" grow color="primary" slider-color="primary" class="mb-3">
                   <v-tab>Operaciones</v-tab>
                   <v-tab>Sincronizaciones</v-tab>
+                  <v-tab>Log NetSuite</v-tab>
                 </v-tabs>
 
                 <div v-if="reportView === 0">
@@ -658,7 +659,7 @@
                   </v-data-table>
                 </div>
 
-                <div v-else>
+                <div v-else-if="reportView === 1">
                   <v-alert v-if="syncRunsError" type="error" dense outlined class="mb-3">{{ syncRunsError }}</v-alert>
                   <v-data-table
                     :headers="syncRunHeaders"
@@ -687,6 +688,36 @@
                     </template>
                     <template v-slot:no-data>
                       <div class="py-6 text-center grey--text">No hay sincronizaciones registradas.</div>
+                    </template>
+                  </v-data-table>
+                </div>
+                <div v-else>
+                  <v-alert v-if="nsPushLogError" type="error" dense outlined class="mb-3">{{ nsPushLogError }}</v-alert>
+                  <v-data-table
+                    :headers="nsPushLogHeaders"
+                    :items="nsPushLogRows"
+                    item-key="row_key"
+                    dense
+                    class="compact-table elevation-0"
+                    :loading="loadingNsPushLog"
+                    :footer-props="{ itemsPerPageOptions: [25, 50, 100, 200] }"
+                  >
+                    <template v-slot:item.push_at="{ item }">
+                      {{ formatReportDate(item.push_at) }}
+                    </template>
+                    <template v-slot:item.operation_name="{ item }">
+                      {{ item.operation_name || '—' }}
+                    </template>
+                    <template v-slot:item.sync_status="{ item }">
+                      <v-chip x-small :color="item.sync_status === 'SUCCESS' ? 'success' : (item.sync_status === 'ERROR' ? 'error' : 'grey')" dark>
+                        {{ item.sync_status || 'UNKNOWN' }}
+                      </v-chip>
+                    </template>
+                    <template v-slot:item.sync_message="{ item }">
+                      {{ item.sync_message || '—' }}
+                    </template>
+                    <template v-slot:no-data>
+                      <div class="py-6 text-center grey--text">No hay filas de push registradas.</div>
                     </template>
                   </v-data-table>
                 </div>
@@ -987,6 +1018,9 @@ export default {
       syncRuns: [],
       loadingSyncRuns: false,
       syncRunsError: '',
+      nsPushLogRows: [],
+      loadingNsPushLog: false,
+      nsPushLogError: '',
       syncRunHeaders: [
         { text: 'Inicio', value: 'started_at', sortable: true },
         { text: 'Tipo', value: 'flow_type', sortable: true },
@@ -995,6 +1029,26 @@ export default {
         { text: 'Warning', value: 'warning', sortable: true },
         { text: 'Duración', value: 'duration_ms', sortable: true, align: 'end' },
         { text: 'Acción', value: 'actions', sortable: false }
+      ],
+      nsPushLogHeaders: [
+        { text: 'Fecha push', value: 'push_at', sortable: true },
+        { text: 'SyncRunId', value: 'sync_run_id', sortable: true, align: 'end' },
+        { text: 'OT', value: 'ot_number', sortable: true },
+        { text: 'Seq', value: 'operation_sequence', sortable: true, align: 'end' },
+        { text: 'Operacion', value: 'operation_name', sortable: true },
+        { text: 'Recurso', value: 'resource_code', sortable: true },
+        { text: 'Area', value: 'area', sortable: true },
+        { text: 'T_mon_base', value: 't_mon_base', sortable: true, align: 'end' },
+        { text: 'T_mon_enviado', value: 't_mon_enviado', sortable: true, align: 'end' },
+        { text: 'T_mon_netsuite', value: 't_mon_netsuite', sortable: true, align: 'end' },
+        { text: 'T_eje_base', value: 't_eje_base', sortable: true, align: 'end' },
+        { text: 'T_eje_enviado', value: 't_eje_enviado', sortable: true, align: 'end' },
+        { text: 'T_eje_netsuite', value: 't_eje_netsuite', sortable: true, align: 'end' },
+        { text: 'Qty_base', value: 'qty_base', sortable: true, align: 'end' },
+        { text: 'Qty_enviado', value: 'qty_enviado', sortable: true, align: 'end' },
+        { text: 'Qty_netsuite', value: 'qty_netsuite', sortable: true, align: 'end' },
+        { text: 'Estado', value: 'sync_status', sortable: true },
+        { text: 'Detalle', value: 'sync_message', sortable: true }
       ],
       syncRunDetailDialog: false,
       syncRunDetail: null,
@@ -1041,7 +1095,7 @@ export default {
     this.loadAreaOperations()
     this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
     this.$nextTick(() => {
-      if (this.isAdmin && this.tabKeyByIndex(this.activeTab) === 'reporte') this.loadReportBoard()
+      if (this.isAdmin && this.tabKeyByIndex(this.activeTab) === 'reporte') this.refreshReportCurrent()
     })
   },
   mounted() {
@@ -1106,14 +1160,15 @@ export default {
       this.applyRouteTab()
     },
     reportView(val) {
-      // 0 = Operaciones, 1 = Sincronizaciones
+      // 0 = Operaciones, 1 = Sincronizaciones, 2 = Log NetSuite
       if (!this.isAdmin) return
       if (val === 0) this.loadReportBoard()
       else if (val === 1) this.loadSyncRuns()
+      else if (val === 2) this.loadNsPushLog()
     },
     activeTab() {
       this.syncRouteTab()
-      if (this.isAdmin && this.tabKeyByIndex(this.activeTab) === 'reporte') this.loadReportBoard()
+      if (this.isAdmin && this.tabKeyByIndex(this.activeTab) === 'reporte') this.refreshReportCurrent()
     }
   },
   computed: {
@@ -1935,6 +1990,12 @@ export default {
       if (st === 'RUNNING') return 'warning'
       return 'grey'
     },
+    refreshReportCurrent() {
+      if (!this.isAdmin) return
+      if (this.reportView === 0) this.loadReportBoard()
+      else if (this.reportView === 1) this.loadSyncRuns()
+      else this.loadNsPushLog()
+    },
     async loadSyncRuns() {
       if (!this.isAdmin) return
       this.loadingSyncRuns = true
@@ -1950,6 +2011,25 @@ export default {
           'No fue posible cargar el log de sincronizaciones.'
       } finally {
         this.loadingSyncRuns = false
+      }
+    },
+    async loadNsPushLog() {
+      if (!this.isAdmin) return
+      this.loadingNsPushLog = true
+      this.nsPushLogError = ''
+      try {
+        const res = await axios.get('/chronometer/netsuite/push-log', { params: { limit: 1000, stepLimit: 200 } })
+        const rows = res.data && res.data.rows
+        this.nsPushLogRows = Array.isArray(rows)
+          ? rows.map((r, idx) => ({ ...r, row_key: `${r.sync_run_id || 'x'}-${r.operation_id || 'op'}-${idx}` }))
+          : []
+      } catch (e) {
+        this.nsPushLogRows = []
+        this.nsPushLogError =
+          (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
+          'No fue posible cargar el log de push NetSuite.'
+      } finally {
+        this.loadingNsPushLog = false
       }
     },
     async openSyncRunDetail(item) {

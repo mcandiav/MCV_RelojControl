@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const WorkOrderOperation = require('../models/work_order_operation');
 const OperationTimer = require('../models/operation_timer');
 const TimerEvent = require('../models/timer_event');
@@ -118,6 +119,76 @@ function safeJsonStringify(obj) {
   }
 }
 
+function asNonNegativeInt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.floor(n));
+}
+
+async function buildPushComparisonRows(items, netsuiteResult) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const opIds = [...new Set(items.map((it) => Number(it && it.operation_id)).filter((id) => Number.isInteger(id) && id > 0))];
+  const ops = opIds.length
+    ? await WorkOrderOperation.findAll({
+        where: { id: { [Op.in]: opIds } },
+        attributes: ['id', 'operation_name', 'resource_code', 'area']
+      })
+    : [];
+  const opById = new Map(ops.map((op) => [Number(op.id), op]));
+
+  const nsResults = Array.isArray(netsuiteResult && netsuiteResult.results) ? netsuiteResult.results : [];
+  const nsByOpId = new Map(nsResults.map((r) => [String(r && r.netsuite_operation_id != null ? r.netsuite_operation_id : ''), r]));
+
+  return items.map((it) => {
+    const op = opById.get(Number(it.operation_id));
+    const tMonEnviado = asNonNegativeInt(it.actual_setup_time);
+    const tMonNetsuite = asNonNegativeInt(it.absolute_actual_setup_time);
+    const tMonBase = Math.max(0, tMonNetsuite - tMonEnviado);
+
+    const tEjeEnviado = asNonNegativeInt(it.actual_run_time);
+    const tEjeNetsuite = asNonNegativeInt(it.absolute_actual_run_time);
+    const tEjeBase = Math.max(0, tEjeNetsuite - tEjeEnviado);
+
+    const qtyEnviado = asNonNegativeInt(it.completed_quantity);
+    const qtyNetsuite = asNonNegativeInt(it.absolute_completed_quantity);
+    const qtyBase = Math.max(0, qtyNetsuite - qtyEnviado);
+
+    const nsOpId = String(it.netsuite_operation_id != null ? it.netsuite_operation_id : '');
+    const nsResult = nsByOpId.get(nsOpId);
+    const status = nsResult
+      ? nsResult.success === true
+        ? 'SUCCESS'
+        : 'ERROR'
+      : 'UNKNOWN';
+    const message = nsResult
+      ? String(nsResult.message || nsResult.error || nsResult.reason || '')
+      : '';
+
+    return {
+      operation_id: Number(it.operation_id),
+      ot_number: String(it.ot_number || ''),
+      operation_sequence: asNonNegativeInt(it.operation_sequence),
+      operation_name: op ? String(op.operation_name || '') : '',
+      resource_code: op ? String(op.resource_code || '') : '',
+      area: op ? String(op.area || '') : '',
+      netsuite_work_order_id: it.netsuite_work_order_id != null ? String(it.netsuite_work_order_id) : '',
+      netsuite_operation_id: nsOpId,
+      t_mon_base: tMonBase,
+      t_mon_enviado: tMonEnviado,
+      t_mon_netsuite: tMonNetsuite,
+      t_eje_base: tEjeBase,
+      t_eje_enviado: tEjeEnviado,
+      t_eje_netsuite: tEjeNetsuite,
+      qty_base: qtyBase,
+      qty_enviado: qtyEnviado,
+      qty_netsuite: qtyNetsuite,
+      sync_status: status,
+      sync_message: message
+    };
+  });
+}
+
 async function createSyncRun({ flowType, trigger, req }) {
   return SyncRun.create({
     flow_type: flowType,
@@ -182,13 +253,20 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
     const { items } = await buildActualsPayload();
     let netsuitePush = null;
     let markedSuccessfulPushes = 0;
+    let reportRows = [];
     if (items.length > 0) {
       netsuitePush = await pushActualsBatch(items);
       markedSuccessfulPushes = await markSuccessfulPushes(items, netsuitePush);
+      reportRows = await buildPushComparisonRows(items, netsuitePush);
     }
     await finishSyncStep(stepPush, {
       ok: true,
-      result: { itemCount: items.length, markedSuccessfulPushes, netsuite: netsuitePush }
+      result: {
+        itemCount: items.length,
+        markedSuccessfulPushes,
+        netsuite: netsuitePush,
+        report_rows: reportRows
+      }
     });
 
     stepWait = await createSyncStep(syncRun.id, 'WAIT', { delaySecondsApplied: delaySeconds });
@@ -206,7 +284,7 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
       elapsedMs: Date.now() - startedAt,
       delaySecondsApplied: delaySeconds,
       shift,
-      push: { itemCount: items.length, markedSuccessfulPushes },
+      push: { itemCount: items.length, markedSuccessfulPushes, reportRowsCount: reportRows.length },
       pull: { totalRows, imported: replaced.imported }
     };
     const warning = Array.isArray(netsuitePush && netsuitePush.results)
@@ -645,10 +723,12 @@ exports.pushActuals = async function pushActuals(req, res) {
 
     const netsuite = await pushActualsBatch(items);
     const marked = await markSuccessfulPushes(items, netsuite);
+    const reportRows = await buildPushComparisonRows(items, netsuite);
     return res.status(200).json({
       message: 'Batch enviado a NetSuite.',
       itemCount: items.length,
       markedSuccessfulPushes: marked,
+      report_rows: reportRows,
       netsuite
     });
   } catch (err) {
@@ -807,6 +887,43 @@ exports.getSyncRun = async function getSyncRun(req, res) {
   return res.status(200).json({ run: run.toJSON(), steps: steps.map((s) => s.toJSON()) });
 };
 
+/** Log: filas comparables con NetSuite (base + enviado = esperado NetSuite) extraídas de pasos PUSH. */
+exports.listPushLogRows = async function listPushLogRows(req, res) {
+  const stepLimit = Math.min(500, Math.max(1, parseInt(String(req.query.stepLimit || '150'), 10) || 150));
+  const rowLimit = Math.min(5000, Math.max(1, parseInt(String(req.query.limit || '1000'), 10) || 1000));
+  const otFilter = String(req.query.ot || '').trim();
+
+  const steps = await SyncRunStep.findAll({
+    where: { step_name: 'PUSH' },
+    order: [['started_at', 'DESC']],
+    limit: stepLimit
+  });
+
+  const rows = [];
+  for (const s of steps) {
+    let parsed = null;
+    try {
+      parsed = s.result_json ? JSON.parse(String(s.result_json)) : null;
+    } catch (_) {
+      parsed = null;
+    }
+    const reportRows = parsed && Array.isArray(parsed.report_rows) ? parsed.report_rows : [];
+    for (const r of reportRows) {
+      if (otFilter && String(r.ot_number || '').trim() !== otFilter) continue;
+      rows.push({
+        ...r,
+        sync_run_id: s.sync_run_id,
+        push_at: s.started_at,
+        step_status: s.status
+      });
+      if (rows.length >= rowLimit) break;
+    }
+    if (rows.length >= rowLimit) break;
+  }
+
+  return res.status(200).json({ count: rows.length, rows });
+};
+
 /** Diagnóstico: listar datasets visibles por REST. */
 exports.listDatasets = async function listDatasets(req, res) {
   if (!isNetsuiteConfigured()) {
@@ -895,6 +1012,4 @@ exports.peekDataset = async function peekDataset(req, res) {
 
 exports.runOfficialSyncFlow = runOfficialSyncFlow;
 exports.logSchedulerShiftCloseOperational = logSchedulerShiftCloseOperational;
-
-
 
