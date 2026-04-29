@@ -9,7 +9,7 @@
  */
 
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt-nodejs');
+const bcrypt = require('bcryptjs');
 const config = require('../config/config');
 
 // Modelos de la Base de Datos

@@ -14,7 +14,6 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^0.21.4",
-    "bcrypt-nodejs": "0.0.3",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.19.0",
     "compression": "^1.7.4",
@@ -36,14 +35,13 @@
     "path": "^0.12.7",
     "sequelize": "^6.21.3",
     "sqlite3": "^5.0.11",
-    "tedious": "^15.1.0",
     "xlsx": "^0.18.5",
     "xlsx-populate": "^1.21.0"
   },
   "devDependencies": {
-    "@babel/cli": "^7.15.7",
-    "@babel/core": "^7.15.5",
-    "@babel/node": "^7.15.4",
-    "@babel/preset-env": "^7.15.6"
+    "@babel/cli": "^7.28.6",
+    "@babel/core": "^7.29.0",
+    "@babel/node": "^7.29.0",
+    "@babel/preset-env": "^7.29.2"
   }
 }
