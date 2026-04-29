@@ -41,8 +41,6 @@ function getNetsuiteConfig() {
   const recordApiBaseUrl = host ? `https://${host}/services/rest/record/v1` : '';
   const outSourceType = String(process.env.NETSUITE_OUT_SOURCE_TYPE || 'savedsearch').trim().toLowerCase();
   const outSavedSearchId = String(process.env.NETSUITE_OUT_SAVEDSEARCH_ID || 'customsearch_mcv_cronometro_out').trim();
-  const outOnlyInProgressRaw = String(process.env.NETSUITE_OUT_ONLY_IN_PROGRESS || '').trim().toLowerCase();
-  const outOnlyInProgress = outOnlyInProgressRaw ? outOnlyInProgressRaw === 'true' : true;
   const pushMode = String(process.env.NETSUITE_PUSH_MODE || 'import_ot').trim().toLowerCase();
   const importOtRecordType = String(process.env.NETSUITE_IMPORT_OT_RECORD_TYPE || 'customrecord_3k_importacion_ot').trim();
   const importOtJsonField = String(process.env.NETSUITE_IMPORT_OT_JSON_FIELD || 'custrecord_3k_imp_ot_json').trim();
@@ -65,7 +63,6 @@ function getNetsuiteConfig() {
     recordApiBaseUrl,
     outSourceType,
     outSavedSearchId,
-    outOnlyInProgress,
     pushMode,
     restletInUrl: process.env.NETSUITE_RESTLET_IN_URL || '',
     importOtRecordType,
@@ -120,7 +117,6 @@ function getNetsuiteConfigStatus() {
     dataset_id: c.datasetId || null,
     out_source_type: c.outSourceType || null,
     out_savedsearch_id: c.outSavedSearchId || null,
-    out_only_in_progress: Boolean(c.outOnlyInProgress),
     oauth_scope: c.scope,
     ready: isNetsuiteConfigured()
   };

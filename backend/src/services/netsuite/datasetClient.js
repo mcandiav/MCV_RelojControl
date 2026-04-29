@@ -66,10 +66,6 @@ function normalizeStatusCode(value) {
   return raw;
 }
 
-function isInProgressStatus(value) {
-  return normalizeStatusCode(value) === 'PROGRESS';
-}
-
 /**
  * Maps a SuiteAnalytics dataset row to the internal WIP shape.
  * Column names may vary in casing; see cust.netsuite.md.
@@ -183,9 +179,6 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
   if (!netsuite_operation_id || !ot_number || !resource_code || !operation_name || !Number.isFinite(operation_sequence)) {
     return { skip: true, reason: 'missing_required_fields' };
   }
-  if (options.outOnlyInProgress && !isInProgressStatus(source_status)) {
-    return { skip: true, reason: 'status_filtered_out' };
-  }
   if (!area || !['ME', 'ES'].includes(area)) {
     return { skip: true, reason: 'area_not_derivable' };
   }
@@ -231,8 +224,8 @@ async function fetchDatasetPage(datasetBaseUrl, token, limit, offset) {
   return data;
 }
 
-function buildOutSuiteQlQuery(outOnlyInProgress) {
-  const where = outOnlyInProgress ? "WHERE status IN ('PROGRESS', 'NOTSTART')" : '';
+function buildOutSuiteQlQuery() {
+  const where = "WHERE status IN ('PROGRESS', 'NOTSTART')";
   return [
     'SELECT',
     '  id AS NETSUITE_OPERATION_ID,',
@@ -304,7 +297,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
   let pageCount = 0;
   let rowProcessed = 0;
   const skipReasons = {};
-  const suiteqlQuery = buildOutSuiteQlQuery(Boolean(cfg.outOnlyInProgress));
+  const suiteqlQuery = buildOutSuiteQlQuery();
 
   // #region agent log
   console.log('[dbg][H2][dataset-start]', runId, JSON.stringify({ datasetResultUrl: cfg.datasetResultUrl, maxRows, pageLimit: limit }));
@@ -333,8 +326,7 @@ async function fetchFullDataset(resolveAreaFromResource, options = {}) {
       }
       const out = mapDatasetRowToWip(raw, resolveAreaFromResource, {
         workcenterAreaMap,
-        defaultArea,
-        outOnlyInProgress: Boolean(cfg.outOnlyInProgress)
+        defaultArea
       });
       if (!out.skip) {
         mapped.push(out.row);
