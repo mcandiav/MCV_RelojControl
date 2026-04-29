@@ -232,7 +232,7 @@ async function fetchDatasetPage(datasetBaseUrl, token, limit, offset) {
 }
 
 function buildOutSuiteQlQuery(outOnlyInProgress) {
-  const where = outOnlyInProgress ? "WHERE status = 'PROGRESS'" : '';
+  const where = outOnlyInProgress ? "WHERE status IN ('PROGRESS', 'NOTSTART')" : '';
   return [
     'SELECT',
     '  id AS NETSUITE_OPERATION_ID,',
