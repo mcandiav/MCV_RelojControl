@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node build/index.js",
-    "dev": "nodemon src/index.js --exec babel-node",
-    "build": "babel src --out-dir build",
+    "dev": "nodemon src/index.js",
+    "build": "node -e \"const fs=require('fs');fs.rmSync('build',{recursive:true,force:true});fs.cpSync('src','build',{recursive:true});\"",
     "test": "node src/index.js",
     "netsuite:pull:standalone": "node scripts/netsuite-pull-standalone.js"
   },
@@ -34,14 +34,7 @@
     "node-cron": "^3.0.3",
     "path": "^0.12.7",
     "sequelize": "^6.21.3",
-    "sqlite3": "^5.0.11",
     "xlsx": "^0.18.5",
     "xlsx-populate": "^1.21.0"
-  },
-  "devDependencies": {
-    "@babel/cli": "^7.28.6",
-    "@babel/core": "^7.29.0",
-    "@babel/node": "^7.29.0",
-    "@babel/preset-env": "^7.29.2"
   }
 }
