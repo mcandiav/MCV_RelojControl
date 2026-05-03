@@ -39,7 +39,7 @@
                   <span class="status-dot" :class="statusDotClass(cell.status)" />
                   <span>{{ statusLabel(cell.status) }}</span>
                 </div>
-                <div class="q-time">{{ formatElapsed(cell) }}</div>
+                <div class="q-time" :style="quadrantTimeStyle(cell)">{{ formatElapsed(cell) }}</div>
                 <div class="q-ot">{{ quadrantOtNumber(cell) }}</div>
                 <div class="q-op-block">
                   <span class="q-field-label">Operación</span>
@@ -1684,9 +1684,20 @@ export default {
       const ratio = Math.max(0, real) / plan
       const pct = Math.min(150, Math.round(ratio * 100))
       let color = '#4caf50'
-      if (ratio > 1) color = '#ef5350'
-      else if (ratio >= 0.85) color = '#ff9800'
+      if (ratio >= 1) color = '#ef5350'
+      else if (ratio >= 0.9) color = '#ff9800'
       return { width: `${pct}%`, backgroundColor: color }
+    },
+    quadrantTimeStyle(timer) {
+      const op = this.quadrantLinkedOp(timer)
+      const mode = this.extractTimerMode(timer)
+      const real = Number(mode === 'SETUP' ? (op && op.actual_setup_time) : (op && op.actual_run_time)) || 0
+      const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
+      if (!Number.isFinite(plan) || plan <= 0) return { color: '#e6edf3' }
+      const ratio = Math.max(0, real) / plan
+      if (ratio >= 1) return { color: '#ef5350' }
+      if (ratio >= 0.9) return { color: '#ffca28' }
+      return { color: '#4caf50' }
     },
     extractOperation(item) {
       if (item && item.WorkOrderOperation) return item.WorkOrderOperation
@@ -1737,7 +1748,20 @@ export default {
       const op = this.extractOperation(item)
       if (!op || !op.id) return
       if (action === 'stop') {
-        this.openStopQuantityDialog(op)
+        if (lane === 'run') {
+          this.openStopQuantityDialog(op)
+          return
+        }
+        try {
+          await axios.post('/chronometer/timers/stop', { work_order_operation_id: op.id })
+          await this.refreshBoard()
+          const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+          if (digits) await this.buscarOperaciones()
+          else await this.loadAreaOperations()
+        } catch (error) {
+          const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || 'No fue posible detener el cronómetro.'
+          alert(msg)
+        }
         return
       }
 
