@@ -3099,7 +3099,7 @@ export default {
   font-size: clamp(1.05rem, 2.4vw, 1.55rem);
   font-weight: 700;
   color: #dbe7f5;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .q-op-line {
@@ -3113,22 +3113,26 @@ export default {
 }
 
 .q-mode {
-  margin-top: 8px;
-  font-size: clamp(1.1rem, 2.6vw, 1.5rem);
+  margin-top: 4px;
+  font-size: clamp(1rem, 2.2vw, 1.35rem);
   font-weight: 800;
   color: #d0d7de;
   letter-spacing: 0.03em;
 }
 
 .q-time {
+  font-size: clamp(3.3rem, 8.8vw, 6.2rem);
+  line-height: 0.95;
   margin-top: 2px;
+  margin-bottom: 4px;
 }
 
 .q-qty {
-  font-size: clamp(2rem, 5.2vw, 3.2rem);
+  font-size: clamp(1.25rem, 2.8vw, 2rem);
   font-weight: 800;
   color: #e6edf3;
   margin-top: 2px;
+  margin-bottom: 2px;
 }
 
 .q-progress-row {
@@ -3136,16 +3140,17 @@ export default {
   display: flex;
   justify-content: space-between;
   color: #d0d7de;
-  font-size: clamp(1rem, 2.2vw, 1.35rem);
+  font-size: clamp(0.85rem, 1.7vw, 1.1rem);
+  margin-top: 2px;
 }
 
 .q-progress-track {
   width: 78%;
-  height: clamp(18px, 2.2vw, 26px);
+  height: clamp(14px, 1.8vw, 20px);
   border-radius: 9999px;
   background: #9ec0e3;
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .q-progress-fill {
@@ -3154,8 +3159,9 @@ export default {
 }
 
 .q-legend {
-  margin-top: 10px;
-  font-size: clamp(0.66rem, 1.4vw, 0.84rem);
+  width: 78%;
+  margin-top: 8px;
+  font-size: clamp(0.58rem, 1.1vw, 0.76rem);
   color: #d0d7de;
   text-align: left;
   line-height: 1.25;
