@@ -4,6 +4,7 @@
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |---|---|---|---|---|
+| 2026-05-04 | Ajuste final de tablero 2x2 en V3: barra visual capada en 100% y etiqueta con porcentaje real (ej. 137%, 199%), leyenda de colores centrada en una linea y nombre completo de operario. Popup de cantidad solo al detener **EJECUCION** (no en **MONTAJE**). | Cerrar definicion visual/funcional acordada para paso a productivo. | Requiere deploy de front en V3 para reflejar reglas finales del tablero operativo. | `front/src/views/Home.vue` |
 | 2026-04-20 | Se publica **V3** con mejora de Reporte admin: nueva pestaña **Log NetSuite** para comparación directa por operación con columnas `T_mon_base`, `T_mon_enviado`, `T_mon_netsuite`, `T_eje_base`, `T_eje_enviado`, `T_eje_netsuite`, `Qty_base`, `Qty_enviado`, `Qty_netsuite`. | Facilitar validación de paralelo preproducción y contraste 1:1 contra NetSuite tras `import_ot_via_restlet`. | Requiere deploy de **backend + front** en la misma rama (`V3`), porque agrega endpoint `GET /chronometer/netsuite/push-log` y tercera pestaña en UI. | `backend/src/controllers/netsuiteSync.js`, `backend/src/routes/chronometer.js`, `front/src/views/Home.vue` |
 | 2026-04-19 | Se aclara y consolida el **modo real de push NetSuite vigente**: el backend opera con `NETSUITE_PUSH_MODE=restlet`, pero el RESTlet actual implementa internamente `import_ot_via_restlet` creando staging en `customrecord_3k_importacion_ot`. Se descarta como referencia vigente el RESTlet antiguo de escritura directa sobre `manufacturingoperationtask`. | Había ambigüedad entre documentación consolidada, `.env` real y script vigente en NetSuite. | Queda una sola lectura correcta del flujo IN y se separa explícitamente lo vigente de lo histórico. | Estado actual final, Integración NetSuite, variables, decisiones cerradas |
 | 2026-04-19 | **Decisión ejecutiva operativa:** no aplicar cambios de app por ahora. Se mantiene la configuración vigente porque `reloj.at-once.cl` y `reloj-sb.at-once.cl` ya operan correctamente. | Priorizar estabilidad y evitar regresiones al cierre de validación SB/PROD. | Documentación actualizada; sin cambios de código ni de despliegue funcional inmediato. | Estado actual final, dominios y despliegue |
@@ -81,7 +82,17 @@ Cronometro publica a NetSuite **3 datos reales por operación**:
 3. `completed_quantity`
 
 Luego Cronometro vuelve a sincronizar desde NetSuite para recalzar el estado local.
-
+## Reglas finales tablero operativo (V3)
+- Vista operativa en formato **2x2** (4 cuadrantes por pantalla).
+- Jerarquia visual centrada: tiempo principal mas grande, operador menor, barra destacada y leyenda de colores mas pequena.
+- Colores de **reloj y barra** (no de textos generales) segun % planificado:
+  - Verde: < 90%
+  - Amarillo: >= 90% y < 100%
+  - Rojo: >= 100%
+- La barra se dibuja hasta el limite visual de 100%, pero la etiqueta puede mostrar sobrecumplimiento real (137%, 199%, etc.).
+- La leyenda de colores se presenta en **una sola linea** y centrada.
+- Al detener **MONTAJE** no se muestra popup de cantidad terminada.
+- El popup de cantidad terminada se muestra solo al detener **EJECUCION**.
 ## Contrato de datos que Cronometro recibe desde NetSuite
 
 La extracción NetSuite -> Cronometro representa el universo **WIP operativo**.
@@ -188,3 +199,5 @@ NETSUITE_IMPORT_OT_DATE_FIELD=custrecord_3k_imp_ot_fecha
 - [NETSUITE_OUT_SOURCE_CHANGE_2026-03-28.md](./NETSUITE_OUT_SOURCE_CHANGE_2026-03-28.md)
 - [NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md](./NETSUITE_OUT_SAVEDSEARCH_FIELDS_2026-03-28.md)
 - [cust.netsuite.md](./cust.netsuite.md)
+
+
