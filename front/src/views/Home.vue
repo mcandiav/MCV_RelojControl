@@ -1603,9 +1603,8 @@ export default {
       const op = this.quadrantLinkedOp(cell) || {}
       const ot = String(op.ot_number || '-').trim() || '-'
       const seq = String(op.operation_sequence != null ? op.operation_sequence : '-').trim() || '-'
-      const name = String(op.operation_name || '-').trim() || '-'
       const resource = String((cell && cell.resource_code) || op.resource_code || '-').trim() || '-'
-      return `${ot}-${seq}-${name}-${resource}`
+      return `${ot}\n${seq}-${resource}`
     },
     quadrantQtyText(cell) {
       const op = this.quadrantLinkedOp(cell) || {}
@@ -3128,7 +3127,7 @@ export default {
   max-width: 95%;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-line;
 }
 
 .q-mode {
