@@ -48,9 +48,9 @@
                   <div class="q-progress-fill" :style="quadrantProgressStyle(cell)" />
                 </div>
                 <div class="q-legend">
-                  <div><span class="legend-dot legend-dot--green"></span>Verde 0% --- 90%</div>
-                  <div><span class="legend-dot legend-dot--yellow"></span>Amarillo 90% --- 99%</div>
-                  <div><span class="legend-dot legend-dot--red"></span>Rojo 100% --- +</div>
+                  <span><span class="legend-dot legend-dot--green"></span>Verde 0% --- 90%</span>
+                  <span><span class="legend-dot legend-dot--yellow"></span>Amarillo 90% --- 99%</span>
+                  <span><span class="legend-dot legend-dot--red"></span>Rojo 100% --- +</span>
                 </div>
               </template>
               <template v-else>
@@ -1583,8 +1583,18 @@ export default {
       return rc || 'â€”'
     },
     quadrantOperatorName(cell) {
-      if (!cell || !cell.User) return '-'
-      return `${cell.User.name || ''} ${cell.User.lastname || ''}`.trim() || '-'
+      if (!cell) return '-'
+      const op = this.quadrantLinkedOp(cell) || {}
+      const direct =
+        String(cell.operator || '').trim() ||
+        String(op.operator || '').trim() ||
+        String(op.operator_name || '').trim()
+      if (direct) return direct
+      if (cell.User) {
+        const full = `${cell.User.name || ''} ${cell.User.lastname || ''}`.trim()
+        if (full) return full
+      }
+      return '-'
     },
     quadrantModeLabel(cell) {
       return this.extractTimerMode(cell) === 'SETUP' ? 'MONTAJE' : 'EJECUCIÓN'
@@ -3165,6 +3175,11 @@ export default {
   color: #d0d7de;
   text-align: left;
   line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .legend-dot {
