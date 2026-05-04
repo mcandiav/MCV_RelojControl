@@ -1620,7 +1620,7 @@ export default {
       const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
       if (!Number.isFinite(plan) || plan <= 0) return { width: '0%', backgroundColor: '#9e9e9e' }
       const ratio = Math.max(0, real) / plan
-      const pct = Math.min(100, Math.round(ratio * 100))
+      const pct = Math.min(200, Math.round(ratio * 100))
       let color = '#4caf50'
       if (ratio >= 1) color = '#ef5350'
       else if (ratio >= 0.9) color = '#ffca28'
@@ -3159,7 +3159,7 @@ export default {
   height: clamp(14px, 1.8vw, 20px);
   border-radius: 9999px;
   background: #9ec0e3;
-  overflow: hidden;
+  overflow: visible;
   margin-top: 4px;
 }
 
@@ -3173,10 +3173,11 @@ export default {
   margin-top: 8px;
   font-size: clamp(0.58rem, 1.1vw, 0.76rem);
   color: #d0d7de;
-  text-align: left;
+  text-align: center;
   line-height: 1.25;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 20px;
   white-space: nowrap;
   overflow: hidden;
