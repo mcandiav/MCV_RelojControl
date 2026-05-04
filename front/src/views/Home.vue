@@ -35,23 +35,55 @@
               }"
             >
               <template v-if="cell">
-                <div class="q-user">{{ quadrantOperatorName(cell) }}</div>
-                <div class="q-op-line">{{ quadrantOperationLine(cell) }}</div>
-                <div class="q-mode">{{ quadrantModeLabel(cell) }}</div>
+                <div class="q-status">
+                  <span class="status-dot" :class="statusDotClass(cell.status)" />
+                  <span>{{ statusLabel(cell.status) }}</span>
+                </div>
                 <div class="q-time" :style="quadrantTimeStyle(cell)">{{ formatElapsed(cell) }}</div>
-                <div class="q-qty">{{ quadrantQtyText(cell) }}</div>
-                <div class="q-progress-row">
-                  <span>0%</span>
-                  <span>100%</span>
+                <div class="q-ot">{{ quadrantOtNumber(cell) }}</div>
+                <div class="q-op-block">
+                  <span class="q-field-label">Operación</span>
+                  <span class="q-op-text">{{ quadrantOperationText(cell) }}</span>
                 </div>
-                <div class="q-progress-track">
-                  <div class="q-progress-fill" :style="quadrantProgressStyle(cell)" />
+                <div class="q-metric-block">
+                  <div class="time-bar-label">
+                    Ejecución:
+                    {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_run_time) || 0) }}
+                    / {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_operation_minutes) || 0) }}
+                  </div>
+                  <div class="time-bar-track">
+                    <div
+                      class="time-bar-fill"
+                      :style="timeBarStyle(
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_run_time) || 0,
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_operation_minutes) || 0
+                      )"
+                    />
+                  </div>
                 </div>
-                <div class="q-legend">
-                  <div><span class="legend-dot legend-dot--green"></span>Verde 0% --- 90%</div>
-                  <div><span class="legend-dot legend-dot--yellow"></span>Amarillo 90% --- 99%</div>
-                  <div><span class="legend-dot legend-dot--red"></span>Rojo 100% --- +</div>
+                <div class="q-metric-block">
+                  <div class="time-bar-label">
+                    Montaje:
+                    {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_setup_time) || 0) }}
+                    / {{ formatMinutesAsHHMM((quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_setup_minutes) || 0) }}
+                  </div>
+                  <div class="time-bar-track">
+                    <div
+                      class="time-bar-fill"
+                      :style="timeBarStyle(
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).actual_setup_time) || 0,
+                        (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_setup_minutes) || 0
+                      )"
+                    />
+                  </div>
                 </div>
+                <div class="q-qty">
+                  Cant. completada / entrada:
+                  {{ (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).completed_quantity) != null ? quadrantLinkedOp(cell).completed_quantity : '-' }}
+                  / {{ (quadrantLinkedOp(cell) && quadrantLinkedOp(cell).planned_quantity) != null ? quadrantLinkedOp(cell).planned_quantity : '-' }}
+                </div>
+                <div class="q-res">{{ cell.resource_code }}</div>
+                <div class="q-user">{{ cell.User ? (cell.User.name + ' ' + cell.User.lastname) : '—' }}</div>
               </template>
               <template v-else>
                 <div class="empty-label">Libre</div>
@@ -1582,40 +1614,6 @@ export default {
       const rc = cell && String(cell.resource_code || '').trim()
       return rc || 'â€”'
     },
-    quadrantOperatorName(cell) {
-      if (!cell || !cell.User) return '-'
-      return `${cell.User.name || ''} ${cell.User.lastname || ''}`.trim() || '-'
-    },
-    quadrantModeLabel(cell) {
-      return this.extractTimerMode(cell) === 'SETUP' ? 'MONTAJE' : 'EJECUCION'
-    },
-    quadrantOperationLine(cell) {
-      const op = this.quadrantLinkedOp(cell) || {}
-      const ot = String(op.ot_number || '-').trim() || '-'
-      const seq = String(op.operation_sequence != null ? op.operation_sequence : '-').trim() || '-'
-      const name = String(op.operation_name || '-').trim() || '-'
-      const resource = String((cell && cell.resource_code) || op.resource_code || '-').trim() || '-'
-      return `${ot}-${seq}-${name}-${resource}`
-    },
-    quadrantQtyText(cell) {
-      const op = this.quadrantLinkedOp(cell) || {}
-      const completed = op.completed_quantity != null ? op.completed_quantity : '-'
-      const planned = op.planned_quantity != null ? op.planned_quantity : '-'
-      return `${completed}/${planned}`
-    },
-    quadrantProgressStyle(cell) {
-      const op = this.quadrantLinkedOp(cell)
-      const mode = this.extractTimerMode(cell)
-      const real = Number(mode === 'SETUP' ? (op && op.actual_setup_time) : (op && op.actual_run_time)) || 0
-      const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
-      if (!Number.isFinite(plan) || plan <= 0) return { width: '0%', backgroundColor: '#9e9e9e' }
-      const ratio = Math.max(0, real) / plan
-      const pct = Math.min(150, Math.round(ratio * 100))
-      let color = '#4caf50'
-      if (ratio >= 1) color = '#ef5350'
-      else if (ratio >= 0.9) color = '#ff9800'
-      return { width: `${pct}%`, backgroundColor: color }
-    },
     statusLabel(status) {
       const s = String(status || '').toUpperCase()
       if (s === 'ACTIVE') return 'Activo'
@@ -3095,85 +3093,6 @@ export default {
   background: #0d1117;
 }
 
-.q-user {
-  font-size: clamp(0.9rem, 2.2vw, 1.25rem);
-  font-weight: 600;
-  color: #dbe7f5;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.q-op-line {
-  font-size: clamp(0.72rem, 1.75vw, 0.95rem);
-  font-weight: 600;
-  color: #8fbfff;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 2px;
-}
-
-.q-mode {
-  margin-top: 8px;
-  font-size: clamp(0.9rem, 2.2vw, 1.2rem);
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  color: #c9d1d9;
-}
-
-.q-qty {
-  font-size: clamp(1rem, 2.8vw, 1.45rem);
-  font-weight: 700;
-  color: #e6edf3;
-  margin-top: 4px;
-}
-
-.q-progress-row {
-  width: 76%;
-  display: flex;
-  justify-content: space-between;
-  font-size: clamp(0.75rem, 1.8vw, 0.95rem);
-  color: #d0d7de;
-  margin-top: 6px;
-}
-
-.q-progress-track {
-  width: 76%;
-  height: clamp(14px, 1.8vw, 22px);
-  border-radius: 9999px;
-  background: #9ec0e3;
-  overflow: hidden;
-  margin-top: 4px;
-}
-
-.q-progress-fill {
-  height: 100%;
-  border-radius: 9999px;
-}
-
-.q-legend {
-  margin-top: 10px;
-  font-size: clamp(0.62rem, 1.35vw, 0.8rem);
-  color: #d0d7de;
-  line-height: 1.25;
-  text-align: left;
-}
-
-.legend-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-right: 6px;
-}
-
-.legend-dot--green { background: #00c853; }
-.legend-dot--yellow { background: #ffd54f; }
-.legend-dot--red { background: #ff5252; }
-
 .ns-json {
   max-height: 220px;
   overflow: auto;
@@ -3218,7 +3137,6 @@ export default {
   }
 }
 </style>
-
 
 
 
