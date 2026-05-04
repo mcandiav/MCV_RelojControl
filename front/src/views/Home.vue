@@ -42,7 +42,7 @@
                 <div class="q-qty">{{ quadrantQtyText(cell) }}</div>
                 <div class="q-progress-row">
                   <span>0%</span>
-                  <span>100%</span>
+                  <span>{{ quadrantProgressPercentLabel(cell) }}</span>
                 </div>
                 <div class="q-progress-track">
                   <div class="q-progress-fill" :style="quadrantProgressStyle(cell)" />
@@ -1620,11 +1620,20 @@ export default {
       const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
       if (!Number.isFinite(plan) || plan <= 0) return { width: '0%', backgroundColor: '#9e9e9e' }
       const ratio = Math.max(0, real) / plan
-      const pct = Math.min(200, Math.round(ratio * 100))
+      const pct = Math.min(100, Math.round(ratio * 100))
       let color = '#4caf50'
       if (ratio >= 1) color = '#ef5350'
       else if (ratio >= 0.9) color = '#ffca28'
       return { width: `${pct}%`, backgroundColor: color }
+    },
+    quadrantProgressPercentLabel(cell) {
+      const op = this.quadrantLinkedOp(cell)
+      const mode = this.extractTimerMode(cell)
+      const real = Number(mode === 'SETUP' ? (op && op.actual_setup_time) : (op && op.actual_run_time)) || 0
+      const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
+      if (!Number.isFinite(plan) || plan <= 0) return '100%'
+      const pct = Math.max(0, Math.round((Math.max(0, real) / plan) * 100))
+      return `${pct}%`
     },
     statusLabel(status) {
       const s = String(status || '').toUpperCase()
@@ -3159,7 +3168,7 @@ export default {
   height: clamp(14px, 1.8vw, 20px);
   border-radius: 9999px;
   background: #9ec0e3;
-  overflow: visible;
+  overflow: hidden;
   margin-top: 4px;
 }
 
