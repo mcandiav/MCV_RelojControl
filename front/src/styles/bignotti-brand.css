@@ -1,7 +1,3 @@
-/**
- * Alineado con www.bignottihnos.cl (styles.css :root + tipografías).
- * Vuetify 2 sigue usando utilidades Roboto en algunos componentes; Lato/Condensed cubren UI principal.
- */
 :root {
   --bignotti-primary: #ff5722;
   --bignotti-secondary: #212121;
@@ -22,7 +18,7 @@
 .v-application .caption,
 .v-application .text-body-1,
 .v-application .text-body-2 {
-  font-family: 'Lato', 'Roboto', sans-serif !important;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
 }
 
 .v-application .text-h1,
@@ -37,5 +33,5 @@
 .v-application .display-4,
 .v-application .headline,
 .v-application .title {
-  font-family: 'Roboto Condensed', 'Roboto', sans-serif !important;
+  font-family: 'Arial Narrow', 'Franklin Gothic Medium', 'Segoe UI', sans-serif !important;
 }
