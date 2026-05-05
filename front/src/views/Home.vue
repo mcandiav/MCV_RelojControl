@@ -1060,7 +1060,8 @@ export default {
   created() {
     this.applyRouteTab()
     this.refreshBoard()
-    this.loadAreaOperations()
+    if (this.isAdmin) this.loadAreaOperations()
+    else this.resetOperationsForOperator()
     this.clockInterval = setInterval(() => { this.nowTick = Date.now() }, 1000)
     this.$nextTick(() => {
       if (this.isAdmin && this.tabKeyByIndex(this.activeTab) === 'reporte') this.refreshReportCurrent()
@@ -1101,9 +1102,13 @@ export default {
       if (this.searchTimeout) clearTimeout(this.searchTimeout)
       const digits = String(value || '').replace(/[^0-9]/g, '')
       if (!digits) {
-        this.errorOps = ''
-        this.emptyOpsHint = ''
-        this.loadAreaOperations()
+        if (this.isAdmin) {
+          this.errorOps = ''
+          this.emptyOpsHint = ''
+          this.loadAreaOperations()
+        } else {
+          this.resetOperationsForOperator()
+        }
         return
       }
       this.searchTimeout = setTimeout(() => {
@@ -1313,6 +1318,22 @@ export default {
     }
   },
   methods: {
+    resetOperationsForOperator() {
+      this.loadingOps = false
+      this.errorOps = ''
+      this.operations = []
+      this.operationsMode = 'ot'
+      this.emptyOpsHint = 'Digite una OT para ver sus operaciones.'
+    },
+    async refreshOperationsForCurrentRole() {
+      const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
+      if (digits) {
+        await this.buscarOperaciones()
+        return
+      }
+      if (this.isAdmin) await this.loadAreaOperations()
+      else this.resetOperationsForOperator()
+    },
     formatAreaName(name) {
       const raw = name != null ? String(name).trim().toUpperCase() : ''
       if (raw === 'IN') return 'Todos'
@@ -1775,9 +1796,7 @@ export default {
         try {
           await axios.post('/chronometer/timers/stop', { work_order_operation_id: op.id })
           await this.refreshBoard()
-          const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
-          if (digits) await this.buscarOperaciones()
-          else await this.loadAreaOperations()
+        await this.refreshOperationsForCurrentRole()
         } catch (error) {
           const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || 'No fue posible detener el cronómetro.'
           alert(msg)
@@ -1813,9 +1832,7 @@ export default {
           await axios.post('/chronometer/timers/pause', { work_order_operation_id: op.id })
         }
         await this.refreshBoard()
-        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
-        if (digits) await this.buscarOperaciones()
-        else await this.loadAreaOperations()
+        await this.refreshOperationsForCurrentRole()
       } catch (error) {
         const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
         alert(msg)
@@ -1955,7 +1972,10 @@ export default {
       }
     },
     async loadAreaOperations() {
-      // Requisito operativo: al iniciar sesiÃ³n, operario ve tablero con todas las operaciones de su Ã¡rea.
+      if (!this.isAdmin) {
+        this.resetOperationsForOperator()
+        return
+      }
       this.loadingOps = true
       this.errorOps = ''
       this.emptyOpsHint = ''
@@ -2177,9 +2197,7 @@ export default {
       try {
         await axios.post(`/chronometer/timers/${action}`, { work_order_operation_id: operationId })
         await this.refreshBoard()
-        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
-        if (digits) await this.buscarOperaciones()
-        else await this.loadAreaOperations()
+        await this.refreshOperationsForCurrentRole()
       } catch (error) {
         const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
         alert(msg)
@@ -2214,9 +2232,7 @@ export default {
       try {
         await axios.post('/chronometer/timers/stop', body)
         await this.refreshBoard()
-        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
-        if (digits) await this.buscarOperaciones()
-        else await this.loadAreaOperations()
+        await this.refreshOperationsForCurrentRole()
         this.closeStopQuantityDialog(true)
       } catch (error) {
         const msg =
@@ -2280,9 +2296,7 @@ export default {
         const stopped = (res.data && res.data.stoppedTimers) || 0
         this.showSnack(`Relojes detenidos (${scope}): ${stopped}`)
         await this.refreshBoard()
-        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
-        if (digits) await this.buscarOperaciones()
-        else await this.loadAreaOperations()
+        await this.refreshOperationsForCurrentRole()
       } catch (error) {
         const msg = (error.response && error.response.data && error.response.data.message) || `No fue posible detener relojes (${scope}).`
         this.showSnack(msg, 'error')
@@ -2557,9 +2571,7 @@ export default {
         this.nsOperationalLastResult = JSON.stringify(res.data, null, 2)
         this.showSnack('Sincronización operativa completada.')
         await this.refreshBoard()
-        const digits = String(this.otNumber || '').replace(/[^0-9]/g, '')
-        if (digits) await this.buscarOperaciones()
-        else await this.loadAreaOperations()
+        await this.refreshOperationsForCurrentRole()
         await this.loadNsWipRows()
       } catch (error) {
         const d = error.response && error.response.data
