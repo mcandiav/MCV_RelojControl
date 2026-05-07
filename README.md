@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-05-07 | Se prohibe la carga automatica de usuarios desde archivos, seeds o cualquier origen distinto a la administracion propia del Cronometro. | En EasyPanel se detecto que la API ejecuta `load_users()` al iniciar y vuelve a insertar usuarios desde `backend/src/libs/usuarios.txt` cuando la tabla `Users` queda con 10 o menos registros. Esto no debe ocurrir en SB ni PROD operativo. | El programador debe eliminar/desactivar esta actividad, retirar el seed automatico de usuarios del arranque y asegurar que los usuarios validos sean solo los creados/administrados dentro del Cronometro. | Gestion de usuarios, seguridad, arranque backend, initialSetup |
 | 2026-05-07 | Se agrega requerimiento de mensaje operacional cuando una operacion ya fue lanzada o pausada desde otro terminal. | Evitar que el usuario vea errores tecnicos en ingles como `Only active timers can change mode.` y explicar como liberar la operacion. | El front/backend deben mostrar un mensaje funcional claro y el supervisor debe poder liberar la operacion. | Terminal compartida, mensajes operativos, control de timers |
 | 2026-05-07 | Se agrega directorio de variables de entorno EasyPanel para PROD y SB, separado por servicio `front` y `backend`. | Evitar ambiguedad al configurar despliegues y asegurar que cada ambiente tenga variables claras sin hardcodear secretos en el repo. | Deja bloques listos para copiar como referencia en EasyPanel, usando placeholders para secretos. | Variables de entorno EasyPanel |
 | 2026-05-07 | Se consolida en `README.md` la informacion funcional, tecnica, historica y operativa dispersa en documentos sueltos del proyecto. | Evitar duplicidad documental y confusion entre arquitectura vigente, alternativas historicas y pruebas. | `README.md` pasa a ser la unica fuente documental oficial del proyecto. | Todo el documento |
@@ -39,6 +40,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 - Procesamiento posterior vigente: Map/Reduce `customscript_3k_procesar_imp_ot_mr`, deployment `customdeploy_3k_procesar_imp_ot_mr_prog`.
 - Fuente de verdad operativa: NetSuite.
 - Flujo operativo final: `Stop -> Push -> Gate Import OT -> Pull(+replace)`.
+- Usuarios vigentes: solo los creados y administrados desde Cronometro. No se permite carga automatica desde `usuarios.txt`, seeds, archivos estaticos ni scripts de arranque.
 
 ## Principios rectores
 
@@ -49,6 +51,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 5. La unidad funcional es la operacion de OT, no la cabecera de OT.
 6. La arquitectura vigente es una sola para SB y PROD; las diferencias son de entorno.
 7. No se deben versionar secretos reales, private keys ni certificados privados.
+8. No se deben crear usuarios automaticamente desde archivos o semillas en ambientes operativos.
 
 ## Regla de versionado
 
@@ -58,6 +61,7 @@ Criterio por defecto:
 
 - Se versiona: codigo fuente, configuraciones no secretas, scripts, documentacion, `package.json` y lockfiles.
 - No se versiona: archivos generados (`node_modules`, `build`, `dist`, caches), binarios temporales y secretos (`.env`, llaves, certificados privados).
+- No se deben versionar archivos de carga de usuarios operativos como fuente activa para SB/PROD. Si existen por historia, deben quedar deshabilitados y tratados como legado.
 
 ## Entornos, dominios y despliegue
 
@@ -175,6 +179,50 @@ Comportamiento esperado:
 #### Administrador
 
 El administrador puede ver listado general de operaciones WIP, buscar OT especifica, acceder a reportes/sincronizacion/usuarios/sistema/diagnosticos y ver todas las OTs necesarias para administracion, control, soporte y validacion.
+
+### Gestion de usuarios
+
+Los usuarios validos del sistema son exclusivamente los creados y administrados dentro del Cronometro por las pantallas o endpoints administrativos autorizados.
+
+Queda prohibido que el backend cree, recargue o regenere usuarios automaticamente desde:
+
+- `backend/src/libs/usuarios.txt`;
+- `backend/build/libs/usuarios.txt`;
+- cualquier archivo `.txt`, `.csv`, `.json` o similar;
+- seeds ejecutados en cada arranque;
+- `initialSetup.load_users()` o funcion equivalente;
+- scripts que corran durante deploy, rebuild o reinicio de la API;
+- cualquier origen externo no autorizado expresamente por administracion del Cronometro.
+
+Hallazgo operativo 2026-05-07:
+
+```text
+La API estaba ejecutando load_users() al iniciar.
+La funcion leia usuarios.txt.
+La condicion era Users.length <= 10.
+Al borrar usuarios, el siguiente reinicio/redeploy intentaba volver a insertarlos.
+```
+
+Esto debe eliminarse para SB y PROD operativo.
+
+Requerimiento para el programador:
+
+1. Eliminar del arranque de la API la llamada a `load_users()`.
+2. Deshabilitar o borrar la logica que lee `usuarios.txt` para crear usuarios automaticamente.
+3. Asegurar que ningun reinicio, rebuild o redeploy cree usuarios por debajo de un umbral de cantidad.
+4. Mantener solo seeds minimos estructurales si son necesarios para roles/workplaces, pero no para usuarios operativos.
+5. Si se requiere un usuario admin inicial en una base limpia, debe crearse mediante mecanismo explicito, controlado y no recurrente, nunca por carga masiva automatica.
+6. Agregar log claro cuando el seed de usuarios esta deshabilitado, por ejemplo: `User auto-seed disabled in operational environments`.
+7. Verificar que `backend/src/libs/usuarios.txt` y `backend/build/libs/usuarios.txt` no sean usados por el proceso de arranque.
+
+Criterio de aceptacion:
+
+1. Borrar usuarios desde la administracion o base de datos no provoca que reaparezcan al reiniciar la API.
+2. El log de EasyPanel no imprime listas de usuarios con passwords de seed.
+3. El arranque de la API no ejecuta `load_users()` en SB ni PROD.
+4. El backend no depende de `usuarios.txt` para operar.
+5. Los usuarios existentes despues de reiniciar son solo los que estaban previamente en la base o fueron creados manualmente desde el Cronometro.
+6. No se exponen passwords de usuarios en logs.
 
 ### Tablero operativo V3
 
@@ -583,6 +631,7 @@ Esta seccion es el directorio operativo de variables para configurar EasyPanel. 
 - El backend es el unico servicio que debe tener credenciales de BD, OAuth, NetSuite y private key.
 - Si se cambia una variable de frontend que participa del build, se debe rebuildar el servicio front.
 - Si se cambia una variable de backend, se debe redeploy/restart del servicio backend.
+- El backend no debe tener variables que habiliten carga automatica de usuarios en SB/PROD. Si se implementa una variable de seed, su valor operativo debe ser `false`.
 
 ### Directorio de servicios EasyPanel
 
@@ -624,6 +673,11 @@ DB_DIALECT=mariadb
 JWT_SECRET=<SB_JWT_SECRET>
 DELETE_SECRET=<SB_DELETE_SECRET>
 CORS_ALLOW_ALL=true
+
+# Usuarios:
+# No habilitar seeds automaticos de usuarios en SB operativo.
+INITIAL_SEED_USERS=false
+USER_AUTO_SEED_ENABLED=false
 
 NS_TIMEZONE=America/Santiago
 NS_SHIFT_BATCH_ENABLED=true
@@ -689,6 +743,11 @@ JWT_SECRET=<PROD_JWT_SECRET>
 DELETE_SECRET=<PROD_DELETE_SECRET>
 CORS_ALLOW_ALL=true
 
+# Usuarios:
+# No habilitar seeds automaticos de usuarios en PROD.
+INITIAL_SEED_USERS=false
+USER_AUTO_SEED_ENABLED=false
+
 NS_TIMEZONE=America/Santiago
 NS_SHIFT_BATCH_ENABLED=true
 NS_AUTO_STOP_AT_SHIFT_END=true
@@ -732,6 +791,8 @@ NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT=true
 7. Dry run o prueba controlada de push funciona.
 8. Gate Import OT queda habilitado antes del pull.
 9. El front no intenta cargar recursos desde CDNs externos.
+10. El log de EasyPanel no imprime usuarios ni contrasenas de seed durante el arranque.
+11. Reiniciar la API no crea usuarios nuevos automaticamente.
 
 ## Variables de entorno consolidadas
 
@@ -747,6 +808,10 @@ DB_DIALECT=mariadb
 JWT_SECRET=<secret>
 DELETE_SECRET=<secret>
 CORS_ALLOW_ALL=true
+
+# Usuarios
+INITIAL_SEED_USERS=false
+USER_AUTO_SEED_ENABLED=false
 
 NETSUITE_CLIENT_ID=<client_id>
 NETSUITE_CLIENT_SECRET=<client_secret>
@@ -791,6 +856,7 @@ NS_RETRY_ENABLED=true
 
 - No guardar `.env` reales en Git.
 - No guardar private keys en documentacion.
+- No exponer passwords de usuarios en logs.
 - NetSuite recibe certificado publico (`BEGIN CERTIFICATE`); Cronometro conserva private key (`BEGIN PRIVATE KEY`).
 - Si una private key o client secret se comparte en un chat o documento, debe tratarse como comprometido y rotarse.
 - En productivo deben existir secretos propios y separados de sandbox.
@@ -822,6 +888,12 @@ Sintoma: Cronometro queda inconsistente despues de push/pull, especialmente si e
 
 Si aparece `Only active timers can change mode.`, revisar si la operacion fue pausada/detenida o tomada desde otra terminal. El usuario debe ver el mensaje funcional obligatorio definido en la seccion `Mensaje obligatorio para operacion tomada por otro terminal`.
 
+### Usuarios reaparecen despues de borrarlos
+
+Causa conocida: seed automatico de usuarios en arranque, especialmente `initialSetup.load_users()` leyendo `backend/src/libs/usuarios.txt` o `backend/build/libs/usuarios.txt`.
+
+Accion requerida: eliminar/desactivar esa carga. En SB y PROD operativo, los usuarios no deben venir de archivos ni seeds; solo deben existir los creados en Cronometro.
+
 ## Datos iniciales y control de acceso
 
 ### Roles
@@ -842,7 +914,7 @@ Si aparece `Only active timers can change mode.`, revisar si la operacion fue pa
 
 ### Usuario admin inicial
 
-Debe existir un usuario administrador inicial creado por seed o migracion controlada. Las credenciales reales no deben documentarse en texto versionado.
+Debe existir un usuario administrador inicial creado por mecanismo controlado y no recurrente en bases limpias. No se permite carga masiva automatica de usuarios operativos desde archivos.
 
 ## Git, despliegue y lecciones aprendidas
 
@@ -857,6 +929,7 @@ Debe existir un usuario administrador inicial creado por seed o migracion contro
 - Primer build puede no dispararse automaticamente. Solucion conocida: refrescar token GitHub desde Settings y guardar.
 - Rebuild de `reloj-api` / `reloj-front` no borra MariaDB si el volumen persiste.
 - Si el backend tarda por `db.sync({ alter: true })`, un healthcheck agresivo puede provocar reinicios. Mejor patron: abrir puerto HTTP temprano y exponer `/` o `/health`.
+- Reiniciar/rebuildar la API no debe crear usuarios operativos automaticamente.
 
 ### Front cache
 
@@ -889,6 +962,10 @@ Camino operativo vigente. Requiere Gate Import OT antes del pull.
 ### Version unica SB/PROD
 
 Vigente. No mantener forks funcionales por entorno.
+
+### Carga automatica de usuarios
+
+Prohibida en SB y PROD operativo. `usuarios.txt`, `load_users()` o cualquier mecanismo equivalente no debe crear usuarios al arrancar la API. Los usuarios deben ser exclusivamente los administrados desde Cronometro.
 
 ## Documentos sueltos consolidados en este README
 

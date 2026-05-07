@@ -6,7 +6,7 @@ const path = require('path');
 const server = http.createServer(app);
 const db = require('./config/db');
 const compression = require('compression');
-const { load_data_workplaces, load_users, ensureShiftCloseSlots } = require('./libs/initialSetup');
+const { load_data_workplaces, ensureShiftCloseSlots } = require('./libs/initialSetup');
 require('./models/work_order_operation');
 require('./models/operation_timer');
 require('./models/timer_event');
@@ -126,7 +126,7 @@ db.sync({ alter: true })
     .then(async () => {
         console.log('Base de datos sincronizada.');
         await load_data_workplaces();
-        await load_users();
+        console.log('User auto-seed disabled in operational environments');
         await ensureShiftCloseSlots();
         await registerShiftCloseCrons();
         dbReady = true;
