@@ -1002,6 +1002,7 @@ export default {
         { text: 'Fecha push', value: 'push_at', sortable: true },
         { text: 'SyncRunId', value: 'sync_run_id', sortable: true, align: 'end' },
         { text: 'OT', value: 'ot_number', sortable: true },
+        { text: 'OT NetSuite', value: 'netsuite_work_order_id', sortable: true },
         { text: 'Seq', value: 'operation_sequence', sortable: true, align: 'end' },
         { text: 'Operacion', value: 'operation_name', sortable: true },
         { text: 'Recurso', value: 'resource_code', sortable: true },
