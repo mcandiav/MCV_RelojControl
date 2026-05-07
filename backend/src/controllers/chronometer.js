@@ -12,6 +12,7 @@ const TimerEvent = require('../models/timer_event');
 const OperationTimeTotal = require('../models/operation_time_total');
 const config = require('../config/config');
 const { getShiftDateString, computeTotalsFromEvents } = require('../lib/timerEventTotals');
+const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
 
 function normalizeWorkplaceArea(workplaceName) {
   const area = String(workplaceName || '').trim().toUpperCase();
@@ -571,6 +572,11 @@ exports.getReportBoard = async function getReportBoard(req, res) {
 };
 
 exports.startTimer = async function startTimer(req, res) {
+  if (isNetsuiteSyncWindowActive()) {
+    return res.status(409).json({
+      message: 'Sincronizacion con NetSuite en curso. Espera unos segundos antes de iniciar cronometro.'
+    });
+  }
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
   const requestedMode = normalizeTimerMode(req.body && req.body.timer_mode, 'SETUP');
@@ -670,6 +676,11 @@ exports.pauseTimer = async function pauseTimer(req, res) {
 };
 
 exports.resumeTimer = async function resumeTimer(req, res) {
+  if (isNetsuiteSyncWindowActive()) {
+    return res.status(409).json({
+      message: 'Sincronizacion con NetSuite en curso. Espera unos segundos antes de reanudar cronometro.'
+    });
+  }
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
   const requestedMode = normalizeTimerMode(req.body && req.body.timer_mode, 'RUN');

@@ -8,6 +8,11 @@ const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
 const { buildActualsPayload } = require('../services/netsuite/buildActualsPayload');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
+const {
+  beginNetsuiteSyncWindow,
+  endNetsuiteSyncWindow,
+  isNetsuiteSyncWindowActive
+} = require('../services/netsuiteSyncLock');
 const SyncRun = require('../models/sync_run');
 const SyncRunStep = require('../models/sync_run_step');
 const config = require('../config/config');
@@ -382,6 +387,7 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
 
   netsuiteOperationalSyncInFlight = true;
   netsuitePushInFlight = true;
+  beginNetsuiteSyncWindow();
   let syncRun = null;
   try {
     syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
@@ -420,6 +426,7 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
       netsuiteSyncError: msg
     };
   } finally {
+    endNetsuiteSyncWindow();
     netsuiteOperationalSyncInFlight = false;
     netsuitePushInFlight = false;
   }
@@ -530,6 +537,8 @@ async function replaceAllWipRows(rows) {
 }
 
 async function runOfficialSyncFlow({ operationIds = null, maxRows = 0 } = {}) {
+  beginNetsuiteSyncWindow();
+  try {
   if (!isNetsuiteConfigured()) {
     const err = new Error('NetSuite no esta configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.');
     err.code = 'NETSUITE_NOT_CONFIGURED';
@@ -562,10 +571,16 @@ async function runOfficialSyncFlow({ operationIds = null, maxRows = 0 } = {}) {
     maxRowsApplied: fetchOptions.maxRows || null,
     netsuitePush: pushResult
   };
+  } finally {
+    endNetsuiteSyncWindow();
+  }
 }
 
 exports.getConfigStatus = async function getConfigStatus(req, res) {
-  return res.status(200).json(getNetsuiteConfigStatus());
+  return res.status(200).json({
+    ...getNetsuiteConfigStatus(),
+    syncInProgress: isNetsuiteSyncWindowActive()
+  });
 };
 
 exports.pullDataset = async function pullDataset(req, res) {
@@ -800,6 +815,7 @@ exports.operationalSync = async function operationalSync(req, res) {
 
   netsuiteOperationalSyncInFlight = true;
   netsuitePushInFlight = true;
+  beginNetsuiteSyncWindow();
   const startedAt = Date.now();
 
   let syncRun = null;
@@ -854,6 +870,7 @@ exports.operationalSync = async function operationalSync(req, res) {
       error: typeof detail === 'string' ? detail : JSON.stringify(detail)
     });
   } finally {
+    endNetsuiteSyncWindow();
     netsuitePushInFlight = false;
     netsuiteOperationalSyncInFlight = false;
   }
