@@ -4,123 +4,445 @@
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |---|---|---|---|---|
-| 2026-04-05 | Se ordena y consolida el documento de handoff NetSuite con estado final del proyecto. | El proyecto ya está terminado y había mezcla entre decisiones históricas y vigentes. | Se aclara qué quedó operativo, qué quedó histórico y qué no debe reabrirse. | Estado, decisiones cerradas, integración OUT/IN, resumen ejecutivo |
-| 2026-03-28 | Se consolida Saved Search como fuente OUT vigente. | Dataset no garantizaba la granularidad correcta. | Se corrige la fuente de extracción NetSuite -> Cronometro. | Fuente OUT |
+| 2026-04-29 | Se incorpora protocolo operativo correcto para configurar ambientes NetSuite, OAuth2 M2M, RESTlet IN, registro `Importación OT` y checklist de diagnóstico. | En productivo se detectaron errores por confusión de `NETSUITE_CERTIFICATE_ID`, por mover la M2M común a pull/push y por permisos efectivos del custom record `Importación OT`. | Queda documentado que pull y push comparten OAuth M2M, que el `kid` debe copiarse exactamente, y que `Importación OT` debe permitir acceso a roles internos para que RESTlet/REST API creen registros. | Configuración por ambiente, OAuth2 M2M, push, troubleshooting |
+| 2026-04-05 | Se ordena y consolida el documento de handoff NetSuite con estado final del proyecto. | El proyecto ya estaba estabilizado y había mezcla entre decisiones históricas y vigentes. | Se aclara qué quedó operativo, qué quedó histórico y qué no debe reabrirse. | Estado, decisiones cerradas, integración OUT/IN, resumen ejecutivo |
+| 2026-03-28 | Se consolida Saved Search como fuente OUT vigente. | Dataset no garantizaba la granularidad correcta. | Se corrige la fuente de extracción NetSuite -> Cronómetro. | Fuente OUT |
 | 2026-03-27 | Se invalida la raíz `Tiempo planificado de fabricación` para Dataset OUT. | Multiplicaba una misma operación lógica en varias filas. | Queda descartada como base válida. | Dataset OUT histórico |
 | 2026-03-25 | Se corrige el contrato de retorno a 3 datos reales por operación. | Evitar pérdida de significado funcional. | Se fija el contrato correcto del push hacia NetSuite. | Contrato funcional |
 
-## Estado
+---
 
-Documento de handoff operativo consolidado a partir de la documentación del proyecto, la inspección realizada en NetSuite y la configuración cerrada en sandbox.
+## Estado operativo actual
 
-> **Estado final (2026-04-05)**
+Este documento es la fuente base para configurar o reconstruir un ambiente NetSuite para Cronómetro.
+
+La integración tiene dos flujos funcionales separados, pero ambos usan la misma autenticación OAuth2 M2M:
+
+1. **Pull / OUT:** NetSuite -> Cronómetro.
+2. **Push / IN:** Cronómetro -> NetSuite.
+
+Regla crítica:
+
+> **Pull y push NO tienen credenciales OAuth separadas.**
 >
-> El proyecto Cronometro se considera terminado.
+> Ambos usan el mismo bloque OAuth M2M del backend.
 >
-> La arquitectura vigente de integración NetSuite queda cerrada así:
->
-> - **OUT** oficial por Saved Search: `customsearch_mcv_cronometro_out`
-> - **IN** oficial por RESTlet: `MCV_Cronometro_Restlet_In`
-> - **Push** en modo `import_ot`
-> - **Flujo operativo**: `Stop -> Push -> Pull(+replace)`
-> - **Granularidad de extracción**: `1 operación lógica = 1 fila`
->
-> Toda referencia al dataset OUT como fuente oficial debe considerarse **histórica/deprecada**.
+> Si se rompe OAuth M2M, se rompen pull y push al mismo tiempo.
+
+Arquitectura vigente:
+
+- Autenticación: **OAuth 2.0 M2M / Client Credentials**.
+- Rol técnico: `MCV_Cronometro_Rol`.
+- Entidad usada en configuración actual: `MIGUEL CANDIA` o usuario técnico equivalente.
+- RESTlet IN: `MCV_Cronometro_Restlet_In`.
+- Script RESTlet: `MCV_cronometro_restlet.js`.
+- Push vigente: crear staging en `Importación OT` (`customrecord_3k_importacion_ot`), ya sea vía RESTlet o vía REST Record API según `NETSUITE_PUSH_MODE`.
+- Flujo operativo: **Stop -> Push -> Pull**.
 
 ---
 
-## Cómo usar este documento en un hilo nuevo
+## Principios que no se deben olvidar
 
-Tratar este archivo como fuente base de contexto para el estado final del vínculo con NetSuite.
+1. **Nunca tocar la M2M común solo porque falla el push si el pull funciona.**
+   - Si pull funciona, OAuth M2M funciona.
+   - En ese caso el problema del push está después del token: RESTlet, permisos, payload, custom record, script o deployment.
 
-### Rol a asumir
-- **Configurador NetSuite**
+2. **`NETSUITE_CERTIFICATE_ID` es el `kid` exacto del certificado OAuth2 Client Credentials.**
+   - No es el ID de aplicación.
+   - No es el script ID.
+   - No es el deployment ID.
+   - No es el nombre del archivo.
+   - Es sensible a mayúsculas/minúsculas y a cada carácter.
+   - Cuidado extremo con caracteres visualmente parecidos:
+     - `l` ele minúscula
+     - `I` i mayúscula
+     - `0` cero
+     - `O` o mayúscula
 
-### Decisiones ya cerradas
-1. La fuente funcional histórica validada fue la **saved search `710`**.
-2. La `710` no se toca y queda solo como referencia funcional humana.
-3. La integración de salida NetSuite -> Cronómetro debe consumirse desde una **Saved Search técnica operativa**.
-4. El `searchId` vigente es **`customsearch_mcv_cronometro_out`**.
-5. El tipo base correcto es **`manufacturingoperationtask`**.
-6. La separación por áreas `ME` / `ES` depende del prefijo oficial del recurso/centro de trabajo.
-7. Desde NetSuite hacia Cronómetro deben venir los **tiempos planificados** y la **cantidad planificada** por operación.
-8. El contrato real de retorno desde Cronómetro hacia NetSuite es por operación e incluye exactamente:
-   - **tiempo real de configuración**
-   - **tiempo real de trabajo / ejecución**
-   - **cantidad terminada**
-9. NetSuite es maestro estructural y destino publicado.
-10. La publicación hacia NetSuite se hace por **batch**.
-11. La publicación de los 3 datos se hace por **overwrite del valor vigente**, no por delta.
-12. La Saved Search OUT es solo de **lectura desde NetSuite**.
-13. La escritura de retorno no usa la Saved Search OUT.
-14. La sincronización completa queda a cargo de **Cronometro**.
-15. La sincronización completa tiene dos flujos separados pero coordinados por Cronometro:
-   - **pull** de lectura desde NetSuite usando Saved Search OUT (`customsearch_mcv_cronometro_out`)
-   - **push** de escritura hacia NetSuite usando el RESTlet `MCV_Cronometro_In`
-16. El programador no debe asumir que el mismo endpoint que recibe el batch devuelve el dataset de operaciones.
-17. La Saved Search oficial OUT debe consumirse **directamente**.
-18. El RESTlet funcional de escritura quedó renombrado como **IN**.
-19. La raíz histórica `Tiempo planificado de fabricación` quedó descartada para OUT.
-20. El dataset `MCV_cronometro_out` queda como **referencia histórica/deprecada**, no como fuente oficial vigente.
+3. **NetSuite recibe el certificado público; Cronómetro conserva la private key.**
+   - En NetSuite se carga el certificado público: archivo con `BEGIN CERTIFICATE`.
+   - En el backend se configura la clave privada: `BEGIN PRIVATE KEY`.
+   - Nunca subir la private key a NetSuite.
 
-### Temas abiertos que quedan solo como registro histórico
-1. definición del root correcto del antiguo dataset OUT
-2. incorporación de `netsuite_work_order_id` al antiguo dataset
-3. discusión sobre usuario técnico dedicado para producción
-4. pruebas end-to-end históricas asociadas al dataset OUT
+4. **El mismo certificado público puede verse como `.crt`, `.cer` o `.pem`, pero lo que importa es el contenido.**
+   - Para NetSuite debe ser certificado público.
+   - La extensión puede confundir; el contenido manda.
 
-Estos puntos no cambian la arquitectura final ya cerrada del proyecto.
+5. **El custom record `Importación OT` debe permitir acceso efectivo al contexto M2M/REST.**
+   - No basta con que el rol muestre `Completo` si el tipo de acceso del custom record bloquea la ejecución REST/SuiteScript.
 
 ---
 
-## Objetivo
+## Checklist de configuración completa por ambiente
 
-Dejar documentada la fuente oficial de extracción desde NetSuite hacia Cronometro, el mapeo funcional de campos, las reglas de transformación, la configuración M2M en sandbox y el receptor operativo ya configurado para actualizar NetSuite.
+Usar este checklist para configurar PROD, SB o cualquier ambiente nuevo.
 
-Este documento no define código del lado Cronometro. Define el contrato funcional y la configuración NetSuite que el proyecto terminó usando.
+### 1. Features / funciones NetSuite
+
+Verificar habilitadas:
+
+- Servicios web REST.
+- OAuth 2.0.
+- Client Credentials / Machine to Machine.
+- SuiteScript 2.1.
+- RESTlets.
+
+### 2. Integration Record M2M
+
+Crear o verificar una integración M2M del ambiente.
+
+Debe tener:
+
+- Estado: `Habilitado`.
+- OAuth 2.0 habilitado.
+- `Otorgamiento de credenciales de cliente (equipo a equipo)` marcado.
+- `Otorgamiento de código de autorización` desmarcado si no se usa.
+- `Cliente público` desmarcado.
+- Scopes / Alcance:
+  - `RESTlets`
+  - `Servicios Web REST`
+  - `SuiteAnalytics Connect` si el pull/diagnóstico usa SuiteAnalytics/SuiteQL.
+
+Luego generar/restablecer credenciales de cliente y guardar en el backend:
+
+- `NETSUITE_CLIENT_ID`
+- `NETSUITE_CLIENT_SECRET`
+
+Aunque el backend actual firma con JWT/private key y no depende funcionalmente del secret en el flujo M2M, dejar `NETSUITE_CLIENT_SECRET` actualizado por trazabilidad y compatibilidad futura.
+
+### 3. Certificado OAuth2 Client Credentials
+
+Ruta funcional:
+
+`Configuración -> Integración -> Configuración de credenciales de cliente OAuth 2.0`
+
+Crear una asignación con:
+
+- Entidad: `MIGUEL CANDIA` o usuario técnico definido.
+- Rol: `MCV_Cronometro_Rol`.
+- Aplicación: integración M2M vigente del ambiente.
+- Algoritmo: `RSA`.
+- Certificado: certificado público correcto.
+
+Al guardar, copiar el **ID de certificado** exactamente. Ese valor va en:
+
+```env
+NETSUITE_CERTIFICATE_ID=<KID_EXACTO_COPIADO_DESDE_NETSUITE>
+```
+
+No tipear este valor a mano si se puede evitar. Copiar/pegar desde NetSuite.
+
+### 4. Certificado público vs private key
+
+El certificado público que se sube a NetSuite debe iniciar con:
+
+```text
+BEGIN CERTIFICATE
+```
+
+La private key que va en el backend debe iniciar con:
+
+```text
+BEGIN PRIVATE KEY
+```
+
+Si el certificado público cargado en NetSuite no corresponde a la private key del backend, NetSuite rechazará el token.
+
+Errores típicos:
+
+- `invalid_client`: `CLIENT_ID`, `kid`, app M2M o asociación M2M inválida.
+- `invalid_grant`: assertion/grant inválido, certificado/key incorrectos o claims no aceptados.
+- `ENOTFOUND`: problema DNS/red/host.
+
+### 5. Rol `MCV_Cronometro_Rol`
+
+El rol debe estar asignado a la entidad usada por M2M.
+
+En la ficha del empleado/entidad:
+
+- Acceso concedido.
+- Rol asignado: `MCV_Cronometro_Rol`.
+
+En el rol:
+
+- No marcar `Rol único de servicios web` salvo que se valide expresamente contra el ambiente funcional.
+- Permisos técnicos esperados:
+  - Servicios web REST.
+  - RESTlets / SuiteScript, según disponibilidad de la cuenta.
+  - OAuth 2.0 / tokens de acceso, según nomenclatura del ambiente.
+- Permisos funcionales mínimos:
+  - `Orden de trabajo` con nivel suficiente para leer/resolver OT.
+  - `Buscar transacción` con nivel suficiente.
+  - Registros personalizados:
+    - `Importación OT` -> `Completo`.
+    - `Importación OT - Detalle` -> `Completo`, si existe y participa del flujo.
+
+### 6. Custom record `Importación OT`
+
+Registro personalizado:
+
+- Nombre: `Importación OT`.
+- ID: `customrecord_3k_importacion_ot`.
+
+Campos relevantes:
+
+| Campo | ID |
+|---|---|
+| OT | `custrecord_3k_ot_principal` |
+| Fecha | `custrecord_3k_imp_ot_fecha` |
+| Estado | `custrecord_3k_imp_ot_estado` |
+| Detalle Procesamiento | `custrecord_3k_imp_ot_det_proc` |
+| Finalización OT Generada | `custrecord_3k_imp_ot_transaccion` |
+| JSON | `custrecord_3k_imp_ot_json` |
+
+Configuración crítica del tipo de registro:
+
+- **Tipo de acceso:** `No se necesitan permisos para los roles internos`.
+- Acceso de roles externos: `Ninguno`.
+- Acceso de usuarios no autenticados: `Ninguno`.
+- `Permitir acceso a la UI`: marcado.
+- `Permitir acceso móvil`: normalmente desmarcado.
+- `Permitir archivos adjuntos`: marcado.
+- `Mostrar notas`: marcado.
+- `Permitir edición de registros secundarios`: marcado.
+- `Permitir eliminar`: desmarcado salvo decisión explícita.
+- `Inactiva`: desmarcado.
+
+Lección aprendida:
+
+> Si `Importación OT` queda en `Se requiere permiso...`, puede fallar con `INSUFFICIENT_PERMISSION` desde OAuth/REST/SuiteScript aunque el rol `MCV_Cronometro_Rol` muestre `Completo`.
+
+### 7. RESTlet IN
+
+Script:
+
+- Nombre: `MCV_Cronometro_Restlet_In`.
+- Archivo esperado: `MCV_cronometro_restlet.js`.
+- Tipo: RESTlet.
+- API: SuiteScript 2.1.
+
+Deployment:
+
+- Estado: `Liberado`.
+- Nivel de registro: `Auditoría`.
+- URL externa por ambiente:
+  - Sandbox: dominio `restlets.api.netsuite.com` con sufijo sandbox.
+  - Productivo: dominio `restlets.api.netsuite.com` productivo.
+
+Audiencia:
+
+- Recomendado: permitir explícitamente `MCV_Cronometro_Rol` o replicar exactamente la audiencia del ambiente funcional.
+- Si se usa `Todos los roles internos`, validar con push real.
+
+### 8. Variables `.env` del backend
+
+Bloque común OAuth para pull y push:
+
+```env
+NETSUITE_CLIENT_ID=<CLIENT_ID_DE_LA_INTEGRACION_M2M_DEL_AMBIENTE>
+NETSUITE_CLIENT_SECRET=<CLIENT_SECRET_DE_LA_INTEGRACION_M2M_DEL_AMBIENTE>
+NETSUITE_CERTIFICATE_ID=<KID_EXACTO_DE_LA_CREDENCIAL_OAUTH2_CLIENT_CREDENTIALS>
+NETSUITE_ACCOUNT_ID=<ACCOUNT_ID_DEL_AMBIENTE>
+NETSUITE_TOKEN_URL=https://<ACCOUNT_HOST>.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token
+NETSUITE_PRIVATE_KEY=<PRIVATE_KEY_CORRESPONDIENTE_AL_CERTIFICADO_PUBLICO>
+```
+
+URLs por ambiente:
+
+```env
+# Sandbox
+NETSUITE_ACCOUNT_ID=<ACCOUNT_ID_SANDBOX>
+NETSUITE_TOKEN_URL=https://<ACCOUNT_SANDBOX_HOST>.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token
+NETSUITE_RESTLET_IN_URL=https://<ACCOUNT_SANDBOX_HOST>.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=<SCRIPT_ID>&deploy=<DEPLOY_ID>
+
+# Productivo
+NETSUITE_ACCOUNT_ID=<ACCOUNT_ID_PROD>
+NETSUITE_TOKEN_URL=https://<ACCOUNT_PROD_HOST>.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token
+NETSUITE_RESTLET_IN_URL=https://<ACCOUNT_PROD_HOST>.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=<SCRIPT_ID>&deploy=<DEPLOY_ID>
+```
+
+Push por RESTlet:
+
+```env
+NETSUITE_PUSH_MODE=restlet
+```
+
+Push directo a REST Record API / staging:
+
+```env
+NETSUITE_PUSH_MODE=import_ot
+NETSUITE_IMPORT_OT_RECORD_TYPE=customrecord_3k_importacion_ot
+NETSUITE_IMPORT_OT_WORKORDER_FIELD=custrecord_3k_ot_principal
+NETSUITE_IMPORT_OT_JSON_FIELD=custrecord_3k_imp_ot_json
+NETSUITE_IMPORT_OT_DATE_FIELD=custrecord_3k_imp_ot_fecha
+```
+
+Ambos modos terminan creando staging en `Importación OT`; solo cambia el camino:
+
+- `restlet`: Backend -> RESTlet -> `customrecord_3k_importacion_ot`.
+- `import_ot`: Backend -> REST Record API -> `customrecord_3k_importacion_ot`.
+
+Configuración OUT:
+
+La documentación funcional consolidada conserva como fuente oficial la Saved Search técnica:
+
+```env
+NETSUITE_OUT_SOURCE_TYPE=savedsearch
+NETSUITE_OUT_SAVEDSEARCH_ID=customsearch_mcv_cronometro_out
+```
+
+Si un ambiente usa SuiteQL por decisión técnica local, debe documentarse explícitamente en su `.env` y no asumirse como configuración general.
 
 ---
 
-## Base funcional de referencia
+## Validaciones obligatorias después de configurar
 
-La fuente funcional histórica validada en NetSuite fue la **saved search `710`**.
+No probar push antes de pasar estas pruebas.
 
-Se confirmó contra:
-- link real de NetSuite con `searchid=710`
-- archivo XLS exportado desde NetSuite
-- ejecución directa vía herramienta NetSuite usando `searchId = "710"`
+### 1. Verificar OAuth/token
 
-La `710` debe tratarse como **referencia funcional** y **no debe tocarse** para la integración ya cerrada.
+Desde el contenedor backend, ejecutar la prueba de token M2M.
+
+Esperado:
+
+```text
+TOKEN_OK len=<número>
+```
+
+Si sale `invalid_client`, revisar en este orden:
+
+1. `NETSUITE_CLIENT_ID` corresponde a la integración correcta del ambiente.
+2. `NETSUITE_CERTIFICATE_ID` es el `kid` exacto, sin confundir `l/I` ni `0/O`.
+3. La credencial OAuth2 Client Credentials está activa y no revocada.
+4. La app/entidad/rol/certificado corresponden a la misma fila M2M.
+5. `NETSUITE_TOKEN_URL` apunta al ambiente correcto.
+
+### 2. Probar pull
+
+Solo después de `TOKEN_OK`, probar pull.
+
+Esperado:
+
+- Pull ejecuta sin `invalid_client`.
+- Si falla, el error ya pertenece a fuente OUT, Saved Search/SuiteQL, permisos de lectura o mapeo.
+
+### 3. Probar dry run de push
+
+Antes de enviar a NetSuite, generar payload.
+
+Esperado:
+
+- `itemCount > 0`.
+- Cada item debe tener:
+  - `ot_number`
+  - `operation_sequence`
+  - `netsuite_operation_id`
+  - `actual_setup_time`
+  - `actual_run_time`
+  - `completed_quantity`
+
+### 4. Probar push real controlado
+
+Condiciones previas:
+
+- Cronómetros detenidos.
+- Dato real mínimo generado.
+- Operador acepta publicación en NetSuite.
+
+Respuesta exitosa esperada:
+
+- `Batch enviado a NetSuite`.
+- `markedSuccessfulPushes > 0` o resultado exitoso equivalente.
+- Sin `invalid_client`.
+- Sin `INSUFFICIENT_PERMISSION` sobre `Importación OT`.
 
 ---
 
-## Decisión arquitectónica final de extracción
+## Troubleshooting rápido
 
-### Regla
-La integración NetSuite -> Cronometro no usa Dataset como contrato técnico vigente.
+### `{"error":"invalid_client"}`
 
-### Decisión final
-La extracción oficial se realiza desde una **Saved Search técnica operativa**.
+Capa: OAuth M2M.
 
-### Fuente oficial OUT
-- **Script ID:** `customsearch_mcv_cronometro_out`
-- **Saved Search UI:** `823`
-- **Título visible:** `BG - Control de HH por OT Detalle VF - CARGA`
-- **Tipo:** `Tarea de operación de fabricación` / `manufacturingoperationtask`
-- **Filtro operativo:** `Estado = En curso` (`PROGRESS`)
+Causas probables:
 
-### Motivo
-- respeta la regla `1 operación = 1 fila`
-- alinea la extracción con el universo WIP real
-- evita los problemas de multiplicación observados en Dataset
+- `NETSUITE_CERTIFICATE_ID` mal copiado.
+- `NETSUITE_CLIENT_ID` no corresponde a la app M2M activa.
+- Credencial OAuth2 Client Credentials revocada.
+- App, entidad, rol o certificado no corresponden entre sí.
+- Token URL de otro ambiente.
+
+Acción:
+
+- No tocar RESTlet ni registros.
+- No cambiar permisos funcionales.
+- Verificar token primero.
+
+### `getaddrinfo ENOTFOUND`
+
+Capa: DNS/red.
+
+Causas probables:
+
+- DNS del host o contenedor.
+- `NETSUITE_ACCOUNT_ID` o host mal armado.
+- Problema transitorio de resolución.
+
+Acción:
+
+- Probar resolución DNS desde host y contenedor.
+
+### `INSUFFICIENT_PERMISSION` sobre `Importación OT`
+
+Capa: permisos efectivos del custom record.
+
+Causas probables:
+
+- `Importación OT` con tipo de acceso restrictivo.
+- Rol sin permiso efectivo.
+- Custom record bloqueado para contexto REST/SuiteScript.
+
+Acción:
+
+1. Verificar que el token funciona.
+2. Verificar que `MCV_Cronometro_Rol` tiene `Importación OT -> Completo`.
+3. Verificar en el tipo de registro `Importación OT`:
+
+```text
+Tipo de acceso = No se necesitan permisos para los roles internos
+```
+
+### Push falla pero pull funciona
+
+Capa: no OAuth.
+
+Si pull funciona, no mover M2M.
+
+Revisar:
+
+- `NETSUITE_PUSH_MODE`.
+- `NETSUITE_RESTLET_IN_URL`.
+- Deployment RESTlet.
+- Archivo `MCV_cronometro_restlet.js`.
+- Tipo de acceso de `Importación OT`.
+- Permisos del rol sobre custom records y transacciones.
 
 ---
 
-## Qué representa la extracción oficial
+## Flujo funcional
 
-La Saved Search OUT representa la foto operativa de las **operaciones WIP activas** que Cronometro necesita consumir.
+### Pull: NetSuite -> Cronómetro
 
-Columnas mínimas confirmadas:
+Cronómetro obtiene operaciones WIP desde NetSuite y refresca el universo local.
+
+Fuente funcional documentada:
+
+- Saved Search técnica: `customsearch_mcv_cronometro_out`.
+- Tipo base: `manufacturingoperationtask`.
+- Granularidad: `1 operación lógica = 1 fila`.
+
+Columnas mínimas esperadas:
+
 1. `Orden de trabajo`
 2. `Secuencia de operaciones`
 3. `Centro de trabajo de fabricación`
@@ -130,26 +452,9 @@ Columnas mínimas confirmadas:
 7. `Estado`
 8. `Nombre de la operación`
 
----
+Mapeo recomendado:
 
-## Significado funcional de cada columna base
-
-| Columna base | Significado funcional |
-|---|---|
-| `Orden de trabajo` | Número visible de la OT |
-| `Secuencia de operaciones` | Secuencia de la operación dentro del ruteo |
-| `Centro de trabajo de fabricación` | Recurso / máquina / centro de trabajo |
-| `CONFIGURACION RUTA` | Tiempo de montaje planificado |
-| `EJECUCION RUTA` | Tiempo de operación planificado por unidad |
-| `Cantidad de entrada` | Cantidad planificada de la operación |
-| `Estado` | Estado origen de la tarea |
-| `Nombre de la operación` | Nombre visible de la operación |
-
----
-
-## Mapeo recomendado hacia el contrato interno de Cronometro
-
-| Columna Saved Search | Campo interno recomendado |
+| Columna Saved Search | Campo interno |
 |---|---|
 | `Orden de trabajo` | `ot_number` |
 | `Secuencia de operaciones` | `operation_sequence` |
@@ -160,179 +465,33 @@ Columnas mínimas confirmadas:
 | `Estado` | `source_status` |
 | `Nombre de la operación` | `operation_name` |
 
----
+### Push: Cronómetro -> NetSuite
 
-## Regla vigente de granularidad y validez
+Cronómetro publica los datos reales vigentes por operación:
 
-La fuente OUT debe entregar **una sola fila por operación lógica**.
+1. Tiempo real de configuración.
+2. Tiempo real de trabajo / ejecución.
+3. Cantidad terminada.
 
-Regla práctica de validación:
-- si una misma operación aparece repetida sin diferencia funcional real, la fuente debe considerarse inválida.
+Reglas:
 
----
+- Se publica el valor vigente, no delta.
+- Se publica por batch.
+- El retorno se agrupa por OT.
+- El staging vigente es `Importación OT`.
 
-## Área operativa
+Payload mínimo esperado:
 
-La separación `ME` / `ES` depende del recurso o centro de trabajo.
-
-La documentación histórica deja dos alternativas registradas:
-- derivación desde el prefijo del recurso,
-- columna `AREA` dentro de la Saved Search.
-
-Como el proyecto ya está terminado, esta diferencia queda tratada como detalle de implementación histórica y no reabre la arquitectura.
-
----
-
-## Contrato funcional recomendado para Cronometro (input desde NetSuite)
-
-```json
-{
-  "ot_number": "OT16993",
-  "operation_sequence": 8,
-  "resource_code": "ME103 RECTIFICADORA CIL...",
-  "planned_setup_minutes": 60,
-  "operation_name": "RECTIFICADO B",
-  "planned_quantity": 3,
-  "planned_run_minutes_per_unit": 180,
-  "source_status": "PROGRESS"
-}
-```
-
----
-
-## Sincronización: responsabilidad y flujo completo
-
-### Dueño de la sincronización
-La **sincronización completa** queda a cargo de **Cronometro**.
-
-NetSuite expone:
-- una fuente de lectura (`customsearch_mcv_cronometro_out`)
-- un receptor de escritura (`MCV_Cronometro_In`)
-
-Cronometro decide cuándo leer, cuándo escribir y en qué orden operativo hacerlo.
-
-### Modelo correcto de sincronización
-La sincronización tiene **dos flujos separados**:
-
-#### 1. Pull: NetSuite -> Cronometro
-Cronometro debe hacer pull de la Saved Search oficial y refrescar el universo WIP local.
-
-#### 2. Push: Cronometro -> NetSuite
-Cronometro debe hacer push de los 3 datos reales por operación al RESTlet desplegado en NetSuite.
-
-### Orden oficial final
-
-- La sincronización oficial se ejecuta con cronómetros detenidos.
-- Orden obligatorio:
-  1. **Push** del valor vigente (setup real, run real, cantidad terminada).
-  2. **Pull** del universo WIP vigente desde NetSuite.
-
----
-
-## Integración de retorno: Cronometro -> NetSuite
-
-### Principio arquitectónico vigente
-- **Cronometro es dueño de los datos reales por operación**.
-- Cronometro devuelve a NetSuite los **3 datos reales operativos**.
-- **NetSuite es maestro estructural** de OTs, operaciones, recursos, tiempos planificados y cantidades planificadas.
-- **NetSuite es destino publicado** de los resultados reales del cronometraje.
-
-### Los 3 datos reales que Cronometro devuelve por operación
-1. **Tiempo real de configuración**
-2. **Tiempo real de trabajo / ejecución**
-3. **Cantidad terminada**
-
-### Regla de interpretación
-- El retorno es **por operación**.
-- No se devuelven eventos individuales ni deltas.
-- La publicación se hace por **overwrite del valor vigente**.
-
----
-
-## Destino funcional confirmado en NetSuite
-
-Se confirmó que `manufacturingoperationtask` expone campos estándar que calzan con el retorno de los 3 datos por operación:
-
-- `actualSetupTime`
-- `actualRunTime`
-- `completedQuantity`
-
-### Conclusión
-- `manufacturingoperationtask` es el destino operativo correcto.
-- No hace falta inventar un custom record como destino principal.
-- No conviene usar `workorder` como destino principal de estos 3 datos.
-
----
-
-## Configuración M2M realizada en sandbox
-
-### Funciones habilitadas verificadas
-- Servicios web REST
-- Autenticación basada en token
-- OAuth 2.0
-
-### Decisión de autenticación
-- **OAuth 2.0 M2M / Client Credentials**
-
-### Aplicación creada
-- `MCV_Cronometro_M2M`
-
-### Rol creado
-- `MCV_Cronometro_Rol`
-
-### Mapping M2M
-- Entidad: `MIGUEL CANDIA`
-- Rol: `MCV_Cronometro_Rol`
-- Aplicación: `MCV_Cronometro_M2M`
-- Certificado: cargado correctamente
-
-### Estado del mapping
-- activo en sandbox
-- algoritmo: RSA
-
----
-
-## RESTlet mínimo implementado en sandbox
-
-### Canal de recepción
-- **RESTlet SuiteScript 2.1**
-
-### Naming funcional correcto
-- **OUT** = Saved Search `customsearch_mcv_cronometro_out`
-- **IN** = RESTlet `MCV_Cronometro_In`
-
-### Script record
-- **Nombre**: `MCV_Cronometro_Restlet_In`
-- **Script ID**: `customscriptmcv_cronometro_restlet_in`
-
-### Deployment
-- **Nombre**: `MCV_Cronometro_Restlet_in`
-- **Deployment ID**: `customdeploy1`
-- **Estado**: `Liberado`
-- **Nivel de registro**: `Auditoría`
-
-### URL del RESTlet IN
-#### URL interna
-`/app/site/hosting/restlet.nl?script=1271&deploy=1`
-
-#### URL externa
-`https://6099999-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=1271&deploy=1`
-
-### Propósito del RESTlet IN
-Recibir un payload por batch y actualizar, por `netsuite_operation_id`, estos campos de `manufacturingoperationtask`:
-- `actualSetupTime`
-- `actualRunTime`
-- `completedQuantity`
-
-### Contrato mínimo esperado por el RESTlet IN
 ```json
 {
   "items": [
     {
-      "netsuite_operation_id": 3208,
-      "actual_setup_time": 60,
-      "actual_run_time": 360,
-      "completed_quantity": 4
+      "netsuite_operation_id": 106206,
+      "ot_number": "OT17227",
+      "operation_sequence": 2,
+      "actual_setup_time": 1,
+      "actual_run_time": 0,
+      "completed_quantity": 0
     }
   ]
 }
@@ -342,54 +501,37 @@ Recibir un payload por batch y actualizar, por `netsuite_operation_id`, estos ca
 
 ## Qué no debe reabrirse sin evidencia nueva
 
-- no volver a Dataset como fuente oficial OUT
-- no reutilizar la raíz `Tiempo planificado de fabricación`
-- no usar la `710` como contrato técnico de integración
-- no reducir el retorno a un solo número ambiguo
-- no mover la lógica de consolidación a NetSuite
-- no mezclar lectura OUT y escritura IN en un mismo canal
+- No volver a Dataset como fuente oficial OUT.
+- No reutilizar la raíz `Tiempo planificado de fabricación`.
+- No usar la saved search humana `710` como contrato técnico de integración.
+- No reducir el retorno a un solo número ambiguo.
+- No mover la lógica de consolidación a Cronómetro si el diseño vigente es staging NetSuite.
+- No tocar OAuth M2M si el pull funciona y solo falla el push.
+- No subir private keys a NetSuite.
+- No copiar `NETSUITE_CERTIFICATE_ID` manualmente carácter por carácter si se puede copiar desde la pantalla de NetSuite.
 
 ---
 
-## Resumen ejecutivo final
+## Resumen ejecutivo
 
-### Confirmado
-- fuente OUT oficial: `customsearch_mcv_cronometro_out`
-- tipo base: `manufacturingoperationtask`
-- granularidad: `1 operación lógica = 1 fila`
-- flujo oficial: `Stop -> Push -> Pull(+replace)`
-- salida desde Cronometro: 3 datos reales por operación
-- destino operativo confirmado: `manufacturingoperationtask`
-- autenticación configurada en sandbox: **OAuth 2.0 M2M**
-- integración creada: `MCV_Cronometro_M2M`
-- rol creado: `MCV_Cronometro_Rol`
-- mapping M2M activo
-- RESTlet IN creado y desplegado
-- la sincronización completa queda del lado de Cronometro
-- lectura y escritura quedan como flujos separados
+Configuración mínima correcta por ambiente:
 
-### Histórico/deprecado
-- dataset `MCV_cronometro_out`
-- raíz `Tiempo planificado de fabricación`
-- cualquier lectura del OUT basada en Dataset como contrato vigente
+1. App OAuth2 M2M activa con client credentials.
+2. Credencial OAuth2 Client Credentials activa con entidad + rol + aplicación + certificado público.
+3. `NETSUITE_CERTIFICATE_ID` exacto al `kid` de NetSuite.
+4. Private key correspondiente al certificado público cargado.
+5. `MCV_Cronometro_Rol` asignado a la entidad M2M.
+6. RESTlets y REST Web Services habilitados.
+7. RESTlet IN desplegado y liberado.
+8. Custom record `Importación OT` con tipo de acceso apto para roles internos.
+9. Pull validado después de `TOKEN_OK`.
+10. Push validado con dry run antes de envío real.
 
----
+Estado operativo buscado:
 
-## Conclusiones operativas
-
-1. La `710` queda como referencia funcional histórica, no como contrato técnico final.
-2. El contrato técnico de extracción vigente es la Saved Search **`customsearch_mcv_cronometro_out`**.
-3. La carga de entrada se basa en operaciones de OT con recurso, tiempos planificados, cantidad planificada y estado, con **una sola fila por operación lógica**.
-4. Los datos planificados requeridos por operación son:
-   - montaje,
-   - ejecución por unidad,
-   - cantidad.
-5. El retorno correcto de Cronometro hacia NetSuite son 3 datos reales por operación:
-   - tiempo real de configuración,
-   - tiempo real de trabajo,
-   - cantidad terminada.
-6. El canal mínimo implementado para recepción en NetSuite es un **RESTlet SuiteScript 2.1** autenticado con **OAuth 2.0 M2M**.
-7. La sincronización completa se entiende como:
-   - **pull** desde Saved Search OUT,
-   - **push** por RESTlet IN.
-8. El proyecto queda documentalmente cerrado con Saved Search OUT + RESTlet IN como arquitectura final.
+```text
+TOKEN_OK
+Pull OK
+Dry run push OK
+Push OK
+```

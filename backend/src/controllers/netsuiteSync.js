@@ -8,6 +8,9 @@ const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
 const { buildActualsPayload } = require('../services/netsuite/buildActualsPayload');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
+const { getNetsuiteConfig } = require('../services/netsuite/config');
+const { getNetsuiteAccessToken } = require('../services/netsuite/oauthToken');
+const axios = require('axios');
 const {
   beginNetsuiteSyncWindow,
   endNetsuiteSyncWindow,
@@ -18,6 +21,8 @@ const SyncRunStep = require('../models/sync_run_step');
 const config = require('../config/config');
 let netsuitePushInFlight = false;
 let netsuiteOperationalSyncInFlight = false;
+const IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE =
+  'WARNING: import_ot no estaba terminado antes del pull. Posible inconsistencia en la data del Cronometro.';
 
 function resolveAreaFromResource(resourceCode) {
   const code = String(resourceCode || '').trim().toUpperCase();
@@ -245,6 +250,118 @@ function clampOperationalPullDelaySeconds(value) {
   return Math.max(0, Math.min(120, Math.floor(n)));
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildImportOtPendingSuiteQl(cfg) {
+  const recordType = String(cfg.importOtRecordType || 'customrecord_3k_importacion_ot').trim();
+  const otField = String(cfg.importOtWorkOrderField || 'custrecord_3k_ot_principal').trim();
+  const jsonField = String(cfg.importOtJsonField || 'custrecord_3k_imp_ot_json').trim();
+  const txField = String(cfg.importOtTransactionField || 'custrecord_3k_imp_ot_transaccion').trim();
+
+  return [
+    'SELECT',
+    '  COUNT(*) AS PENDING_COUNT',
+    `FROM ${recordType}`,
+    'WHERE',
+    `  NVL(TRIM(TO_CHAR(${otField})), '') <> ''`,
+    `  AND NVL(TRIM(TO_CHAR(${jsonField})), '') <> ''`,
+    `  AND NVL(TRIM(TO_CHAR(${txField})), '') = ''`
+  ].join(' ');
+}
+
+async function runSuiteQlCount(query) {
+  const cfg = getNetsuiteConfig();
+  if (!cfg.suiteqlUrl) {
+    throw new Error('NetSuite suiteql URL not derivable; set NETSUITE_ACCOUNT_ID');
+  }
+  const token = await getNetsuiteAccessToken();
+  const { data } = await axios.post(
+    cfg.suiteqlUrl,
+    { q: query },
+    {
+      params: { limit: 1, offset: 0 },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Prefer: 'transient'
+      },
+      timeout: 120000
+    }
+  );
+  const row = Array.isArray(data && data.items) && data.items.length > 0 ? data.items[0] : null;
+  if (!row) return 0;
+  const raw = row.PENDING_COUNT ?? row.pending_count ?? Object.values(row)[0];
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
+async function waitImportOtGate({ itemCount }) {
+  if (!config.NETSUITE_IMPORT_OT_GATE_ENABLED) {
+    return { status: 'DISABLED', stable: true, timedOut: false, warning: null, elapsedMs: 0 };
+  }
+  if (!Number.isInteger(Number(itemCount)) || Number(itemCount) <= 0) {
+    return { status: 'SKIPPED_NO_PUSH_ITEMS', stable: true, timedOut: false, warning: null, elapsedMs: 0 };
+  }
+
+  const timeoutSeconds = Math.max(0, Number(config.NETSUITE_IMPORT_OT_GATE_TIMEOUT_SECONDS || 0));
+  const pollSeconds = Math.max(1, Number(config.NETSUITE_IMPORT_OT_GATE_POLL_SECONDS || 30));
+  if (timeoutSeconds <= 0) {
+    return {
+      status: 'TIMEOUT',
+      stable: false,
+      timedOut: true,
+      warning: IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE,
+      elapsedMs: 0
+    };
+  }
+
+  const startedAt = Date.now();
+  const timeoutAt = startedAt + timeoutSeconds * 1000;
+  const cfg = getNetsuiteConfig();
+  const query = buildImportOtPendingSuiteQl(cfg);
+  let lastPendingCount = null;
+  const polls = [];
+  while (Date.now() < timeoutAt) {
+    try {
+      const pendingCount = await runSuiteQlCount(query);
+      lastPendingCount = pendingCount;
+      polls.push({ at: new Date().toISOString(), pendingCount });
+      if (pendingCount <= 0) {
+        return {
+          status: 'STABLE',
+          stable: true,
+          timedOut: false,
+          warning: null,
+          elapsedMs: Date.now() - startedAt,
+          pendingCount,
+          polls
+        };
+      }
+    } catch (probeErr) {
+      polls.push({
+        at: new Date().toISOString(),
+        probeError: String(probeErr && probeErr.message ? probeErr.message : probeErr)
+      });
+    }
+    const remainingMs = Math.max(0, timeoutAt - Date.now());
+    const waitMs = Math.min(pollSeconds * 1000, remainingMs);
+    if (waitMs <= 0) break;
+    await sleep(waitMs);
+  }
+  return {
+    status: 'TIMEOUT',
+    stable: false,
+    timedOut: true,
+    warning: IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE,
+    elapsedMs: Date.now() - startedAt,
+    pendingCount: lastPendingCount,
+    polls
+  };
+}
+
 /**
  * PUSH + WAIT + PULL con pasos en sync_run_steps (después de STOP ya cerrado).
  */
@@ -274,13 +391,58 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
       }
     });
 
-    stepWait = await createSyncStep(syncRun.id, 'WAIT', { delaySecondsApplied: delaySeconds });
-    if (delayMs > 0) {
+    stepWait = await createSyncStep(syncRun.id, 'GATE_WAITING_IMPORT_OT', {
+      delaySecondsApplied: delaySeconds,
+      gateEnabled: config.NETSUITE_IMPORT_OT_GATE_ENABLED,
+      gateTimeoutSeconds: config.NETSUITE_IMPORT_OT_GATE_TIMEOUT_SECONDS,
+      gatePollSeconds: config.NETSUITE_IMPORT_OT_GATE_POLL_SECONDS
+    });
+    let gateResult = null;
+    if (config.NETSUITE_IMPORT_OT_GATE_ENABLED) {
+      gateResult = await waitImportOtGate({ itemCount: items.length });
+    } else if (delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
+      gateResult = {
+        status: 'DISABLED_FALLBACK_DELAY',
+        stable: true,
+        timedOut: false,
+        warning: null,
+        elapsedMs: delayMs
+      };
+    } else {
+      gateResult = {
+        status: 'DISABLED_NO_DELAY',
+        stable: true,
+        timedOut: false,
+        warning: null,
+        elapsedMs: 0
+      };
     }
-    await finishSyncStep(stepWait, { ok: true, result: { delaySecondsApplied: delaySeconds } });
+    await finishSyncStep(stepWait, { ok: true, result: gateResult });
 
-    stepPull = await createSyncStep(syncRun.id, 'PULL', { note: 'fetchFullDataset + replaceAllWipRows' });
+    if (gateResult && gateResult.timedOut) {
+      const gateTimeoutStep = await createSyncStep(syncRun.id, 'GATE_TIMEOUT_WARNING_PULL', {
+        warning: IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE,
+        forcePullOnTimeout: config.NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT !== false,
+        gateResult
+      });
+      await finishSyncStep(gateTimeoutStep, {
+        ok: true,
+        result: {
+          warning: IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE,
+          forcePullOnTimeout: config.NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT !== false
+        }
+      });
+    } else {
+      const gateStableStep = await createSyncStep(syncRun.id, 'GATE_STABLE', { gateResult });
+      await finishSyncStep(gateStableStep, { ok: true, result: gateResult });
+    }
+
+    stepPull = await createSyncStep(
+      syncRun.id,
+      gateResult && gateResult.timedOut ? 'PULL_WITH_IMPORT_OT_WARNING' : 'PULL_SAFE_AFTER_GATE',
+      { note: 'fetchFullDataset + replaceAllWipRows' }
+    );
     const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
     const replaced = await replaceAllWipRows(rows);
     await finishSyncStep(stepPull, { ok: true, result: { totalRows, imported: replaced.imported } });
@@ -289,17 +451,25 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
       elapsedMs: Date.now() - startedAt,
       delaySecondsApplied: delaySeconds,
       shift,
+      gate: gateResult,
       push: { itemCount: items.length, markedSuccessfulPushes, reportRowsCount: reportRows.length },
       pull: { totalRows, imported: replaced.imported }
     };
-    const warning = Array.isArray(netsuitePush && netsuitePush.results)
+    const pushWarning = Array.isArray(netsuitePush && netsuitePush.results)
       ? netsuitePush.results.some((r) => r && r.success === false)
       : false;
-    await finishSyncRun(syncRun, { ok: true, summary, warning });
+    const timeoutWarning = Boolean(gateResult && gateResult.timedOut);
+    if (timeoutWarning) {
+      summary.warning_message = IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE;
+    }
+    await finishSyncRun(syncRun, { ok: true, summary, warning: pushWarning || timeoutWarning });
 
     return {
       shift,
       delaySecondsApplied: delaySeconds,
+      gate: gateResult,
+      warning: timeoutWarning,
+      warningMessage: timeoutWarning ? IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE : null,
       items,
       netsuitePush,
       markedSuccessfulPushes,
@@ -407,6 +577,8 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
       imported: out.replaced.imported,
       totalRows: out.totalRows,
       maxRowsApplied: null,
+      warning: !!out.warning,
+      warning_message: out.warningMessage,
       netsuitePush: out.netsuitePush
     };
 
@@ -839,7 +1011,10 @@ exports.operationalSync = async function operationalSync(req, res) {
       message: 'Sincronización operativa completada.',
       elapsedMs: out.elapsedMs,
       delaySecondsApplied: delaySeconds,
+      warning: !!out.warning,
+      warning_message: out.warningMessage,
       shift: out.shift,
+      gate: out.gate,
       push: {
         itemCount: out.items.length,
         markedSuccessfulPushes: out.markedSuccessfulPushes,
@@ -1029,4 +1204,5 @@ exports.peekDataset = async function peekDataset(req, res) {
 
 exports.runOfficialSyncFlow = runOfficialSyncFlow;
 exports.logSchedulerShiftCloseOperational = logSchedulerShiftCloseOperational;
+
 

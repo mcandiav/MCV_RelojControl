@@ -13,6 +13,9 @@ const OperationTimeTotal = require('../models/operation_time_total');
 const config = require('../config/config');
 const { getShiftDateString, computeTotalsFromEvents } = require('../lib/timerEventTotals');
 const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
+const TIMER_TERMINAL_LOCK_CODE = 'TIMER_LOCKED_BY_OTHER_TERMINAL';
+const TIMER_TERMINAL_LOCK_MESSAGE =
+  'Esta operación ya fue lanzada o pausada en otro terminal. Debe detenerla en el terminal original para liberarla. El supervisor también puede liberarla.';
 
 function normalizeWorkplaceArea(workplaceName) {
   const area = String(workplaceName || '').trim().toUpperCase();
@@ -73,7 +76,7 @@ async function assertTimerControlOrRespond(req, timer, res) {
       : '';
   if (roleName === 'admin') return true;
   if (operarioMayControlTimer(req, timer)) return true;
-  res.status(403).json({ message: 'Este cronómetro pertenece a otra terminal.' });
+  res.status(403).json({ code: TIMER_TERMINAL_LOCK_CODE, message: TIMER_TERMINAL_LOCK_MESSAGE });
   return false;
 }
 
@@ -655,9 +658,8 @@ exports.pauseTimer = async function pauseTimer(req, res) {
 
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
-  if (timer.status !== 'ACTIVE') return res.status(400).json({ message: 'Only active timers can be paused.' });
-
   if (!(await assertTimerControlOrRespond(req, timer, res))) return;
+  if (timer.status !== 'ACTIVE') return res.status(400).json({ message: 'Only active timers can be paused.' });
 
   timer.status = 'PAUSED';
   timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
@@ -687,9 +689,8 @@ exports.resumeTimer = async function resumeTimer(req, res) {
 
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
-  if (timer.status !== 'PAUSED') return res.status(400).json({ message: 'Only paused timers can be resumed.' });
-
   if (!(await assertTimerControlOrRespond(req, timer, res))) return;
+  if (timer.status !== 'PAUSED') return res.status(400).json({ message: 'Only paused timers can be resumed.' });
 
   const operation = await WorkOrderOperation.findByPk(work_order_operation_id);
   if (!operation) return res.status(404).json({ message: 'Operation not found.' });
@@ -788,10 +789,10 @@ exports.switchTimerMode = async function switchTimerMode(req, res) {
 
   const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
   if (!timer) return res.status(404).json({ message: 'Timer not found.' });
+  if (!(await assertTimerControlOrRespond(req, timer, res))) return;
   if (timer.status !== 'ACTIVE') {
     return res.status(400).json({ message: 'Only active timers can change mode.' });
   }
-  if (!(await assertTimerControlOrRespond(req, timer, res))) return;
 
   const previousMode = normalizeTimerMode(timer.timer_mode, 'RUN');
   if (previousMode === targetMode) {

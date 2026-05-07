@@ -18,5 +18,18 @@ module.exports = {
         const n = parseInt(process.env.NS_OPERATIONAL_PULL_DELAY_SECONDS, 10);
         if (!Number.isFinite(n)) return 60;
         return Math.max(0, Math.min(120, n));
-    })()
+    })(),
+    NETSUITE_IMPORT_OT_GATE_ENABLED: process.env.NETSUITE_IMPORT_OT_GATE_ENABLED === 'false' ? false : true,
+    NETSUITE_IMPORT_OT_GATE_TIMEOUT_SECONDS: (() => {
+        const n = parseInt(process.env.NETSUITE_IMPORT_OT_GATE_TIMEOUT_SECONDS, 10);
+        if (!Number.isFinite(n)) return 600;
+        return Math.max(0, Math.min(3600, n));
+    })(),
+    NETSUITE_IMPORT_OT_GATE_POLL_SECONDS: (() => {
+        const n = parseInt(process.env.NETSUITE_IMPORT_OT_GATE_POLL_SECONDS, 10);
+        if (!Number.isFinite(n)) return 30;
+        return Math.max(5, Math.min(300, n));
+    })(),
+    NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT:
+        process.env.NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT === 'false' ? false : true
 }

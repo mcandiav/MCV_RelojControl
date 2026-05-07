@@ -1786,6 +1786,21 @@ export default {
       const pct = Math.max(0, Math.round((Math.max(0, completed) / planned) * 100))
       return `${left} / ${right} / ${pct}%`
     },
+    timerTerminalLockMessage(error, fallback = 'No fue posible ejecutar la acci贸n.') {
+      const d = error && error.response && error.response.data ? error.response.data : null
+      const code = d && d.code ? String(d.code).trim() : ''
+      const message = d && (d.message || d.text) ? String(d.message || d.text) : ''
+      const normalized = message.toLowerCase()
+      const isLegacyLockMessage =
+        normalized.includes('only active timers can change mode') ||
+        normalized.includes('only paused timers can be resumed') ||
+        normalized.includes('cron贸metro pertenece a otra terminal') ||
+        normalized.includes('cronometro pertenece a otra terminal')
+      if (code === 'TIMER_LOCKED_BY_OTHER_TERMINAL' || isLegacyLockMessage) {
+        return 'Esta operaci贸n ya fue lanzada o pausada en otro terminal. Debe detenerla en el terminal original para liberarla. El supervisor tambi茅n puede liberarla.'
+      }
+      return message || fallback
+    },
     async laneTimerAction(lane, action, item) {
       const op = this.extractOperation(item)
       if (!op || !op.id) return
@@ -1799,7 +1814,7 @@ export default {
           await this.refreshBoard()
         await this.refreshOperationsForCurrentRole()
         } catch (error) {
-          const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || 'No fue posible detener el cron贸metro.'
+          const msg = this.timerTerminalLockMessage(error, 'No fue posible detener el cron贸metro.')
           alert(msg)
         }
         return
@@ -1835,7 +1850,7 @@ export default {
         await this.refreshBoard()
         await this.refreshOperationsForCurrentRole()
       } catch (error) {
-        const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
+        const msg = this.timerTerminalLockMessage(error, `No fue posible ejecutar ${action}.`)
         alert(msg)
       }
     },
@@ -2200,7 +2215,7 @@ export default {
         await this.refreshBoard()
         await this.refreshOperationsForCurrentRole()
       } catch (error) {
-        const msg = (error.response && error.response.data && (error.response.data.message || error.response.data.text)) || `No fue posible ejecutar ${action}.`
+        const msg = this.timerTerminalLockMessage(error, `No fue posible ejecutar ${action}.`)
         alert(msg)
       }
     },
@@ -2236,9 +2251,7 @@ export default {
         await this.refreshOperationsForCurrentRole()
         this.closeStopQuantityDialog(true)
       } catch (error) {
-        const msg =
-          (error.response && error.response.data && (error.response.data.message || error.response.data.text)) ||
-          'No fue posible detener el cron脙鲁metro.'
+        const msg = this.timerTerminalLockMessage(error, 'No fue posible detener el cron髆etro.')
         alert(msg)
       } finally {
         this.stopQtyLoading = false

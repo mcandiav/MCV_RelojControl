@@ -5,3 +5,12 @@ backend/src/uploads/*
 # Credenciales locales (no versionar)
 .env.local
 NETSUITE_ENV_LOCAL.md
+# Dependencias y builds (no versionar)
+**/node_modules/
+**/build/
+**/dist/
+**/.cache/
+
+# Herramientas / artefactos locales
+.tools/
+certs/
