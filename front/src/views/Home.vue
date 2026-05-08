@@ -170,7 +170,7 @@
                               <v-btn icon color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', row)">
                                 <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', row)">
+                              <v-btn icon color="warning" class="timer-btn-round" :disabled="extractStatus(row) === 'PAUSED'" @click="laneTimerAction('setup', 'pause', row)">
                                 <v-icon small>mdi-pause</v-icon>
                               </v-btn>
                               <v-btn icon color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', row)">
@@ -196,7 +196,7 @@
                               <v-btn icon color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', row)">
                                 <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', row)">
+                              <v-btn icon color="warning" class="timer-btn-round" :disabled="extractStatus(row) === 'PAUSED'" @click="laneTimerAction('run', 'pause', row)">
                                 <v-icon small>mdi-pause</v-icon>
                               </v-btn>
                               <v-btn icon color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', row)">
@@ -257,7 +257,7 @@
                               <v-btn icon color="success" class="timer-btn-round" @click="laneTimerAction('setup', 'play', op)">
                                 <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon color="warning" class="timer-btn-round" @click="laneTimerAction('setup', 'pause', op)">
+                              <v-btn icon color="warning" class="timer-btn-round" :disabled="extractStatus(op) === 'PAUSED'" @click="laneTimerAction('setup', 'pause', op)">
                                 <v-icon small>mdi-pause</v-icon>
                               </v-btn>
                               <v-btn icon color="error" class="timer-btn-round" @click="laneTimerAction('setup', 'stop', op)">
@@ -279,7 +279,7 @@
                               <v-btn icon color="success" class="timer-btn-round" @click="laneTimerAction('run', 'play', op)">
                                 <v-icon small>mdi-play</v-icon>
                               </v-btn>
-                              <v-btn icon color="warning" class="timer-btn-round" @click="laneTimerAction('run', 'pause', op)">
+                              <v-btn icon color="warning" class="timer-btn-round" :disabled="extractStatus(op) === 'PAUSED'" @click="laneTimerAction('run', 'pause', op)">
                                 <v-icon small>mdi-pause</v-icon>
                               </v-btn>
                               <v-btn icon color="error" class="timer-btn-round" @click="laneTimerAction('run', 'stop', op)">
@@ -1845,6 +1845,7 @@ export default {
             })
           }
         } else if (action === 'pause') {
+          if (status === 'PAUSED') return
           await axios.post('/chronometer/timers/pause', { work_order_operation_id: op.id })
         }
         await this.refreshBoard()
@@ -3273,9 +3274,4 @@ export default {
   }
 }
 </style>
-
-
-
-
-
 
