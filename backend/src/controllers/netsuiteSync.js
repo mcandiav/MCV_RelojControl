@@ -18,6 +18,8 @@ const {
 } = require('../services/netsuiteSyncLock');
 const SyncRun = require('../models/sync_run');
 const SyncRunStep = require('../models/sync_run_step');
+const NetsuiteSyncQueue = require('../models/netsuite_sync_queue');
+const { requeueStuckProcessing } = require('../services/netsuiteSyncQueue');
 const config = require('../config/config');
 let netsuitePushInFlight = false;
 let netsuiteOperationalSyncInFlight = false;
@@ -748,9 +750,93 @@ async function runOfficialSyncFlow({ operationIds = null, maxRows = 0 } = {}) {
   }
 }
 
+async function runV4QueueSync(queueItem) {
+  if (!config.V4_SYNC_ENABLED) {
+    return {
+      skipped: true,
+      reason: 'v4_sync_disabled'
+    };
+  }
+  if (!isNetsuiteConfigured()) {
+    throw new Error('NetSuite no esta configurado para V4 queue worker.');
+  }
+  const operationId = Number(queueItem && queueItem.work_order_operation_id);
+  if (!Number.isInteger(operationId) || operationId <= 0) {
+    throw new Error('Queue item sin work_order_operation_id valido.');
+  }
+
+  beginNetsuiteSyncWindow();
+  let syncRun = null;
+  let stepPush = null;
+  let stepWait = null;
+  let stepPull = null;
+  try {
+    syncRun = await createSyncRun({ flowType: 'v4_stop_queue', trigger: 'worker', req: null });
+    stepPush = await createSyncStep(syncRun.id, 'PUSH', {
+      queue_id: queueItem.id,
+      operation_id: operationId,
+      note: 'V4 queue push by operation id'
+    });
+
+    const built = await buildActualsPayload({ operationIds: [operationId] });
+    const items = Array.isArray(built && built.items) ? built.items : [];
+    if (items.length > 0) {
+      const netsuitePush = await pushActualsBatch(items);
+      const marked = await markSuccessfulPushes(items, netsuitePush);
+      await finishSyncStep(stepPush, {
+        ok: true,
+        result: { itemCount: items.length, markedSuccessfulPushes: marked, netsuite: netsuitePush }
+      });
+
+      stepWait = await createSyncStep(syncRun.id, 'GATE_WAITING_IMPORT_OT', { itemCount: items.length });
+      const gate = await waitImportOtGate({ itemCount: items.length });
+      await finishSyncStep(stepWait, { ok: true, result: gate });
+    } else {
+      await finishSyncStep(stepPush, { ok: true, result: { itemCount: 0, pushSkipped: true } });
+    }
+
+    // Pull+replace solo cuando no existan timers activos/pausados (evita pisar WIP operacional en curso).
+    const active = await OperationTimer.count({ where: { status: ['ACTIVE', 'PAUSED'] } });
+    let pull = { skipped: true, reason: 'active_timers_present', activeTimers: active };
+    if (active <= 0) {
+      stepPull = await createSyncStep(syncRun.id, 'PULL', { note: 'fetchFullDataset + replaceAllWipRows' });
+      const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
+      const replaced = await replaceAllWipRows(rows);
+      pull = { skipped: false, totalRows, imported: replaced.imported };
+      await finishSyncStep(stepPull, { ok: true, result: pull });
+    }
+
+    const summary = {
+      queueId: queueItem.id,
+      operationId,
+      pull
+    };
+    await finishSyncRun(syncRun, { ok: true, summary, warning: pull.skipped === true });
+    return summary;
+  } catch (error) {
+    const msg = error.message || String(error);
+    try {
+      if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
+      if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
+      if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
+      if (syncRun && syncRun.status === 'RUNNING') await finishSyncRun(syncRun, { ok: false, errorMessage: msg });
+    } catch (_) {}
+    throw error;
+  } finally {
+    endNetsuiteSyncWindow();
+  }
+}
+
 exports.getConfigStatus = async function getConfigStatus(req, res) {
   return res.status(200).json({
     ...getNetsuiteConfigStatus(),
+    v4_sync_enabled: config.V4_SYNC_ENABLED,
+    v4_worker_enabled: config.V4_WORKER_ENABLED,
+    v4_watchdog_enabled: config.V4_WATCHDOG_ENABLED,
+    v4_worker_interval_ms: config.V4_WORKER_INTERVAL_MS,
+    v4_max_attempts: config.V4_MAX_ATTEMPTS,
+    v4_retry_backoff_ms: config.V4_RETRY_BACKOFF_MS,
+    v4_processing_timeout_ms: config.V4_PROCESSING_TIMEOUT_MS,
     syncInProgress: isNetsuiteSyncWindowActive()
   });
 };
@@ -1116,6 +1202,44 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
   return res.status(200).json({ count: rows.length, rows });
 };
 
+exports.listQueue = async function listQueue(req, res) {
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || '100'), 10) || 100));
+  const status = String(req.query.status || '').trim().toUpperCase();
+  const where = {};
+  if (status) where.status = status;
+  const rows = await NetsuiteSyncQueue.findAll({
+    where,
+    order: [['createdAt', 'DESC']],
+    limit
+  });
+  return res.status(200).json({ count: rows.length, rows: rows.map((r) => r.toJSON()) });
+};
+
+exports.getQueueItem = async function getQueueItem(req, res) {
+  const id = Number(req.params.id || 0);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: 'id invalido' });
+  const row = await NetsuiteSyncQueue.findByPk(id);
+  if (!row) return res.status(404).json({ message: 'No encontrado' });
+  return res.status(200).json({ row: row.toJSON() });
+};
+
+exports.retryQueueItem = async function retryQueueItem(req, res) {
+  const id = Number(req.params.id || 0);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: 'id invalido' });
+  const row = await NetsuiteSyncQueue.findByPk(id);
+  if (!row) return res.status(404).json({ message: 'No encontrado' });
+  row.status = 'RETRY';
+  row.next_retry_at = new Date();
+  row.locked_at = null;
+  await row.save();
+  return res.status(200).json({ message: 'Pendiente reencolado.', row: row.toJSON() });
+};
+
+exports.requeueStuckQueueItems = async function requeueStuckQueueItems(req, res) {
+  const out = await requeueStuckProcessing();
+  return res.status(200).json({ message: 'Watchdog ejecutado.', ...out });
+};
+
 /** Diagnóstico: listar datasets visibles por REST. */
 exports.listDatasets = async function listDatasets(req, res) {
   if (!isNetsuiteConfigured()) {
@@ -1204,5 +1328,6 @@ exports.peekDataset = async function peekDataset(req, res) {
 
 exports.runOfficialSyncFlow = runOfficialSyncFlow;
 exports.logSchedulerShiftCloseOperational = logSchedulerShiftCloseOperational;
+exports.runV4QueueSync = runV4QueueSync;
 
 

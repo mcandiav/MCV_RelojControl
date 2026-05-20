@@ -33,6 +33,10 @@ router.post('/netsuite/sync-operational', [security.verifyToken, security.isAdmi
 router.get('/netsuite/sync-runs', [security.verifyToken, security.isAdmin], netsuiteSync.listSyncRuns);
 router.get('/netsuite/sync-runs/:id', [security.verifyToken, security.isAdmin], netsuiteSync.getSyncRun);
 router.get('/netsuite/push-log', [security.verifyToken, security.isAdmin], netsuiteSync.listPushLogRows);
+router.get('/netsuite/queue', [security.verifyToken, security.isAdmin], netsuiteSync.listQueue);
+router.get('/netsuite/queue/:id', [security.verifyToken, security.isAdmin], netsuiteSync.getQueueItem);
+router.post('/netsuite/queue/:id/retry', [security.verifyToken, security.isAdmin], netsuiteSync.retryQueueItem);
+router.post('/netsuite/queue/requeue-stuck', [security.verifyToken, security.isAdmin], netsuiteSync.requeueStuckQueueItems);
 router.post('/netsuite/oauth/clear-cache', [security.verifyToken, security.isAdmin], netsuiteSync.clearOAuthCache);
 
 router.post('/timers/start', security.verifyToken, chronometer.startTimer);

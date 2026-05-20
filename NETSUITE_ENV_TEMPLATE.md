@@ -31,6 +31,15 @@ NETSUITE_RESTLET_IN_DEPLOYMENT_ID=customdeploy1
 
 # Opcional: tras cierre de turno (auto o POST /chronometer/shift/close), intentar push del batch IN.
 # NETSUITE_PUSH_ON_SHIFT_CLOSE=true
+
+# V4 (STOP desacoplado + worker de cola)
+# V4_SYNC_ENABLED=false
+# V4_WORKER_ENABLED=false
+# V4_WATCHDOG_ENABLED=true
+# V4_WORKER_INTERVAL_MS=5000
+# V4_MAX_ATTEMPTS=5
+# V4_RETRY_BACKOFF_MS=30000
+# V4_PROCESSING_TIMEOUT_MS=300000
 ```
 
 ## Uso esperado por Cursor

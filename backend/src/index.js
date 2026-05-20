@@ -14,11 +14,13 @@ require('./models/operation_time_total');
 require('./models/shift_close_slot');
 require('./models/sync_run');
 require('./models/sync_run_step');
+require('./models/netsuite_sync_queue');
 
 const authRoutes = require('./routes/auth');
 const chronometerRoutes = require('./routes/chronometer');
 const config = require('./config/config');
 const { registerShiftCloseCrons } = require('./jobs/shiftCloseScheduler');
+const { startNetsuiteSyncQueueWorker } = require('./jobs/netsuiteSyncQueueWorker');
 const cors = require('cors');
 const corsOptions = require('./config/corsOptions');
 
@@ -129,6 +131,7 @@ db.sync({ alter: true })
         console.log('User auto-seed disabled in operational environments');
         await ensureShiftCloseSlots();
         await registerShiftCloseCrons();
+        startNetsuiteSyncQueueWorker();
         dbReady = true;
         console.log(`Server initialized (API lista, build=${BUILD_VERSION}).`);
     })

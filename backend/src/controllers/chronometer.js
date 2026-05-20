@@ -13,6 +13,7 @@ const OperationTimeTotal = require('../models/operation_time_total');
 const config = require('../config/config');
 const { getShiftDateString, computeTotalsFromEvents } = require('../lib/timerEventTotals');
 const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
+const { enqueueFromStop } = require('../services/netsuiteSyncQueue');
 const TIMER_TERMINAL_LOCK_CODE = 'TIMER_LOCKED_BY_OTHER_TERMINAL';
 const TIMER_TERMINAL_LOCK_MESSAGE =
   'Esta operación ya fue lanzada o pausada en otro terminal. Debe detenerla en el terminal original para liberarla. El supervisor también puede liberarla.';
@@ -765,7 +766,7 @@ exports.stopTimer = async function stopTimer(req, res) {
     }
   }
 
-  await appendEvent({
+  const stopEvent = await appendEvent({
     timerId: timer.id,
     operationId: timer.work_order_operation_id,
     userId: req.userId,
@@ -775,6 +776,18 @@ exports.stopTimer = async function stopTimer(req, res) {
         ? { completed_quantity: completedQtyToStore }
         : undefined
   });
+
+  if (config.V4_SYNC_ENABLED) {
+    try {
+      await enqueueFromStop({
+        operationId: timer.work_order_operation_id,
+        eventId: stopEvent && stopEvent.id ? stopEvent.id : null,
+        userId: req.userId
+      });
+    } catch (queueErr) {
+      console.error('V4 queue enqueue failed on STOP:', queueErr && queueErr.message ? queueErr.message : queueErr);
+    }
+  }
 
   return res.status(200).json(timer);
 };

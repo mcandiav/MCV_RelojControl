@@ -31,5 +31,28 @@ module.exports = {
         return Math.max(5, Math.min(300, n));
     })(),
     NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT:
-        process.env.NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT === 'false' ? false : true
+        process.env.NETSUITE_IMPORT_OT_GATE_FORCE_PULL_ON_TIMEOUT === 'false' ? false : true,
+    V4_SYNC_ENABLED: process.env.V4_SYNC_ENABLED === 'true',
+    V4_WORKER_ENABLED: process.env.V4_WORKER_ENABLED === 'true',
+    V4_WATCHDOG_ENABLED: process.env.V4_WATCHDOG_ENABLED === 'false' ? false : true,
+    V4_WORKER_INTERVAL_MS: (() => {
+        const n = parseInt(process.env.V4_WORKER_INTERVAL_MS, 10);
+        if (!Number.isFinite(n)) return 5000;
+        return Math.max(1000, Math.min(60000, n));
+    })(),
+    V4_MAX_ATTEMPTS: (() => {
+        const n = parseInt(process.env.V4_MAX_ATTEMPTS, 10);
+        if (!Number.isFinite(n)) return 5;
+        return Math.max(1, Math.min(20, n));
+    })(),
+    V4_RETRY_BACKOFF_MS: (() => {
+        const n = parseInt(process.env.V4_RETRY_BACKOFF_MS, 10);
+        if (!Number.isFinite(n)) return 30000;
+        return Math.max(1000, Math.min(3600000, n));
+    })(),
+    V4_PROCESSING_TIMEOUT_MS: (() => {
+        const n = parseInt(process.env.V4_PROCESSING_TIMEOUT_MS, 10);
+        if (!Number.isFinite(n)) return 300000;
+        return Math.max(10000, Math.min(7200000, n));
+    })()
 }
