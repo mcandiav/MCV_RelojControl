@@ -769,7 +769,6 @@ async function runV4QueueSync(queueItem) {
   let syncRun = null;
   let stepPush = null;
   let stepWait = null;
-  let stepPull = null;
   try {
     syncRun = await createSyncRun({ flowType: 'v4_stop_queue', trigger: 'worker', req: null });
     stepPush = await createSyncStep(syncRun.id, 'PUSH', {
@@ -812,28 +811,15 @@ async function runV4QueueSync(queueItem) {
       await finishSyncStep(stepPush, { ok: true, result: { itemCount: 0, pushSkipped: true } });
     }
 
-    // Pull+replace solo cuando no existan timers activos/pausados (evita pisar WIP operacional en curso).
-    const active = await OperationTimer.count({ where: { status: ['ACTIVE', 'PAUSED'] } });
-    let pull = { skipped: true, reason: 'active_timers_present', activeTimers: active };
-    if (active <= 0) {
-      stepPull = await createSyncStep(syncRun.id, 'PULL', { note: 'fetchFullDataset + replaceAllWipRows' });
-      const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
-      const replaced = await replaceAllWipRows(rows);
-      pull = { skipped: false, totalRows, imported: replaced.imported };
-      await finishSyncStep(stepPull, { ok: true, result: pull });
-    }
-
     const summary = {
       queueId: queueItem.id,
-      operationId,
-      pull
+      operationId
     };
-    await finishSyncRun(syncRun, { ok: true, summary, warning: pull.skipped === true });
+    await finishSyncRun(syncRun, { ok: true, summary, warning: false });
     return summary;
   } catch (error) {
     const msg = error.message || String(error);
     try {
-      if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
       if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
       if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
       if (syncRun && syncRun.status === 'RUNNING') await finishSyncRun(syncRun, { ok: false, errorMessage: msg });
