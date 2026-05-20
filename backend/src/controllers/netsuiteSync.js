@@ -768,7 +768,6 @@ async function runV4QueueSync(queueItem) {
   beginNetsuiteSyncWindow();
   let syncRun = null;
   let stepPush = null;
-  let stepWait = null;
   try {
     syncRun = await createSyncRun({ flowType: 'v4_stop_queue', trigger: 'worker', req: null });
     stepPush = await createSyncStep(syncRun.id, 'PUSH', {
@@ -803,10 +802,6 @@ async function runV4QueueSync(queueItem) {
           report_rows: reportRows
         }
       });
-
-      stepWait = await createSyncStep(syncRun.id, 'GATE_WAITING_IMPORT_OT', { itemCount: items.length });
-      const gate = await waitImportOtGate({ itemCount: items.length });
-      await finishSyncStep(stepWait, { ok: true, result: gate });
     } else {
       await finishSyncStep(stepPush, { ok: true, result: { itemCount: 0, pushSkipped: true } });
     }
@@ -820,7 +815,6 @@ async function runV4QueueSync(queueItem) {
   } catch (error) {
     const msg = error.message || String(error);
     try {
-      if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
       if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
       if (syncRun && syncRun.status === 'RUNNING') await finishSyncRun(syncRun, { ok: false, errorMessage: msg });
     } catch (_) {}
