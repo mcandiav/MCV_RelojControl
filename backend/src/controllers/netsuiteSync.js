@@ -784,11 +784,22 @@ async function runV4QueueSync(queueItem) {
       const netsuitePush = await pushActualsBatch(items);
       const marked = await markSuccessfulPushes(items, netsuitePush);
       const reportRows = await buildPushComparisonRows(items, netsuitePush);
+      const pushItems = items.map((it) => ({
+        operation_id: it.operation_id,
+        ot_number: it.ot_number,
+        operation_sequence: it.operation_sequence,
+        netsuite_work_order_id: it.netsuite_work_order_id,
+        netsuite_operation_id: it.netsuite_operation_id,
+        actual_setup_time: it.actual_setup_time,
+        actual_run_time: it.actual_run_time,
+        completed_quantity: it.completed_quantity
+      }));
       await finishSyncStep(stepPush, {
         ok: true,
         result: {
           itemCount: items.length,
           markedSuccessfulPushes: marked,
+          push_items: pushItems,
           netsuite: netsuitePush,
           report_rows: reportRows
         }
@@ -1202,7 +1213,41 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
       parsed = null;
     }
     const reportRows = parsed && Array.isArray(parsed.report_rows) ? parsed.report_rows : [];
-    for (const r of reportRows) {
+    let rowsToEmit = reportRows;
+    if (rowsToEmit.length === 0 && parsed && Array.isArray(parsed.push_items)) {
+      const nsResults = Array.isArray(parsed.netsuite && parsed.netsuite.results) ? parsed.netsuite.results : [];
+      const nsByOp = new Map(
+        nsResults.map((r) => [String(r && r.netsuite_operation_id != null ? r.netsuite_operation_id : ''), r])
+      );
+      rowsToEmit = parsed.push_items.map((it) => {
+        const nsOpId = String(it && it.netsuite_operation_id != null ? it.netsuite_operation_id : '');
+        const ns = nsByOp.get(nsOpId);
+        const status = ns ? (ns.success === true ? 'SUCCESS' : 'ERROR') : 'UNKNOWN';
+        const message = ns ? String(ns.message || ns.error || ns.reason || '') : 'Sin resultado detallado';
+        return {
+          operation_id: Number(it && it.operation_id),
+          ot_number: String((it && it.ot_number) || ''),
+          operation_sequence: Number(it && it.operation_sequence) || 0,
+          operation_name: '',
+          resource_code: '',
+          area: '',
+          netsuite_work_order_id: it && it.netsuite_work_order_id != null ? String(it.netsuite_work_order_id) : '',
+          netsuite_operation_id: nsOpId,
+          t_mon_base: 0,
+          t_mon_enviado: Number(it && it.actual_setup_time) || 0,
+          t_mon_netsuite: Number(it && it.actual_setup_time) || 0,
+          t_eje_base: 0,
+          t_eje_enviado: Number(it && it.actual_run_time) || 0,
+          t_eje_netsuite: Number(it && it.actual_run_time) || 0,
+          qty_base: 0,
+          qty_enviado: Number(it && it.completed_quantity) || 0,
+          qty_netsuite: Number(it && it.completed_quantity) || 0,
+          sync_status: status,
+          sync_message: message
+        };
+      });
+    }
+    for (const r of rowsToEmit) {
       if (otFilter && String(r.ot_number || '').trim() !== otFilter) continue;
       if (resourceFilter && String(r.resource_code || '').trim().toUpperCase() !== resourceFilter) continue;
       rows.push({
