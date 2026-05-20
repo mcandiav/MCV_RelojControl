@@ -661,6 +661,53 @@
                 </div>
                 <div v-else>
                   <v-alert v-if="nsPushLogError" type="error" dense outlined class="mb-3">{{ nsPushLogError }}</v-alert>
+                  
+                  <v-row dense class="mb-2">
+                    <v-col cols="12" md="3">
+                      <v-text-field
+                        v-model.trim="nsPushLogFilters.ot"
+                        label="Filtro OT"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-text-field
+                        v-model.trim="nsPushLogFilters.resource"
+                        label="Filtro recurso"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-text-field
+                        v-model="nsPushLogFilters.dateFrom"
+                        label="Desde"
+                        type="date"
+                        dense
+                        outlined
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-text-field
+                        v-model="nsPushLogFilters.dateTo"
+                        label="Hasta"
+                        type="date"
+                        dense
+                        outlined
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2" class="d-flex" style="gap:8px">
+                      <v-btn small color="primary" :loading="loadingNsPushLog" @click="loadNsPushLog">Filtrar</v-btn>
+                      <v-btn small text @click="clearNsPushLogFilters">Limpiar</v-btn>
+                    </v-col>
+                  </v-row>
                   <v-data-table
                     :headers="nsPushLogHeaders"
                     :items="nsPushLogRows"
@@ -989,6 +1036,12 @@ export default {
       nsPushLogRows: [],
       loadingNsPushLog: false,
       nsPushLogError: '',
+      nsPushLogFilters: {
+        ot: '',
+        resource: '',
+        dateFrom: '',
+        dateTo: ''
+      },
       syncRunHeaders: [
         { text: 'Inicio', value: 'started_at', sortable: true },
         { text: 'Tipo', value: 'flow_type', sortable: true },
@@ -2105,7 +2158,12 @@ export default {
       this.loadingNsPushLog = true
       this.nsPushLogError = ''
       try {
-        const res = await axios.get('/chronometer/netsuite/push-log', { params: { limit: 1000, stepLimit: 200 } })
+        const params = { limit: 1000, stepLimit: 200 }
+        if (this.nsPushLogFilters.ot) params.ot = this.nsPushLogFilters.ot
+        if (this.nsPushLogFilters.resource) params.resource = this.nsPushLogFilters.resource
+        if (this.nsPushLogFilters.dateFrom) params.date_from = this.nsPushLogFilters.dateFrom
+        if (this.nsPushLogFilters.dateTo) params.date_to = this.nsPushLogFilters.dateTo
+        const res = await axios.get('/chronometer/netsuite/push-log', { params })
         const rows = res.data && res.data.rows
         this.nsPushLogRows = Array.isArray(rows)
           ? rows.map((r, idx) => ({ ...r, row_key: `${r.sync_run_id || 'x'}-${r.operation_id || 'op'}-${idx}` }))
@@ -2118,6 +2176,15 @@ export default {
       } finally {
         this.loadingNsPushLog = false
       }
+    },
+    clearNsPushLogFilters() {
+      this.nsPushLogFilters = {
+        ot: '',
+        resource: '',
+        dateFrom: '',
+        dateTo: ''
+      }
+      this.loadNsPushLog()
     },
     async openSyncRunDetail(item) {
       if (!item || !item.id) return
@@ -3280,4 +3347,3 @@ export default {
   }
 }
 </style>
-

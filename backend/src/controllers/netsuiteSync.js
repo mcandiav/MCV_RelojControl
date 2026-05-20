@@ -783,9 +783,15 @@ async function runV4QueueSync(queueItem) {
     if (items.length > 0) {
       const netsuitePush = await pushActualsBatch(items);
       const marked = await markSuccessfulPushes(items, netsuitePush);
+      const reportRows = await buildPushComparisonRows(items, netsuitePush);
       await finishSyncStep(stepPush, {
         ok: true,
-        result: { itemCount: items.length, markedSuccessfulPushes: marked, netsuite: netsuitePush }
+        result: {
+          itemCount: items.length,
+          markedSuccessfulPushes: marked,
+          netsuite: netsuitePush,
+          report_rows: reportRows
+        }
       });
 
       stepWait = await createSyncStep(syncRun.id, 'GATE_WAITING_IMPORT_OT', { itemCount: items.length });
@@ -1170,6 +1176,13 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
   const stepLimit = Math.min(500, Math.max(1, parseInt(String(req.query.stepLimit || '150'), 10) || 150));
   const rowLimit = Math.min(5000, Math.max(1, parseInt(String(req.query.limit || '1000'), 10) || 1000));
   const otFilter = String(req.query.ot || '').trim();
+  const resourceFilter = String(req.query.resource || req.query.recurso || '').trim().toUpperCase();
+  const dateFromRaw = String(req.query.date_from || req.query.dateFrom || '').trim();
+  const dateToRaw = String(req.query.date_to || req.query.dateTo || '').trim();
+  const dateFrom = dateFromRaw ? new Date(`${dateFromRaw}T00:00:00.000Z`) : null;
+  const dateTo = dateToRaw ? new Date(`${dateToRaw}T23:59:59.999Z`) : null;
+  const hasFrom = dateFrom && Number.isFinite(dateFrom.getTime());
+  const hasTo = dateTo && Number.isFinite(dateTo.getTime());
 
   const steps = await SyncRunStep.findAll({
     where: { step_name: 'PUSH' },
@@ -1179,6 +1192,9 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
 
   const rows = [];
   for (const s of steps) {
+    const stepTs = new Date(s.started_at);
+    if (hasFrom && stepTs < dateFrom) continue;
+    if (hasTo && stepTs > dateTo) continue;
     let parsed = null;
     try {
       parsed = s.result_json ? JSON.parse(String(s.result_json)) : null;
@@ -1188,6 +1204,7 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
     const reportRows = parsed && Array.isArray(parsed.report_rows) ? parsed.report_rows : [];
     for (const r of reportRows) {
       if (otFilter && String(r.ot_number || '').trim() !== otFilter) continue;
+      if (resourceFilter && String(r.resource_code || '').trim().toUpperCase() !== resourceFilter) continue;
       rows.push({
         ...r,
         sync_run_id: s.sync_run_id,
