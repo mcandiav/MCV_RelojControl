@@ -148,6 +148,23 @@ function safeJsonString(obj) {
   }
 }
 
+function sanitizeAxiosErrorForDiagnostic(error) {
+  const resp = error && error.response ? error.response : null;
+  const data = resp && resp.data !== undefined ? resp.data : null;
+  const oErrorDetails =
+    data && typeof data === 'object' && Array.isArray(data['o:errorDetails'])
+      ? data['o:errorDetails']
+      : [];
+  return {
+    ok: false,
+    http_status: resp && Number.isFinite(Number(resp.status)) ? Number(resp.status) : null,
+    status_text: resp && resp.statusText ? String(resp.statusText) : null,
+    code: error && error.code ? String(error.code) : null,
+    data,
+    error_details: oErrorDetails
+  };
+}
+
 async function buildZim400PayloadFromQueueItem(queueItem) {
   const stopEventId = Number(queueItem && queueItem.trigger_event_id);
   const opId = Number(queueItem && queueItem.work_order_operation_id);
@@ -210,20 +227,65 @@ async function runZim400Publisher(queueItem) {
   row.status = 'PROCESSING';
   row.attempt_count = Number(row.attempt_count || 0) + 1;
   row.payload_json = safeJsonString(payload);
+  const startedAt = new Date();
   await row.save();
   try {
     const out = await createZim400Record(payload);
+    const diagnostic = {
+      queue_id: queueItem.id || null,
+      trigger_event_id: stopEventId,
+      work_order_operation_id: op.id,
+      destination: 'ZIM400',
+      record_type: String(process.env.NETSUITE_ZIM400_RECORD_TYPE || 'CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL'),
+      method: 'CREATE',
+      request_payload: payload,
+      response: {
+        ok: true,
+        http_status: out.http_status || 200,
+        status_text: out.status_text || 'OK',
+        data: out.data || null,
+        error_details: []
+      },
+      error_message: null,
+      attempt: row.attempt_count,
+      created_at: startedAt.toISOString(),
+      finished_at: new Date().toISOString()
+    };
     row.status = 'SENT';
     row.netsuite_record_id = out.id || null;
     row.sent_at = new Date();
     row.last_error = null;
+    row.diagnostic_json = safeJsonString(diagnostic);
     await row.save();
-    return { success: true, stop_event_id: stopEventId, netsuite_record_id: row.netsuite_record_id };
+    return {
+      success: true,
+      stop_event_id: stopEventId,
+      netsuite_record_id: row.netsuite_record_id,
+      diagnostic
+    };
   } catch (error) {
+    const response = sanitizeAxiosErrorForDiagnostic(error);
+    const diagnostic = {
+      queue_id: queueItem.id || null,
+      trigger_event_id: stopEventId,
+      work_order_operation_id: op.id,
+      destination: 'ZIM400',
+      record_type: String(process.env.NETSUITE_ZIM400_RECORD_TYPE || 'CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL'),
+      method: 'CREATE',
+      request_payload: payload,
+      response,
+      error_message: String(error && error.message ? error.message : error),
+      attempt: row.attempt_count,
+      created_at: startedAt.toISOString(),
+      finished_at: new Date().toISOString()
+    };
     row.status = 'ERROR';
-    row.last_error = String(error && error.message ? error.message : error);
+    row.last_error = diagnostic.error_message;
+    row.diagnostic_json = safeJsonString(diagnostic);
     await row.save();
-    throw error;
+    const wrapped = new Error(diagnostic.error_message);
+    wrapped.diagnostic = diagnostic;
+    throw wrapped;
   }
 }
 
@@ -907,7 +969,11 @@ async function runV4QueueSync(queueItem) {
         await finishSyncStep(stepZim400, { ok: true, result: zimOut });
       } catch (zimErr) {
         const zimMsg = zimErr && zimErr.message ? zimErr.message : String(zimErr);
-        await finishSyncStep(stepZim400, { ok: false, errorMessage: zimMsg });
+        await finishSyncStep(stepZim400, {
+          ok: false,
+          result: zimErr && zimErr.diagnostic ? zimErr.diagnostic : null,
+          errorMessage: zimMsg
+        });
       }
     }
 

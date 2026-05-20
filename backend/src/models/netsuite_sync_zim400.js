@@ -21,6 +21,7 @@ const NetsuiteSyncZim400 = sequelize.define(
     attempt_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     last_error: { type: DataTypes.TEXT, allowNull: true },
     payload_json: { type: DataTypes.TEXT('long'), allowNull: true },
+    diagnostic_json: { type: DataTypes.TEXT('long'), allowNull: true },
     netsuite_record_id: { type: DataTypes.STRING(64), allowNull: true },
     sent_at: { type: DataTypes.DATE, allowNull: true }
   },

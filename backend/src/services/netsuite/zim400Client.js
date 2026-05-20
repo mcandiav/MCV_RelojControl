@@ -19,7 +19,7 @@ async function createZim400Record(payload) {
   const recordType = String(process.env.NETSUITE_ZIM400_RECORD_TYPE || 'customrecord_zim_data_reloj_control').trim();
   const token = await getNetsuiteAccessToken();
   const url = `${cfg.recordApiBaseUrl}/${recordTypePath(recordType)}`;
-  const { data, headers } = await axios.post(url, payload, {
+  const { data, headers, status, statusText } = await axios.post(url, payload, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
@@ -33,7 +33,9 @@ async function createZim400Record(payload) {
   const idByLocation = extractIdFromHref(headers && headers.location, recordType);
   return {
     id: idByData || idByHref || idByLocation || null,
-    data
+    data,
+    http_status: status,
+    status_text: statusText || null
   };
 }
 
