@@ -15,6 +15,7 @@ require('./models/shift_close_slot');
 require('./models/sync_run');
 require('./models/sync_run_step');
 require('./models/netsuite_sync_queue');
+require('./models/netsuite_sync_zim400');
 
 const authRoutes = require('./routes/auth');
 const chronometerRoutes = require('./routes/chronometer');

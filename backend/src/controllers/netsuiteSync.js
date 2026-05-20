@@ -19,12 +19,15 @@ const {
 const SyncRun = require('../models/sync_run');
 const SyncRunStep = require('../models/sync_run_step');
 const NetsuiteSyncQueue = require('../models/netsuite_sync_queue');
+const NetsuiteSyncZim400 = require('../models/netsuite_sync_zim400');
 const { requeueStuckProcessing } = require('../services/netsuiteSyncQueue');
+const { createZim400Record } = require('../services/netsuite/zim400Client');
 const config = require('../config/config');
 let netsuitePushInFlight = false;
 let netsuiteOperationalSyncInFlight = false;
 const IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE =
   'WARNING: import_ot no estaba terminado antes del pull. Posible inconsistencia en la data del Cronometro.';
+const ZIM400_ENABLED = process.env.V4_ZIM400_ENABLED !== 'false';
 
 function resolveAreaFromResource(resourceCode) {
   const code = String(resourceCode || '').trim().toUpperCase();
@@ -135,6 +138,93 @@ function asNonNegativeInt(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.floor(n));
+}
+
+function safeJsonString(obj) {
+  try {
+    return JSON.stringify(obj == null ? null : obj);
+  } catch (_) {
+    return JSON.stringify({ non_serializable: true });
+  }
+}
+
+async function buildZim400PayloadFromQueueItem(queueItem) {
+  const stopEventId = Number(queueItem && queueItem.trigger_event_id);
+  const opId = Number(queueItem && queueItem.work_order_operation_id);
+  if (!Number.isInteger(stopEventId) || stopEventId <= 0) {
+    throw new Error('Queue item sin trigger_event_id para ZIM400.');
+  }
+  const ev = await TimerEvent.findByPk(stopEventId);
+  const op = await WorkOrderOperation.findByPk(opId);
+  if (!ev || !op) throw new Error('No se encontro contexto STOP para ZIM400.');
+  let qtyStop = null;
+  try {
+    const d = ev.details_json ? JSON.parse(String(ev.details_json)) : null;
+    qtyStop = d && d.completed_quantity != null ? Number(d.completed_quantity) : null;
+  } catch (_) {}
+  const startedAt = op.updatedAt || ev.event_at;
+  const endedAt = ev.event_at;
+  const minutesLoaded = Math.max(0, Math.floor(Number(op.actual_setup_time || 0) + Number(op.actual_run_time || 0)));
+  const tareaTexto = `${op.operation_sequence || ''} | ${op.resource_code || ''} | ${op.operation_name || ''}`.trim();
+  const payload = {
+    custrecord_zim_reloj_ot: op.netsuite_work_order_id || null,
+    custrecord_zim_reloj_ot_id: op.netsuite_work_order_id || null,
+    custrecord_zim_reloj_ot_text: op.ot_number ? `Orden de Trabajo #${op.ot_number}` : null,
+    custrecord_zim_reloj_tarea: op.netsuite_operation_id || null,
+    custrecord_zim_reloj_tarea_texto: tareaTexto,
+    custrecord_zim_reloj_num_secuencia: op.operation_sequence || null,
+    custrecord_zim_reloj_operacion: op.operation_name || null,
+    custrecord_zim_reloj_minutos_cargados: minutesLoaded,
+    custrecord_zim_reloj_horas: Number((minutesLoaded / 60).toFixed(2)),
+    custrecord_zim_reloj_inicio: startedAt || null,
+    custrecord_zim_reloj_fin: endedAt || null,
+    custrecord_zim_reloj_tiempo_planificado: Math.max(
+      0,
+      Math.floor(Number(op.planned_setup_minutes || 0) + Number(op.planned_operation_minutes || 0))
+    ),
+    custrecord_zim_reloj_cantidad: Number(op.planned_quantity || 0),
+    custrecord_zim_reloj_cantidad_terminada: Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0
+  };
+  return { payload, stopEventId, op };
+}
+
+async function runZim400Publisher(queueItem) {
+  const { payload, stopEventId, op } = await buildZim400PayloadFromQueueItem(queueItem);
+  const [row] = await NetsuiteSyncZim400.findOrCreate({
+    where: { stop_event_id: stopEventId },
+    defaults: {
+      stop_event_id: stopEventId,
+      queue_item_id: queueItem.id || null,
+      work_order_operation_id: op.id,
+      ot_number: op.ot_number || null,
+      operation_sequence: op.operation_sequence || null,
+      netsuite_work_order_id: op.netsuite_work_order_id || null,
+      netsuite_operation_id: op.netsuite_operation_id || null,
+      status: 'PENDING',
+      attempt_count: 0
+    }
+  });
+  if (row.status === 'SENT') {
+    return { skipped: true, reason: 'already_sent', stop_event_id: stopEventId, netsuite_record_id: row.netsuite_record_id };
+  }
+  row.status = 'PROCESSING';
+  row.attempt_count = Number(row.attempt_count || 0) + 1;
+  row.payload_json = safeJsonString(payload);
+  await row.save();
+  try {
+    const out = await createZim400Record(payload);
+    row.status = 'SENT';
+    row.netsuite_record_id = out.id || null;
+    row.sent_at = new Date();
+    row.last_error = null;
+    await row.save();
+    return { success: true, stop_event_id: stopEventId, netsuite_record_id: row.netsuite_record_id };
+  } catch (error) {
+    row.status = 'ERROR';
+    row.last_error = String(error && error.message ? error.message : error);
+    await row.save();
+    throw error;
+  }
 }
 
 async function buildPushComparisonRows(items, netsuiteResult) {
@@ -768,6 +858,7 @@ async function runV4QueueSync(queueItem) {
   beginNetsuiteSyncWindow();
   let syncRun = null;
   let stepPush = null;
+  let stepZim400 = null;
   try {
     syncRun = await createSyncRun({ flowType: 'v4_stop_queue', trigger: 'worker', req: null });
     stepPush = await createSyncStep(syncRun.id, 'PUSH', {
@@ -806,6 +897,20 @@ async function runV4QueueSync(queueItem) {
       await finishSyncStep(stepPush, { ok: true, result: { itemCount: 0, pushSkipped: true } });
     }
 
+    if (ZIM400_ENABLED) {
+      stepZim400 = await createSyncStep(syncRun.id, 'PUSH_ZIM400', {
+        queue_id: queueItem.id,
+        trigger_event_id: queueItem.trigger_event_id || null
+      });
+      try {
+        const zimOut = await runZim400Publisher(queueItem);
+        await finishSyncStep(stepZim400, { ok: true, result: zimOut });
+      } catch (zimErr) {
+        const zimMsg = zimErr && zimErr.message ? zimErr.message : String(zimErr);
+        await finishSyncStep(stepZim400, { ok: false, errorMessage: zimMsg });
+      }
+    }
+
     const summary = {
       queueId: queueItem.id,
       operationId
@@ -815,6 +920,7 @@ async function runV4QueueSync(queueItem) {
   } catch (error) {
     const msg = error.message || String(error);
     try {
+      if (stepZim400 && stepZim400.status === 'RUNNING') await finishSyncStep(stepZim400, { ok: false, errorMessage: msg });
       if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
       if (syncRun && syncRun.status === 'RUNNING') await finishSyncRun(syncRun, { ok: false, errorMessage: msg });
     } catch (_) {}
@@ -834,6 +940,7 @@ exports.getConfigStatus = async function getConfigStatus(req, res) {
     v4_max_attempts: config.V4_MAX_ATTEMPTS,
     v4_retry_backoff_ms: config.V4_RETRY_BACKOFF_MS,
     v4_processing_timeout_ms: config.V4_PROCESSING_TIMEOUT_MS,
+    v4_zim400_enabled: ZIM400_ENABLED,
     syncInProgress: isNetsuiteSyncWindowActive()
   });
 };
@@ -1289,6 +1396,21 @@ exports.retryQueueItem = async function retryQueueItem(req, res) {
 exports.requeueStuckQueueItems = async function requeueStuckQueueItems(req, res) {
   const out = await requeueStuckProcessing();
   return res.status(200).json({ message: 'Watchdog ejecutado.', ...out });
+};
+
+exports.listZim400Log = async function listZim400Log(req, res) {
+  const limit = Math.min(1000, Math.max(1, parseInt(String(req.query.limit || '200'), 10) || 200));
+  const otFilter = String(req.query.ot || '').trim();
+  const statusFilter = String(req.query.status || '').trim().toUpperCase();
+  const where = {};
+  if (otFilter) where.ot_number = otFilter;
+  if (statusFilter) where.status = statusFilter;
+  const rows = await NetsuiteSyncZim400.findAll({
+    where,
+    order: [['createdAt', 'DESC']],
+    limit
+  });
+  return res.status(200).json({ count: rows.length, rows: rows.map((r) => r.toJSON()) });
 };
 
 /** Diagnóstico: listar datasets visibles por REST. */

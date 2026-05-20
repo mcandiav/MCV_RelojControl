@@ -570,6 +570,7 @@
                   <v-tab>Operaciones</v-tab>
                   <v-tab>Sincronizaciones</v-tab>
                   <v-tab>Log NetSuite</v-tab>
+                  <v-tab>Log ZIM400</v-tab>
                 </v-tabs>
 
                 <div v-if="reportView === 0">
@@ -659,7 +660,7 @@
                     </template>
                   </v-data-table>
                 </div>
-                <div v-else>
+                <div v-else-if="reportView === 2">
                   <v-alert v-if="nsPushLogError" type="error" dense outlined class="mb-3">{{ nsPushLogError }}</v-alert>
                   
                   <v-row dense class="mb-2">
@@ -733,6 +734,30 @@
                     </template>
                     <template v-slot:no-data>
                       <div class="py-6 text-center grey--text">No hay filas de push registradas.</div>
+                    </template>
+                  </v-data-table>
+                </div>
+                <div v-else>
+                  <v-alert v-if="zim400LogError" type="error" dense outlined class="mb-3">{{ zim400LogError }}</v-alert>
+                  <v-data-table
+                    :headers="zim400LogHeaders"
+                    :items="zim400LogRows"
+                    item-key="id"
+                    dense
+                    class="compact-table elevation-0"
+                    :loading="loadingZim400Log"
+                    :footer-props="{ itemsPerPageOptions: [25, 50, 100, 200] }"
+                  >
+                    <template v-slot:item.createdAt="{ item }">{{ formatReportDate(item.createdAt) }}</template>
+                    <template v-slot:item.sent_at="{ item }">{{ formatReportDate(item.sent_at) }}</template>
+                    <template v-slot:item.status="{ item }">
+                      <v-chip x-small :color="item.status === 'SENT' ? 'success' : (item.status === 'ERROR' ? 'error' : 'grey')" dark>
+                        {{ item.status || 'UNKNOWN' }}
+                      </v-chip>
+                    </template>
+                    <template v-slot:item.last_error="{ item }">{{ item.last_error || '?' }}</template>
+                    <template v-slot:no-data>
+                      <div class="py-6 text-center grey--text">No hay filas ZIM400 registradas.</div>
                     </template>
                   </v-data-table>
                 </div>
@@ -1036,6 +1061,9 @@ export default {
       nsPushLogRows: [],
       loadingNsPushLog: false,
       nsPushLogError: '',
+      zim400LogRows: [],
+      loadingZim400Log: false,
+      zim400LogError: '',
       nsPushLogFilters: {
         ot: '',
         resource: '',
@@ -1071,6 +1099,20 @@ export default {
         { text: 'Qty_netsuite', value: 'qty_netsuite', sortable: true, align: 'end' },
         { text: 'Estado', value: 'sync_status', sortable: true },
         { text: 'Detalle', value: 'sync_message', sortable: true }
+      ],
+      zim400LogHeaders: [
+        { text: 'Creado', value: 'createdAt', sortable: true },
+        { text: 'Enviado', value: 'sent_at', sortable: true },
+        { text: 'STOP Event', value: 'stop_event_id', sortable: true, align: 'end' },
+        { text: 'Queue', value: 'queue_item_id', sortable: true, align: 'end' },
+        { text: 'OT', value: 'ot_number', sortable: true },
+        { text: 'Seq', value: 'operation_sequence', sortable: true, align: 'end' },
+        { text: 'NS WO', value: 'netsuite_work_order_id', sortable: true },
+        { text: 'NS Task', value: 'netsuite_operation_id', sortable: true },
+        { text: 'NS Record ID', value: 'netsuite_record_id', sortable: true },
+        { text: 'Intentos', value: 'attempt_count', sortable: true, align: 'end' },
+        { text: 'Estado', value: 'status', sortable: true },
+        { text: 'Error', value: 'last_error', sortable: true }
       ],
       syncRunDetailDialog: false,
       syncRunDetail: null,
@@ -1187,11 +1229,12 @@ export default {
       this.applyRouteTab()
     },
     reportView(val) {
-      // 0 = Operaciones, 1 = Sincronizaciones, 2 = Log NetSuite
+      // 0 = Operaciones, 1 = Sincronizaciones, 2 = Log NetSuite, 3 = Log ZIM400
       if (!this.isAdmin) return
       if (val === 0) this.loadReportBoard()
       else if (val === 1) this.loadSyncRuns()
       else if (val === 2) this.loadNsPushLog()
+      else if (val === 3) this.loadZim400Log()
     },
     activeTab() {
       this.syncRouteTab()
@@ -2134,7 +2177,8 @@ export default {
       if (!this.isAdmin) return
       if (this.reportView === 0) this.loadReportBoard()
       else if (this.reportView === 1) this.loadSyncRuns()
-      else this.loadNsPushLog()
+      else if (this.reportView === 2) this.loadNsPushLog()
+      else this.loadZim400Log()
     },
     async loadSyncRuns() {
       if (!this.isAdmin) return
@@ -2185,6 +2229,23 @@ export default {
         dateTo: ''
       }
       this.loadNsPushLog()
+    },
+    async loadZim400Log() {
+      if (!this.isAdmin) return
+      this.loadingZim400Log = true
+      this.zim400LogError = ''
+      try {
+        const res = await axios.get('/chronometer/netsuite/zim400-log', { params: { limit: 1000 } })
+        const rows = res.data && res.data.rows
+        this.zim400LogRows = Array.isArray(rows) ? rows : []
+      } catch (e) {
+        this.zim400LogRows = []
+        this.zim400LogError =
+          (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
+          'No fue posible cargar el log ZIM400.'
+      } finally {
+        this.loadingZim400Log = false
+      }
     },
     async openSyncRunDetail(item) {
       if (!item || !item.id) return

@@ -37,6 +37,7 @@ router.get('/netsuite/queue', [security.verifyToken, security.isAdmin], netsuite
 router.get('/netsuite/queue/:id', [security.verifyToken, security.isAdmin], netsuiteSync.getQueueItem);
 router.post('/netsuite/queue/:id/retry', [security.verifyToken, security.isAdmin], netsuiteSync.retryQueueItem);
 router.post('/netsuite/queue/requeue-stuck', [security.verifyToken, security.isAdmin], netsuiteSync.requeueStuckQueueItems);
+router.get('/netsuite/zim400-log', [security.verifyToken, security.isAdmin], netsuiteSync.listZim400Log);
 router.post('/netsuite/oauth/clear-cache', [security.verifyToken, security.isAdmin], netsuiteSync.clearOAuthCache);
 
 router.post('/timers/start', security.verifyToken, chronometer.startTimer);
