@@ -147,6 +147,16 @@ function asNullableInt(value) {
   return Math.trunc(n);
 }
 
+function compactPayload(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'number' && !Number.isFinite(v)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 function safeJsonString(obj) {
   try {
     return JSON.stringify(obj == null ? null : obj);
@@ -266,8 +276,8 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     ? taskCtx.operationSequence
     : (op.operation_sequence || '');
   const titleForText = taskCtx && taskCtx.title ? taskCtx.title : (op.operation_name || '');
-  const tareaTexto = `(${seqForText}) ${op.resource_code || ''} ${titleForText}`.trim();
-  const payload = {
+  const tareaTexto = `(${seqForText}) ${op.resource_code || ''}`.trim();
+  const payload = compactPayload({
     custrecord_zim_reloj_ot: workOrderId,
     custrecord_zim_reloj_ot_id: workOrderId,
     custrecord_zim_reloj_ot_text: op.ot_number ? `Orden de Trabajo #${op.ot_number}` : null,
@@ -275,6 +285,8 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     custrecord_zim_reloj_tarea_texto: tareaTexto,
     custrecord_zim_reloj_num_secuencia: asNullableInt(seqForText),
     custrecord_zim_reloj_operacion: titleForText || null,
+    custrecord_zim_reloj_estado: 4,
+    custrecord_zim_reoj_zona: 1,
     custrecord_zim_reloj_minutos_cargados: minutesLoaded,
     custrecord_zim_reloj_horas: Number((minutesLoaded / 60).toFixed(2)),
     custrecord_zim_reloj_inicio: startedAt || null,
@@ -285,7 +297,7 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     ),
     custrecord_zim_reloj_cantidad: Number(op.planned_quantity || 0),
     custrecord_zim_reloj_cantidad_terminada: Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0
-  };
+  });
   return { payload, stopEventId, op, taskCtx };
 }
 
@@ -323,6 +335,9 @@ async function runZim400Publisher(queueItem) {
       record_type: String(process.env.NETSUITE_ZIM400_RECORD_TYPE || 'CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL'),
       method: 'CREATE',
       request_payload: payload,
+      request_payload_meta: {
+        minutes_semantics: 'acumulado_local_stop'
+      },
       response: {
         ok: true,
         http_status: out.http_status || 200,
@@ -357,6 +372,9 @@ async function runZim400Publisher(queueItem) {
       record_type: String(process.env.NETSUITE_ZIM400_RECORD_TYPE || 'CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL'),
       method: 'CREATE',
       request_payload: payload,
+      request_payload_meta: {
+        minutes_semantics: 'acumulado_local_stop'
+      },
       response,
       error_message: String(error && error.message ? error.message : error),
       attempt: row.attempt_count,
