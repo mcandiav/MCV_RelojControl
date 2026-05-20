@@ -287,6 +287,7 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     custrecord_zim_reloj_operacion: titleForText || null,
     custrecord_zim_reloj_estado: 4,
     custrecord_zim_reoj_zona: 1,
+    custrecord_zim_reloj_empleado: 42027,
     custrecord_zim_reloj_minutos_cargados: minutesLoaded,
     custrecord_zim_reloj_horas: Number((minutesLoaded / 60).toFixed(2)),
     custrecord_zim_reloj_inicio: startedAt || null,
