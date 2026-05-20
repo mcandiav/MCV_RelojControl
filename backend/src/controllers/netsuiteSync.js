@@ -140,6 +140,13 @@ function asNonNegativeInt(value) {
   return Math.max(0, Math.floor(n));
 }
 
+function asNullableInt(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
 function safeJsonString(obj) {
   try {
     return JSON.stringify(obj == null ? null : obj);
@@ -235,8 +242,10 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     qtyStop = d && d.completed_quantity != null ? Number(d.completed_quantity) : null;
   } catch (_) {}
   const taskCtx = await fetchManufacturingTaskContextByTaskId(op.netsuite_operation_id);
-  const workOrderId = taskCtx && taskCtx.workOrder ? String(taskCtx.workOrder) : (op.netsuite_work_order_id || null);
-  const workCenterId = taskCtx && taskCtx.manufacturingWorkCenter ? String(taskCtx.manufacturingWorkCenter) : null;
+  const workOrderIdRaw = taskCtx && taskCtx.workOrder ? taskCtx.workOrder : (op.netsuite_work_order_id || null);
+  const workCenterIdRaw = taskCtx && taskCtx.manufacturingWorkCenter ? taskCtx.manufacturingWorkCenter : null;
+  const workOrderId = asNullableInt(workOrderIdRaw);
+  const workCenterId = asNullableInt(workCenterIdRaw);
   const startedAt = (await inferStopStartAt(ev)) || ev.event_at;
   const endedAt = ev.event_at;
   if (startedAt && endedAt && new Date(endedAt).getTime() < new Date(startedAt).getTime()) {
@@ -245,6 +254,11 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
   if (!workCenterId) {
     throw new Error(
       'ZIM400 mapping failed: manufacturingWorkCenter no resuelto para custrecord_zim_reloj_tarea.'
+    );
+  }
+  if (!workOrderId) {
+    throw new Error(
+      'ZIM400 mapping failed: workOrder no resuelto como referencia numerica para custrecord_zim_reloj_ot.'
     );
   }
   const minutesLoaded = Math.max(0, Math.floor(Number(op.actual_setup_time || 0) + Number(op.actual_run_time || 0)));
@@ -259,7 +273,7 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     custrecord_zim_reloj_ot_text: op.ot_number ? `Orden de Trabajo #${op.ot_number}` : null,
     custrecord_zim_reloj_tarea: workCenterId,
     custrecord_zim_reloj_tarea_texto: tareaTexto,
-    custrecord_zim_reloj_num_secuencia: seqForText || null,
+    custrecord_zim_reloj_num_secuencia: asNullableInt(seqForText),
     custrecord_zim_reloj_operacion: titleForText || null,
     custrecord_zim_reloj_minutos_cargados: minutesLoaded,
     custrecord_zim_reloj_horas: Number((minutesLoaded / 60).toFixed(2)),
