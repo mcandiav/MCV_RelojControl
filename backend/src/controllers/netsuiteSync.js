@@ -165,6 +165,61 @@ function sanitizeAxiosErrorForDiagnostic(error) {
   };
 }
 
+async function fetchManufacturingTaskContextByTaskId(taskId) {
+  const nsTaskId = Number(taskId);
+  if (!Number.isInteger(nsTaskId) || nsTaskId <= 0) return null;
+  const cfg = getNetsuiteConfig();
+  if (!cfg.suiteqlUrl) return null;
+  const token = await getNetsuiteAccessToken();
+  const query = [
+    'SELECT',
+    '  id,',
+    '  operationsequence,',
+    '  title,',
+    '  workorder,',
+    '  manufacturingworkcenter',
+    'FROM manufacturingoperationtask',
+    `WHERE id = ${nsTaskId}`
+  ].join(' ');
+  const { data } = await axios.post(
+    cfg.suiteqlUrl,
+    { q: query },
+    {
+      params: { limit: 1, offset: 0 },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Prefer: 'transient'
+      },
+      timeout: 120000
+    }
+  );
+  const row = Array.isArray(data && data.items) && data.items.length > 0 ? data.items[0] : null;
+  if (!row) return null;
+  return {
+    taskId: Number(row.id || nsTaskId),
+    operationSequence: Number(row.operationsequence || 0),
+    title: row.title != null ? String(row.title) : '',
+    workOrder: row.workorder != null ? String(row.workorder) : null,
+    manufacturingWorkCenter:
+      row.manufacturingworkcenter != null ? String(row.manufacturingworkcenter) : null
+  };
+}
+
+async function inferStopStartAt(stopEvent) {
+  if (!stopEvent || !stopEvent.operation_timer_id || !stopEvent.event_at) return null;
+  const startLike = await TimerEvent.findOne({
+    where: {
+      operation_timer_id: stopEvent.operation_timer_id,
+      event_type: { [Op.in]: ['START', 'RESUME'] },
+      event_at: { [Op.lte]: stopEvent.event_at }
+    },
+    order: [['event_at', 'DESC']]
+  });
+  return startLike ? startLike.event_at : null;
+}
+
 async function buildZim400PayloadFromQueueItem(queueItem) {
   const stopEventId = Number(queueItem && queueItem.trigger_event_id);
   const opId = Number(queueItem && queueItem.work_order_operation_id);
@@ -179,18 +234,33 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     const d = ev.details_json ? JSON.parse(String(ev.details_json)) : null;
     qtyStop = d && d.completed_quantity != null ? Number(d.completed_quantity) : null;
   } catch (_) {}
-  const startedAt = op.updatedAt || ev.event_at;
+  const taskCtx = await fetchManufacturingTaskContextByTaskId(op.netsuite_operation_id);
+  const workOrderId = taskCtx && taskCtx.workOrder ? String(taskCtx.workOrder) : (op.netsuite_work_order_id || null);
+  const workCenterId = taskCtx && taskCtx.manufacturingWorkCenter ? String(taskCtx.manufacturingWorkCenter) : null;
+  const startedAt = (await inferStopStartAt(ev)) || ev.event_at;
   const endedAt = ev.event_at;
+  if (startedAt && endedAt && new Date(endedAt).getTime() < new Date(startedAt).getTime()) {
+    throw new Error('ZIM400 local validation failed: custrecord_zim_reloj_fin es anterior a custrecord_zim_reloj_inicio.');
+  }
+  if (!workCenterId) {
+    throw new Error(
+      'ZIM400 mapping failed: manufacturingWorkCenter no resuelto para custrecord_zim_reloj_tarea.'
+    );
+  }
   const minutesLoaded = Math.max(0, Math.floor(Number(op.actual_setup_time || 0) + Number(op.actual_run_time || 0)));
-  const tareaTexto = `${op.operation_sequence || ''} | ${op.resource_code || ''} | ${op.operation_name || ''}`.trim();
+  const seqForText = taskCtx && Number.isFinite(taskCtx.operationSequence) && taskCtx.operationSequence > 0
+    ? taskCtx.operationSequence
+    : (op.operation_sequence || '');
+  const titleForText = taskCtx && taskCtx.title ? taskCtx.title : (op.operation_name || '');
+  const tareaTexto = `(${seqForText}) ${op.resource_code || ''} ${titleForText}`.trim();
   const payload = {
-    custrecord_zim_reloj_ot: op.netsuite_work_order_id || null,
-    custrecord_zim_reloj_ot_id: op.netsuite_work_order_id || null,
+    custrecord_zim_reloj_ot: workOrderId,
+    custrecord_zim_reloj_ot_id: workOrderId,
     custrecord_zim_reloj_ot_text: op.ot_number ? `Orden de Trabajo #${op.ot_number}` : null,
-    custrecord_zim_reloj_tarea: op.netsuite_operation_id || null,
+    custrecord_zim_reloj_tarea: workCenterId,
     custrecord_zim_reloj_tarea_texto: tareaTexto,
-    custrecord_zim_reloj_num_secuencia: op.operation_sequence || null,
-    custrecord_zim_reloj_operacion: op.operation_name || null,
+    custrecord_zim_reloj_num_secuencia: seqForText || null,
+    custrecord_zim_reloj_operacion: titleForText || null,
     custrecord_zim_reloj_minutos_cargados: minutesLoaded,
     custrecord_zim_reloj_horas: Number((minutesLoaded / 60).toFixed(2)),
     custrecord_zim_reloj_inicio: startedAt || null,
@@ -202,7 +272,7 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     custrecord_zim_reloj_cantidad: Number(op.planned_quantity || 0),
     custrecord_zim_reloj_cantidad_terminada: Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0
   };
-  return { payload, stopEventId, op };
+  return { payload, stopEventId, op, taskCtx };
 }
 
 async function runZim400Publisher(queueItem) {
@@ -962,7 +1032,8 @@ async function runV4QueueSync(queueItem) {
     if (ZIM400_ENABLED) {
       stepZim400 = await createSyncStep(syncRun.id, 'PUSH_ZIM400', {
         queue_id: queueItem.id,
-        trigger_event_id: queueItem.trigger_event_id || null
+        trigger_event_id: queueItem.trigger_event_id || null,
+        import_ot_step_ok: true
       });
       try {
         const zimOut = await runZim400Publisher(queueItem);
