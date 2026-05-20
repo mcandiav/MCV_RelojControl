@@ -26,7 +26,7 @@
 
       <v-toolbar-title class="brand-title">
         <span class="brand-cluster">
-          <img src="/logo.png" alt="Bignotti" class="app-logo app-logo--bignotti">
+          <img :src="bignottiLogo" alt="Bignotti" class="app-logo app-logo--bignotti">
           <span class="brand-word">BIGNOTTI</span>
         </span>
         <span class="brand-cluster">
@@ -49,11 +49,13 @@
 import { mapActions, mapGetters } from 'vuex'
 import { isTestBuild } from '@/utils/buildMode'
 import atOnceLogo from '@/assets/at-once-logo.png'
+import bignottiLogo from '@/assets/logo.png'
 
 export default {
   data() {
     return {
-      atOnceLogo
+      atOnceLogo,
+      bignottiLogo
     }
   },
   computed: {
@@ -61,8 +63,8 @@ export default {
       isAdmin: 'auth/isAdmin'
     }),
     cronometroTitle() {
-      const buildLabel = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'V2').trim()
-      const base = `Cronómetro v3 ${buildLabel}`.trim()
+      const buildLabel = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'V4').trim()
+      const base = `Cronómetro V4 ${buildLabel}`.trim()
       return isTestBuild() ? `${base} [TEST]` : base
     }
   },

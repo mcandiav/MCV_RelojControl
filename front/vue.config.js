@@ -1,5 +1,5 @@
-/** Versión UI del front (v3). Mantener alineado con public/index.html (title + fallback). */
-const PAGE_TITLE = 'Bignotti · Cronómetro v3'
+/** Version UI del front (V4). Mantener alineado con public/index.html (title + fallback). */
+const PAGE_TITLE = 'Bignotti Â· CronÃ³metro V4'
 
 module.exports = {
   transpileDependencies: [
