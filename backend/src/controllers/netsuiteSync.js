@@ -1170,10 +1170,18 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
   const resourceFilter = String(req.query.resource || req.query.recurso || '').trim().toUpperCase();
   const dateFromRaw = String(req.query.date_from || req.query.dateFrom || '').trim();
   const dateToRaw = String(req.query.date_to || req.query.dateTo || '').trim();
-  const dateFrom = dateFromRaw ? new Date(`${dateFromRaw}T00:00:00.000Z`) : null;
-  const dateTo = dateToRaw ? new Date(`${dateToRaw}T23:59:59.999Z`) : null;
-  const hasFrom = dateFrom && Number.isFinite(dateFrom.getTime());
-  const hasTo = dateTo && Number.isFinite(dateTo.getTime());
+  const hasFrom = /^\d{4}-\d{2}-\d{2}$/.test(dateFromRaw);
+  const hasTo = /^\d{4}-\d{2}-\d{2}$/.test(dateToRaw);
+  const tz = 'America/Santiago';
+  const toDayKey = (d) => {
+    if (!d) return '';
+    try {
+      // YYYY-MM-DD en zona local operativa (Chile), no en UTC.
+      return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    } catch (_) {
+      return '';
+    }
+  };
 
   const steps = await SyncRunStep.findAll({
     where: { step_name: 'PUSH' },
@@ -1184,8 +1192,9 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
   const rows = [];
   for (const s of steps) {
     const stepTs = new Date(s.started_at);
-    if (hasFrom && stepTs < dateFrom) continue;
-    if (hasTo && stepTs > dateTo) continue;
+    const stepDayKey = toDayKey(stepTs);
+    if (hasFrom && stepDayKey < dateFromRaw) continue;
+    if (hasTo && stepDayKey > dateToRaw) continue;
     let parsed = null;
     try {
       parsed = s.result_json ? JSON.parse(String(s.result_json)) : null;
