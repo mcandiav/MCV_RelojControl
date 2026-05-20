@@ -1402,9 +1402,16 @@ exports.listZim400Log = async function listZim400Log(req, res) {
   const limit = Math.min(1000, Math.max(1, parseInt(String(req.query.limit || '200'), 10) || 200));
   const otFilter = String(req.query.ot || '').trim();
   const statusFilter = String(req.query.status || '').trim().toUpperCase();
+  const dateFromRaw = String(req.query.date_from || req.query.dateFrom || '').trim();
+  const dateToRaw = String(req.query.date_to || req.query.dateTo || '').trim();
   const where = {};
   if (otFilter) where.ot_number = otFilter;
   if (statusFilter) where.status = statusFilter;
+  if (dateFromRaw || dateToRaw) {
+    where.createdAt = {};
+    if (dateFromRaw) where.createdAt[Op.gte] = new Date(`${dateFromRaw}T00:00:00.000Z`);
+    if (dateToRaw) where.createdAt[Op.lte] = new Date(`${dateToRaw}T23:59:59.999Z`);
+  }
   const rows = await NetsuiteSyncZim400.findAll({
     where,
     order: [['createdAt', 'DESC']],

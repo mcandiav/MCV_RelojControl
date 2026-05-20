@@ -739,6 +739,29 @@
                 </div>
                 <div v-else>
                   <v-alert v-if="zim400LogError" type="error" dense outlined class="mb-3">{{ zim400LogError }}</v-alert>
+                  <v-row dense class="mb-2">
+                    <v-col cols="12" md="3">
+                      <v-text-field v-model.trim="zim400Filters.ot" label="Filtro OT" dense outlined clearable hide-details />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-select
+                        v-model="zim400Filters.status"
+                        :items="['', 'PENDING', 'PROCESSING', 'SENT', 'ERROR', 'RETRY', 'CANCELLED']"
+                        label="Estado"
+                        dense outlined hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-text-field v-model="zim400Filters.dateFrom" label="Desde" type="date" dense outlined hide-details />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-text-field v-model="zim400Filters.dateTo" label="Hasta" type="date" dense outlined hide-details />
+                    </v-col>
+                    <v-col cols="12" md="2" class="d-flex" style="gap:8px">
+                      <v-btn small color="primary" :loading="loadingZim400Log" @click="loadZim400Log">Filtrar</v-btn>
+                      <v-btn small text @click="clearZim400Filters">Limpiar</v-btn>
+                    </v-col>
+                  </v-row>
                   <v-data-table
                     :headers="zim400LogHeaders"
                     :items="zim400LogRows"
@@ -1064,6 +1087,12 @@ export default {
       zim400LogRows: [],
       loadingZim400Log: false,
       zim400LogError: '',
+      zim400Filters: {
+        ot: '',
+        status: '',
+        dateFrom: '',
+        dateTo: ''
+      },
       nsPushLogFilters: {
         ot: '',
         resource: '',
@@ -2230,12 +2259,21 @@ export default {
       }
       this.loadNsPushLog()
     },
+    clearZim400Filters() {
+      this.zim400Filters = { ot: '', status: '', dateFrom: '', dateTo: '' }
+      this.loadZim400Log()
+    },
     async loadZim400Log() {
       if (!this.isAdmin) return
       this.loadingZim400Log = true
       this.zim400LogError = ''
       try {
-        const res = await axios.get('/chronometer/netsuite/zim400-log', { params: { limit: 1000 } })
+        const params = { limit: 1000 }
+        if (this.zim400Filters.ot) params.ot = this.zim400Filters.ot
+        if (this.zim400Filters.status) params.status = this.zim400Filters.status
+        if (this.zim400Filters.dateFrom) params.date_from = this.zim400Filters.dateFrom
+        if (this.zim400Filters.dateTo) params.date_to = this.zim400Filters.dateTo
+        const res = await axios.get('/chronometer/netsuite/zim400-log', { params })
         const rows = res.data && res.data.rows
         this.zim400LogRows = Array.isArray(rows) ? rows : []
       } catch (e) {
