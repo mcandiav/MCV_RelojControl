@@ -24,6 +24,10 @@ const userSchema = sequelize.define('User', {
         type: DataTypes.STRING,
         allowNull: true
     },
+    netsuiteEmployeeId: {
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
     password: {
         type: DataTypes.STRING,
         allowNull: false

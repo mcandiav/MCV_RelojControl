@@ -3,6 +3,7 @@ const WorkOrderOperation = require('../models/work_order_operation');
 const OperationTimer = require('../models/operation_timer');
 const TimerEvent = require('../models/timer_event');
 const OperationTimeTotal = require('../models/operation_time_total');
+const User = require('../models/user');
 const { isNetsuiteConfigured, getNetsuiteConfigStatus } = require('../services/netsuite/config');
 const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
@@ -246,6 +247,10 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
   const ev = await TimerEvent.findByPk(stopEventId);
   const op = await WorkOrderOperation.findByPk(opId);
   if (!ev || !op) throw new Error('No se encontro contexto STOP para ZIM400.');
+  const eventUser =
+    ev && Number.isInteger(Number(ev.user_id)) && Number(ev.user_id) > 0
+      ? await User.findByPk(Number(ev.user_id), { attributes: ['id', 'username', 'netsuiteEmployeeId'] })
+      : null;
   let qtyStop = null;
   try {
     const d = ev.details_json ? JSON.parse(String(ev.details_json)) : null;
@@ -277,6 +282,37 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     : (op.operation_sequence || '');
   const titleForText = taskCtx && taskCtx.title ? taskCtx.title : (op.operation_name || '');
   const tareaTexto = `(${seqForText}) ${op.resource_code || ''}`.trim();
+  const userNetsuiteEmployeeId = asNullableInt(eventUser && eventUser.netsuiteEmployeeId);
+  const employeeDiagnostic =
+    eventUser && eventUser.netsuiteEmployeeId && userNetsuiteEmployeeId == null
+      ? {
+          level: 'warning',
+          code: 'INVALID_USER_NETSUITE_EMPLOYEE_ID',
+          message: 'Users.netsuiteEmployeeId no es numerico; se omite custrecord_zim_reloj_empleado.',
+          user_id: eventUser.id,
+          username: eventUser.username || null,
+          timer_event_id: stopEventId,
+          raw_value: String(eventUser.netsuiteEmployeeId)
+        }
+      : (!eventUser
+          ? {
+              level: 'warning',
+              code: 'MISSING_EVENT_USER',
+              message: 'TimerEvent.user_id no disponible; se omite custrecord_zim_reloj_empleado.',
+              user_id: ev && ev.user_id ? Number(ev.user_id) : null,
+              username: null,
+              timer_event_id: stopEventId
+            }
+          : (userNetsuiteEmployeeId == null
+              ? {
+                  level: 'warning',
+                  code: 'MISSING_USER_NETSUITE_EMPLOYEE_ID',
+                  message: 'Users.netsuiteEmployeeId vacio; se omite custrecord_zim_reloj_empleado.',
+                  user_id: eventUser.id,
+                  username: eventUser.username || null,
+                  timer_event_id: stopEventId
+                }
+              : null));
   const payload = compactPayload({
     custrecord_zim_reloj_ot: workOrderId,
     custrecord_zim_reloj_ot_id: workOrderId,
@@ -287,7 +323,7 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     custrecord_zim_reloj_operacion: titleForText || null,
     custrecord_zim_reloj_estado: 4,
     custrecord_zim_reoj_zona: 1,
-    custrecord_zim_reloj_empleado: 42027,
+    custrecord_zim_reloj_empleado: userNetsuiteEmployeeId,
     custrecord_zim_reloj_minutos_cargados: minutesLoaded,
     custrecord_zim_reloj_horas: Number((minutesLoaded / 60).toFixed(2)),
     custrecord_zim_reloj_inicio: startedAt || null,
@@ -299,11 +335,11 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     custrecord_zim_reloj_cantidad: Number(op.planned_quantity || 0),
     custrecord_zim_reloj_cantidad_terminada: Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0
   });
-  return { payload, stopEventId, op, taskCtx };
+  return { payload, stopEventId, op, taskCtx, employeeDiagnostic };
 }
 
 async function runZim400Publisher(queueItem) {
-  const { payload, stopEventId, op } = await buildZim400PayloadFromQueueItem(queueItem);
+  const { payload, stopEventId, op, employeeDiagnostic } = await buildZim400PayloadFromQueueItem(queueItem);
   const [row] = await NetsuiteSyncZim400.findOrCreate({
     where: { stop_event_id: stopEventId },
     defaults: {
@@ -337,7 +373,8 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'acumulado_local_stop'
+        minutes_semantics: 'acumulado_local_stop',
+        employee_mapping: employeeDiagnostic || null
       },
       response: {
         ok: true,
@@ -374,7 +411,8 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'acumulado_local_stop'
+        minutes_semantics: 'acumulado_local_stop',
+        employee_mapping: employeeDiagnostic || null
       },
       response,
       error_message: String(error && error.message ? error.message : error),

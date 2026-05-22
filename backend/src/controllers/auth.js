@@ -96,6 +96,10 @@ exports.signUp = async function (req, res) {
     const v = validateUserPayload(req.body, { requirePassword: true });
     if (!v.ok) return res.status(400).json({ message: v.message });
     const { username, name, lastname, password, RoleId, WorkplaceId } = v.data;
+    const netsuiteEmployeeIdRaw = normalizeString(req.body && req.body.netsuiteEmployeeId);
+    if (netsuiteEmployeeIdRaw && !/^\d+$/.test(netsuiteEmployeeIdRaw)) {
+        return res.status(400).json({ message: 'ID empleado NetSuite debe ser numerico.' });
+    }
 
     const exists = await User.findOne({ where: { username } });
     if (exists) return res.status(409).json({ message: 'El nombre de usuario ya existe.' });
@@ -106,7 +110,8 @@ exports.signUp = async function (req, res) {
         lastname: lastname,
         password: password,
         RoleId: RoleId,
-        WorkplaceId: WorkplaceId
+        WorkplaceId: WorkplaceId,
+        netsuiteEmployeeId: netsuiteEmployeeIdRaw || null
     });
 
     const savedUser = await newUser.save();
@@ -260,6 +265,13 @@ exports.updateUser = async function (req, res) {
         if (!v.ok) return res.status(400).json({ message: v.message });
 
         const { username, name, lastname, password, RoleId, WorkplaceId } = v.data;
+        const netsuiteEmployeeIdRaw =
+            req.body && Object.prototype.hasOwnProperty.call(req.body, 'netsuiteEmployeeId')
+                ? normalizeString(req.body.netsuiteEmployeeId)
+                : normalizeString(userFound.netsuiteEmployeeId);
+        if (netsuiteEmployeeIdRaw && !/^\d+$/.test(netsuiteEmployeeIdRaw)) {
+            return res.status(400).json({ message: 'ID empleado NetSuite debe ser numerico.' });
+        }
 
         if (String(username) !== String(userFound.username)) {
             const exists = await User.findOne({ where: { username } });
@@ -273,6 +285,7 @@ exports.updateUser = async function (req, res) {
         userFound.lastname = lastname;
         userFound.RoleId = RoleId;
         userFound.WorkplaceId = WorkplaceId;
+        userFound.netsuiteEmployeeId = netsuiteEmployeeIdRaw || null;
 
         if (password) {
             const salt = bcrypt.genSaltSync();

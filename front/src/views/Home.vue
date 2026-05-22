@@ -315,6 +315,7 @@
                 <v-text-field v-model.trim="newUser.name" :counter="USER_RULES.nameMax" :maxlength="USER_RULES.nameMax" label="Nombre" dense outlined />
                 <v-text-field v-model.trim="newUser.lastname" :counter="USER_RULES.lastnameMax" :maxlength="USER_RULES.lastnameMax" label="Apellido" dense outlined />
                 <v-text-field v-model.trim="newUser.username" :counter="USER_RULES.usernameMax" :maxlength="USER_RULES.usernameMax" label="Usuario" dense outlined />
+                <v-text-field v-model.trim="newUser.netsuiteEmployeeId" label="ID empleado NetSuite" dense outlined />
                 <v-text-field v-model="newUser.password" :counter="USER_RULES.passwordLen" :maxlength="USER_RULES.passwordLen" label="Contraseña / PIN (4 dígitos)" dense outlined type="password" />
                 <v-select v-model="newUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
                 <v-select v-model="newUser.WorkplaceId" :items="workplacesUi" item-text="nameUi" item-value="id" label="Área" dense outlined />
@@ -332,6 +333,7 @@
                     <tr>
                       <th>Nombre</th>
                       <th>Usuario</th>
+                      <th>ID NS</th>
                       <th>Rol</th>
                       <th>Área</th>
                       <th>Accion</th>
@@ -341,6 +343,7 @@
                     <tr v-for="u in users" :key="u.id">
                       <td>{{ u.name }} {{ u.lastname }}</td>
                       <td>{{ u.username }}</td>
+                      <td>{{ u.netsuiteEmployeeId || '-' }}</td>
                       <td>{{ u.Role && u.Role.name }}</td>
                       <td>{{ formatAreaName(u.Workplace && u.Workplace.name) }}</td>
                       <td>
@@ -884,6 +887,7 @@
           <v-text-field v-model.trim="editUser.name" :counter="USER_RULES.nameMax" :maxlength="USER_RULES.nameMax" label="Nombre" dense outlined />
           <v-text-field v-model.trim="editUser.lastname" :counter="USER_RULES.lastnameMax" :maxlength="USER_RULES.lastnameMax" label="Apellido" dense outlined />
           <v-text-field v-model.trim="editUser.username" :counter="USER_RULES.usernameMax" :maxlength="USER_RULES.usernameMax" label="Usuario" dense outlined />
+          <v-text-field v-model.trim="editUser.netsuiteEmployeeId" label="ID empleado NetSuite" dense outlined />
           <v-text-field v-model="editUser.password" :counter="USER_RULES.passwordLen" :maxlength="USER_RULES.passwordLen" label="Nueva contraseña / PIN (opcional, 4 dígitos)" dense outlined type="password" />
           <v-select v-model="editUser.RoleId" :items="roles" item-text="name" item-value="id" label="Rol" dense outlined />
           <v-select v-model="editUser.WorkplaceId" :items="workplacesUi" item-text="nameUi" item-value="id" label="Área" dense outlined />
@@ -1004,6 +1008,7 @@ export default {
         name: '',
         lastname: '',
         username: '',
+        netsuiteEmployeeId: '',
         password: '',
         RoleId: null,
         WorkplaceId: null
@@ -1014,6 +1019,7 @@ export default {
         name: '',
         lastname: '',
         username: '',
+        netsuiteEmployeeId: '',
         password: '',
         RoleId: null,
         WorkplaceId: null
@@ -1473,6 +1479,7 @@ export default {
       const password = String((user && user.password) || '').trim()
       const roleId = user && user.RoleId
       const workplaceId = user && user.WorkplaceId
+      const netsuiteEmployeeId = String((user && user.netsuiteEmployeeId) || '').trim()
 
       if (!name) return 'Nombre es obligatorio.'
       if (name.length > USER_RULES.nameMax) return `Nombre excede ${USER_RULES.nameMax} caracteres.`
@@ -1488,6 +1495,7 @@ export default {
 
       if (!(Number.isInteger(Number(roleId)) && Number(roleId) > 0)) return 'Rol inválido.'
       if (!(Number.isInteger(Number(workplaceId)) && Number(workplaceId) > 0)) return 'Área inválida.'
+      if (netsuiteEmployeeId && !/^\d+$/.test(netsuiteEmployeeId)) return 'ID empleado NetSuite debe ser numérico.'
 
       if (requirePassword || password) {
         if (!/^\d{4}$/.test(password)) {
@@ -2015,7 +2023,7 @@ export default {
       this.loadingCreateUser = true
       try {
         await axios.post('/auth/signup', this.newUser)
-        this.newUser = { name: '', lastname: '', username: '', password: '', RoleId: this.newUser.RoleId, WorkplaceId: this.newUser.WorkplaceId }
+        this.newUser = { name: '', lastname: '', username: '', netsuiteEmployeeId: '', password: '', RoleId: this.newUser.RoleId, WorkplaceId: this.newUser.WorkplaceId }
         await this.loadAdminCatalogs()
         alert('Usuario creado.')
       } catch (error) {
@@ -2041,6 +2049,7 @@ export default {
         name: user.name || '',
         lastname: user.lastname || '',
         username: user.username || '',
+        netsuiteEmployeeId: user.netsuiteEmployeeId || '',
         password: '',
         RoleId: user.RoleId || (user.Role && user.Role.id) || null,
         WorkplaceId: user.WorkplaceId || (user.Workplace && user.Workplace.id) || null
@@ -2054,6 +2063,7 @@ export default {
         name: '',
         lastname: '',
         username: '',
+        netsuiteEmployeeId: '',
         password: '',
         RoleId: null,
         WorkplaceId: null
@@ -2076,6 +2086,7 @@ export default {
           name: this.editUser.name,
           lastname: this.editUser.lastname,
           username: this.editUser.username,
+          netsuiteEmployeeId: this.editUser.netsuiteEmployeeId,
           RoleId: this.editUser.RoleId,
           WorkplaceId: this.editUser.WorkplaceId
         }
@@ -2424,7 +2435,7 @@ export default {
         await this.refreshOperationsForCurrentRole()
         this.closeStopQuantityDialog(true)
       } catch (error) {
-        const msg = this.timerTerminalLockMessage(error, 'No fue posible detener el cron�metro.')
+        const msg = this.timerTerminalLockMessage(error, 'No fue posible detener el cronómetro.')
         alert(msg)
       } finally {
         this.stopQtyLoading = false
@@ -2663,7 +2674,7 @@ export default {
       }
     },
     async netsuitePullReplace() {
-      if (!confirm('Esto REEMPLAZA toda la tabla WIP (work_order_operations) con lo que venga desde NetSuite. Debe no haber cronÃ³metros activos/pausados. Â¿Continuar?')) {
+      if (!confirm('Esto REEMPLAZA toda la tabla WIP (work_order_operations) con lo que venga desde NetSuite. Debe no haber cronómetros activos/pausados. Â¿Continuar?')) {
         return
       }
       this.loadingNsPullReplace = true
@@ -2686,7 +2697,7 @@ export default {
       }
     },
     async netsuitePullReplace500() {
-      if (!confirm('Esto REEMPLAZA toda la tabla WIP con un tope de 500 filas del pull (prueba controlada). Debe no haber cronÃ³metros activos/pausados. Â¿Continuar?')) {
+      if (!confirm('Esto REEMPLAZA toda la tabla WIP con un tope de 500 filas del pull (prueba controlada). Debe no haber cronómetros activos/pausados. Â¿Continuar?')) {
         return
       }
       this.loadingNsPullReplace500 = true
