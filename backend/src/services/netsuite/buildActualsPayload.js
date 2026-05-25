@@ -9,6 +9,11 @@ const { getNetsuiteConfig } = require('./config');
  * actual_setup_time se calcula desde eventos etiquetados como SETUP.
  */
 async function buildActualsPayload({ operationIds } = {}) {
+  const secondsToRoundedMinutes = (seconds) => {
+    const s = Math.max(0, Number(seconds) || 0);
+    if (s <= 0) return 0;
+    return Math.ceil(s / 60);
+  };
   const cfg = getNetsuiteConfig();
   const useDeltaMode = String(cfg.pushMode || '').toLowerCase() === 'workorder_completion';
 
@@ -53,8 +58,8 @@ async function buildActualsPayload({ operationIds } = {}) {
       op.actual_setup_time != null && Number.isFinite(Number(op.actual_setup_time))
         ? Math.max(0, Math.floor(Number(op.actual_setup_time)))
         : 0;
-    const delta_run_time = Math.max(0, Math.floor((totals.total_run_seconds || 0) / 60));
-    const delta_setup_time = Math.max(0, Math.floor((totals.total_setup_seconds || 0) / 60));
+    const delta_run_time = secondsToRoundedMinutes(totals.total_run_seconds || 0);
+    const delta_setup_time = secondsToRoundedMinutes(totals.total_setup_seconds || 0);
     const actual_run_time = base_run_time + delta_run_time;
     const actual_setup_time = base_setup_time + delta_setup_time;
     const cq = op.completed_quantity;
