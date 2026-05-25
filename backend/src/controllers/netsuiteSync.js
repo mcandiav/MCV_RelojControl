@@ -193,6 +193,44 @@ function sanitizeAxiosErrorForDiagnostic(error) {
   };
 }
 
+function maskTail(value, visible = 6) {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  if (s.length <= visible) return s;
+  return `***${s.slice(-visible)}`;
+}
+
+function buildInvalidGrantDiagnostic(error) {
+  const resp = error && error.response ? error.response : null;
+  const data = resp && resp.data !== undefined ? resp.data : null;
+  const payloadError =
+    data && typeof data === 'object' && data.error != null ? String(data.error).toLowerCase() : '';
+  const payloadDesc =
+    data && typeof data === 'object' && data.error_description != null
+      ? String(data.error_description)
+      : '';
+  const raw = `${payloadError} ${payloadDesc} ${String((error && error.message) || '')}`.toLowerCase();
+  if (!raw.includes('invalid_grant')) return null;
+
+  const cfg = getNetsuiteConfig();
+  return {
+    code: 'invalid_grant',
+    message: 'NetSuite rechazo la obtencion de token OAuth2.',
+    probable_causes: [
+      'NETSUITE_CERTIFICATE_ID (kid) no coincide con la credencial OAuth2 Client Credentials activa.',
+      'El certificado publico en NetSuite no corresponde a la private key cargada en backend.',
+      'NETSUITE_CLIENT_ID / NETSUITE_ACCOUNT_ID / NETSUITE_TOKEN_URL apuntan a otro ambiente.',
+      'Reloj del servidor desfasado (NTP) y JWT fuera de ventana temporal.'
+    ],
+    context: {
+      account_id: cfg.accountId || null,
+      token_url: cfg.tokenUrl || null,
+      client_id_masked: maskTail(cfg.clientId, 6),
+      certificate_id_masked: maskTail(cfg.certificateId, 6)
+    }
+  };
+}
+
 async function fetchManufacturingTaskContextByTaskId(taskId) {
   const nsTaskId = Number(taskId);
   if (!Number.isInteger(nsTaskId) || nsTaskId <= 0) return null;
@@ -754,7 +792,11 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
     stepPull = await createSyncStep(
       syncRun.id,
       gateResult && gateResult.timedOut ? 'PULL_WITH_IMPORT_OT_WARNING' : 'PULL_SAFE_AFTER_GATE',
-      { note: 'fetchFullDataset + replaceAllWipRows' }
+      {
+        action: 'pull_replace_wip',
+        out_source_type: String(process.env.NETSUITE_OUT_SOURCE_TYPE || 'dataset').trim().toLowerCase(),
+        replace_mode: 'all_wip_rows'
+      }
     );
     const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
     const replaced = await replaceAllWipRows(rows);
@@ -792,7 +834,11 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
     };
   } catch (err) {
     const detail = err.response && err.response.data ? err.response.data : explainSequelizeError(err);
-    const msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    const invalidGrant = buildInvalidGrantDiagnostic(err);
+    const msgBase = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    const msg = invalidGrant
+      ? `${msgBase} | diagnostic=${JSON.stringify(invalidGrant)}`
+      : msgBase;
     try {
       if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
       if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
@@ -1229,11 +1275,13 @@ exports.pullDataset = async function pullDataset(req, res) {
       });
     }
     const detail = err.response && err.response.data ? err.response.data : err.message;
+    const invalidGrant = buildInvalidGrantDiagnostic(err);
     return res.status(200).json({
       ok: false,
       httpStatus: 502,
       message: 'Fallo al leer dataset o guardar operaciones.',
-      error: typeof detail === 'string' ? detail : JSON.stringify(detail)
+      error: typeof detail === 'string' ? detail : JSON.stringify(detail),
+      diagnostic: invalidGrant
     });
   }
 };
@@ -1336,11 +1384,13 @@ exports.pushActuals = async function pushActuals(req, res) {
     });
   } catch (err) {
     const detail = err.response && err.response.data ? err.response.data : err.message;
+    const invalidGrant = buildInvalidGrantDiagnostic(err);
     return res.status(200).json({
       ok: false,
       httpStatus: 502,
       message: 'Fallo al publicar en NetSuite.',
-      error: typeof detail === 'string' ? detail : JSON.stringify(detail)
+      error: typeof detail === 'string' ? detail : JSON.stringify(detail),
+      diagnostic: invalidGrant
     });
   } finally {
     netsuitePushInFlight = false;
