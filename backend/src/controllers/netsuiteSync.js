@@ -332,7 +332,7 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
     Number.isFinite(startedMs) && Number.isFinite(endedMs)
       ? Math.max(0, Math.floor((endedMs - startedMs) / 1000))
       : 0;
-  const minutesLoaded = Math.max(0, Math.floor(stopDurationSeconds / 60));
+  const minutesLoaded = Math.max(0, Math.ceil(stopDurationSeconds / 60));
   const seqForText = taskCtx && Number.isFinite(taskCtx.operationSequence) && taskCtx.operationSequence > 0
     ? taskCtx.operationSequence
     : (op.operation_sequence || '');
@@ -429,7 +429,7 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'duracion_tramo_stop_floor_min',
+        minutes_semantics: 'duracion_tramo_stop_ceil_min',
         employee_mapping: employeeDiagnostic || null
       },
       response: {
@@ -467,7 +467,7 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'duracion_tramo_stop_floor_min',
+        minutes_semantics: 'duracion_tramo_stop_ceil_min',
         employee_mapping: employeeDiagnostic || null
       },
       response,
