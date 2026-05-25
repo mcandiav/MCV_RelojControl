@@ -48,6 +48,7 @@ const NS_UPSERT_UPDATE_FIELDS = [
   'actual_run_time',
   'completed_quantity',
   'last_pushed_actual_run_time',
+  'last_pushed_actual_setup_time',
   'last_pushed_completed_quantity',
   'netsuite_work_order_id',
   'netsuite_operation_id',
@@ -89,6 +90,14 @@ async function markSuccessfulPushes(payloadItems, netsuiteResult) {
           ) || 0
         )
       ),
+      last_pushed_actual_setup_time: Math.max(
+        0,
+        Math.floor(
+          Number(
+            src.absolute_actual_setup_time != null ? src.absolute_actual_setup_time : src.actual_setup_time
+          ) || 0
+        )
+      ),
       last_pushed_completed_quantity: Math.max(
         0,
         Math.floor(
@@ -105,6 +114,7 @@ async function markSuccessfulPushes(payloadItems, netsuiteResult) {
       WorkOrderOperation.update(
         {
           last_pushed_actual_run_time: u.last_pushed_actual_run_time,
+          last_pushed_actual_setup_time: u.last_pushed_actual_setup_time,
           last_pushed_completed_quantity: u.last_pushed_completed_quantity
         },
         { where: { id: u.id } }

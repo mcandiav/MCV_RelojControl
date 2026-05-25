@@ -201,6 +201,7 @@ function mapDatasetRowToWip(row, resolveAreaFromResource, options = {}) {
       planned_quantity: pq,
       actual_setup_time: Math.max(0, toIntOrNull(actual_setup_time) || 0),
       actual_run_time: Math.max(0, toIntOrNull(actual_run_time) || 0),
+      last_pushed_actual_setup_time: Math.max(0, toIntOrNull(actual_setup_time) || 0),
       completed_quantity: Math.max(0, toIntOrNull(completed_quantity) || 0),
       last_pushed_actual_run_time: Math.max(0, toIntOrNull(actual_run_time) || 0),
       last_pushed_completed_quantity: Math.max(0, toIntOrNull(completed_quantity) || 0),

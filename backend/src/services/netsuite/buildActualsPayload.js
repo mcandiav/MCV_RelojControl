@@ -64,6 +64,10 @@ async function buildActualsPayload({ operationIds } = {}) {
       op.last_pushed_actual_run_time != null && Number.isFinite(Number(op.last_pushed_actual_run_time))
         ? Math.max(0, Math.floor(Number(op.last_pushed_actual_run_time)))
         : base_run_time;
+    const lastPushedSetup =
+      op.last_pushed_actual_setup_time != null && Number.isFinite(Number(op.last_pushed_actual_setup_time))
+        ? Math.max(0, Math.floor(Number(op.last_pushed_actual_setup_time)))
+        : base_setup_time;
     const lastPushedQty =
       op.last_pushed_completed_quantity != null && Number.isFinite(Number(op.last_pushed_completed_quantity))
         ? Math.max(0, Math.floor(Number(op.last_pushed_completed_quantity)))
@@ -74,6 +78,7 @@ async function buildActualsPayload({ operationIds } = {}) {
     const lastSyncedAt = op.last_synced_at ? new Date(op.last_synced_at) : null;
     const hasSyncedStamp = lastSyncedAt instanceof Date && !Number.isNaN(lastSyncedAt.getTime());
     const baselineRun = (lastPushedRun === 0 && hasSyncedStamp && base_run_time > 0) ? base_run_time : lastPushedRun;
+    const baselineSetup = (lastPushedSetup === 0 && hasSyncedStamp && base_setup_time > 0) ? base_setup_time : lastPushedSetup;
     // Para cantidad terminada en modo delta, el baseline debe ser siempre lo ultimo pusheado.
     // Si no, cuando baseline=0 y el operario registra la primera unidad, el delta queda en 0.
     const baselineQty = lastPushedQty;
@@ -84,7 +89,7 @@ async function buildActualsPayload({ operationIds } = {}) {
     }
 
     const pendingRunDelta = Math.max(0, actual_run_time - baselineRun);
-    const pendingSetupDelta = Math.max(0, actual_setup_time - base_setup_time);
+    const pendingSetupDelta = Math.max(0, actual_setup_time - baselineSetup);
     const pendingQtyDelta = Math.max(0, completed_quantity - baselineQty);
 
     if (useDeltaMode) {

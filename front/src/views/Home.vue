@@ -1700,11 +1700,21 @@ export default {
       this.startBoardPollWhileOpen()
     },
     formatElapsed(row) {
-      const persisted = Number(row.total_elapsed_seconds || 0)
+      const op = this.extractOperation(row)
+      const mode = this.extractTimerMode(row)
+      const persistedMinutes = Number(
+        mode === 'SETUP'
+          ? (op && op.actual_setup_time)
+          : (op && op.actual_run_time)
+      ) || 0
+      const persisted = Math.max(0, Math.floor(persistedMinutes * 60))
       let extra = 0
       if (row.status === 'ACTIVE' && row.active_since) {
         const since = new Date(row.active_since).getTime()
-        if (Number.isFinite(since)) extra = Math.max(0, Math.floor((this.nowTick - since) / 1000))
+        if (Number.isFinite(since)) {
+          const activeSeconds = Math.max(0, Math.floor((this.nowTick - since) / 1000))
+          extra = activeSeconds % 60
+        }
       }
       const total = Math.max(0, persisted + extra)
       const hrs = Math.floor(total / 3600)
