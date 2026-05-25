@@ -33,6 +33,10 @@ async function createZim400Record(payload) {
   const idByLocation = extractIdFromHref(headers && headers.location, recordType);
   return {
     id: idByData || idByHref || idByLocation || null,
+    account_id: cfg.accountId || null,
+    request_url: url,
+    location_header: headers && headers.location ? String(headers.location) : null,
+    response_href: data && data.href ? String(data.href) : null,
     data,
     http_status: status,
     status_text: statusText || null

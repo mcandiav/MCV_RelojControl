@@ -1031,6 +1031,7 @@ export default {
       idleBoardCarouselIntervalId: null,
       idleBoardOpenTimeout: null,
       boardPollIntervalId: null,
+      elapsedModeCache: {},
       lastPointerMoveTs: 0,
       lastSeedResponse: '',
       /** PÃ¡gina del carrusel del tablero grande (4 tareas por pÃ¡gina, rejilla 2Ã—2). */
@@ -1702,6 +1703,7 @@ export default {
     formatElapsed(row) {
       const op = this.extractOperation(row)
       const mode = this.extractTimerMode(row)
+      const status = this.extractStatus(row)
       const persistedMinutes = Number(
         mode === 'SETUP'
           ? (op && op.actual_setup_time)
@@ -1716,7 +1718,16 @@ export default {
           extra = activeSeconds % 60
         }
       }
-      const total = Math.max(0, persisted + extra)
+      const candidate = Math.max(0, persisted + extra)
+      const timerId = row && row.id != null ? String(row.id) : 'na'
+      const segmentRef =
+        status === 'ACTIVE'
+          ? String(row && row.active_since ? row.active_since : '')
+          : String(row && row.last_event_at ? row.last_event_at : '')
+      const cacheKey = `${timerId}|${mode}|${segmentRef}`
+      const prev = Number(this.elapsedModeCache[cacheKey] || 0)
+      const total = status === 'STOPPED' ? candidate : Math.max(prev, candidate)
+      if (status !== 'STOPPED') this.$set(this.elapsedModeCache, cacheKey, total)
       const hrs = Math.floor(total / 3600)
       const mins = Math.floor((total % 3600) / 60)
       const secs = total % 60
