@@ -286,7 +286,15 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
       'ZIM400 mapping failed: workOrder no resuelto como referencia numerica para custrecord_zim_reloj_ot.'
     );
   }
-  const minutesLoaded = Math.max(0, Math.floor(Number(op.actual_setup_time || 0) + Number(op.actual_run_time || 0)));
+  // ZIM400: minutos cargados deben representar el tramo cerrado por ESTE STOP, no el acumulado historico de la operacion.
+  // Usar timestamps START/RESUME -> STOP evita mezclar SETUP/RUN previos y evita depender de campos base locales.
+  const startedMs = startedAt ? new Date(startedAt).getTime() : NaN;
+  const endedMs = endedAt ? new Date(endedAt).getTime() : NaN;
+  const stopDurationSeconds =
+    Number.isFinite(startedMs) && Number.isFinite(endedMs)
+      ? Math.max(0, Math.floor((endedMs - startedMs) / 1000))
+      : 0;
+  const minutesLoaded = Math.max(0, Math.floor(stopDurationSeconds / 60));
   const seqForText = taskCtx && Number.isFinite(taskCtx.operationSequence) && taskCtx.operationSequence > 0
     ? taskCtx.operationSequence
     : (op.operation_sequence || '');
@@ -383,7 +391,7 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'acumulado_local_stop',
+        minutes_semantics: 'duracion_tramo_stop_floor_min',
         employee_mapping: employeeDiagnostic || null
       },
       response: {
@@ -421,7 +429,7 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'acumulado_local_stop',
+        minutes_semantics: 'duracion_tramo_stop_floor_min',
         employee_mapping: employeeDiagnostic || null
       },
       response,
