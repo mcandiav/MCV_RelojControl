@@ -286,7 +286,7 @@ async function inferStopStartAt(stopEvent) {
   return startLike ? startLike.event_at : null;
 }
 
-async function buildZim400PayloadFromQueueItem(queueItem) {
+async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
   const stopEventId = Number(queueItem && queueItem.trigger_event_id);
   const opId = Number(queueItem && queueItem.work_order_operation_id);
   if (!Number.isInteger(stopEventId) || stopEventId <= 0) {
@@ -324,15 +324,19 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
       'ZIM400 mapping failed: workOrder no resuelto como referencia numerica para custrecord_zim_reloj_ot.'
     );
   }
-  // ZIM400: minutos cargados deben representar el tramo cerrado por ESTE STOP, no el acumulado historico de la operacion.
-  // Usar timestamps START/RESUME -> STOP evita mezclar SETUP/RUN previos y evita depender de campos base locales.
+  // ZIM400 debe usar la misma fuente de verdad que PUSH para tiempo/cantidad.
+  // Si no hay pushItem disponible, usar fallback por tramo STOP para no bloquear el envio.
   const startedMs = startedAt ? new Date(startedAt).getTime() : NaN;
   const endedMs = endedAt ? new Date(endedAt).getTime() : NaN;
   const stopDurationSeconds =
     Number.isFinite(startedMs) && Number.isFinite(endedMs)
       ? Math.max(0, Math.floor((endedMs - startedMs) / 1000))
       : 0;
-  const minutesLoaded = Math.max(0, Math.ceil(stopDurationSeconds / 60));
+  const fallbackMinutesLoaded = Math.max(0, Math.ceil(stopDurationSeconds / 60));
+  const pushRunMinutesRaw = pushItem && pushItem.actual_run_time != null ? Number(pushItem.actual_run_time) : NaN;
+  const minutesLoaded = Number.isFinite(pushRunMinutesRaw)
+    ? Math.max(0, Math.floor(pushRunMinutesRaw))
+    : fallbackMinutesLoaded;
   const seqForText = taskCtx && Number.isFinite(taskCtx.operationSequence) && taskCtx.operationSequence > 0
     ? taskCtx.operationSequence
     : (op.operation_sequence || '');
@@ -369,6 +373,13 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
                   timer_event_id: stopEventId
                 }
               : null));
+  const pushQtyRaw = pushItem && pushItem.completed_quantity != null ? Number(pushItem.completed_quantity) : NaN;
+  const qtyTerminated = Number.isFinite(pushQtyRaw)
+    ? Math.max(0, Math.floor(pushQtyRaw))
+    : (Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0);
+  const sourceOfTruth = (Number.isFinite(pushRunMinutesRaw) || Number.isFinite(pushQtyRaw))
+    ? 'push_item'
+    : 'stop_event_fallback';
   const payload = compactPayload({
     custrecord_zim_reloj_ot: workOrderId,
     custrecord_zim_reloj_ot_id: workOrderId,
@@ -389,13 +400,13 @@ async function buildZim400PayloadFromQueueItem(queueItem) {
       Math.floor(Number(op.planned_setup_minutes || 0) + Number(op.planned_operation_minutes || 0))
     ),
     custrecord_zim_reloj_cantidad: Number(op.planned_quantity || 0),
-    custrecord_zim_reloj_cantidad_terminada: Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0
+    custrecord_zim_reloj_cantidad_terminada: qtyTerminated
   });
-  return { payload, stopEventId, op, taskCtx, employeeDiagnostic };
+  return { payload, stopEventId, op, taskCtx, employeeDiagnostic, sourceOfTruth };
 }
 
-async function runZim400Publisher(queueItem) {
-  const { payload, stopEventId, op, employeeDiagnostic } = await buildZim400PayloadFromQueueItem(queueItem);
+async function runZim400Publisher(queueItem, pushItem) {
+  const { payload, stopEventId, op, employeeDiagnostic, sourceOfTruth } = await buildZim400PayloadFromQueueItem(queueItem, pushItem);
   const [row] = await NetsuiteSyncZim400.findOrCreate({
     where: { stop_event_id: stopEventId },
     defaults: {
@@ -429,7 +440,9 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'duracion_tramo_stop_ceil_min',
+        minutes_semantics: sourceOfTruth === 'push_item' ? 'from_push_actual_run_time' : 'duracion_tramo_stop_ceil_min_fallback',
+        qty_semantics: sourceOfTruth === 'push_item' ? 'from_push_completed_quantity' : 'from_stop_event_fallback',
+        source_of_truth: sourceOfTruth,
         employee_mapping: employeeDiagnostic || null
       },
       response: {
@@ -467,7 +480,9 @@ async function runZim400Publisher(queueItem) {
       method: 'CREATE',
       request_payload: payload,
       request_payload_meta: {
-        minutes_semantics: 'duracion_tramo_stop_ceil_min',
+        minutes_semantics: sourceOfTruth === 'push_item' ? 'from_push_actual_run_time' : 'duracion_tramo_stop_ceil_min_fallback',
+        qty_semantics: sourceOfTruth === 'push_item' ? 'from_push_completed_quantity' : 'from_stop_event_fallback',
+        source_of_truth: sourceOfTruth,
         employee_mapping: employeeDiagnostic || null
       },
       response,
@@ -1171,7 +1186,8 @@ async function runV4QueueSync(queueItem) {
         import_ot_step_ok: true
       });
       try {
-        const zimOut = await runZim400Publisher(queueItem);
+        const pushItemForZim400 = items.find((it) => Number(it && it.operation_id) === operationId) || null;
+        const zimOut = await runZim400Publisher(queueItem, pushItemForZim400);
         await finishSyncStep(stepZim400, { ok: true, result: zimOut });
       } catch (zimErr) {
         const zimMsg = zimErr && zimErr.message ? zimErr.message : String(zimErr);
