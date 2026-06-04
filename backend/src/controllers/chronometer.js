@@ -130,8 +130,7 @@ async function runShiftClose(trigger = 'manual', options = {}) {
   });
 
   const affectedOperationIds = new Set();
-  let queueEnqueued = 0;
-  let queueFailed = 0;
+  const stopEvents = [];
   for (const timer of activeOrPausedTimers) {
     affectedOperationIds.add(timer.work_order_operation_id);
     if (timer.status === 'ACTIVE') {
@@ -153,23 +152,11 @@ async function runShiftClose(trigger = 'manual', options = {}) {
     timer.active_since = null;
     timer.last_event_at = new Date();
     await timer.save();
-
-    if (config.V4_SYNC_ENABLED) {
-      try {
-        await enqueueFromStop({
-          operationId: timer.work_order_operation_id,
-          eventId: stopEvent && stopEvent.id ? stopEvent.id : null,
-          userId: timer.current_user_id || null
-        });
-        queueEnqueued += 1;
-      } catch (queueErr) {
-        queueFailed += 1;
-        console.error(
-          'V4 queue enqueue failed on AUTO_STOP_SHIFT_END:',
-          queueErr && queueErr.message ? queueErr.message : queueErr
-        );
-      }
-    }
+    stopEvents.push({
+      stop_event_id: stopEvent && stopEvent.id ? Number(stopEvent.id) : null,
+      work_order_operation_id: Number(timer.work_order_operation_id),
+      user_id: timer.current_user_id ? Number(timer.current_user_id) : null
+    });
   }
 
   for (const operationId of affectedOperationIds) {
@@ -180,11 +167,7 @@ async function runShiftClose(trigger = 'manual', options = {}) {
     shiftDate,
     stoppedTimers: activeOrPausedTimers.length,
     consolidatedOperations: affectedOperationIds.size,
-    v4Queue: {
-      enabled: config.V4_SYNC_ENABLED,
-      enqueued: queueEnqueued,
-      failed: queueFailed
-    }
+    stopEvents
   };
 
   const shouldRunNetsuiteSync = options && options.skipNetsuiteSync === true
