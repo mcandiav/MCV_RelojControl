@@ -1,10 +1,11 @@
 # Arquitectura MCV_Cronometro
-## Version 7.0 (2026-04-05)
+## Version 7.1 (2026-05-10)
 
 ## Bitácora de cambios
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |---|---|---|---|---|
+| 2026-05-10 | Se define sincronización parcial a `import_ot` cada 15 minutos mediante deltas, sin cambiar el cierre 16:59 ni el pull 17:02. | `import_ot` se procesa en NetSuite por batch cada 15 minutos; enviar solo al cierre deja demasiado desfase para el pull. | Cronometro debe recordar lo ya enviado entre pulls para no duplicar. NetSuite sigue siendo la verdad final después del pull. | Flujo de sincronización, contrato IN, consistencia |
 | 2026-04-07 | Se agrega log persistente de sincronizaciones operativas (STOP/PUSH/WAIT/PULL) y vista admin en Reporte. | Auditoría y diagnóstico del flujo Stop -> Push -> Pull(+replace). | Nuevas tablas y endpoints; front muestra log. | Flujo de sincronización, modelo de datos, capa de presentación |
 | 2026-04-05 | Se ordena la arquitectura final del proyecto y se consolida el contrato NetSuite vigente. | El proyecto ya está terminado y la documentación mezclaba decisiones históricas con vigentes. | Queda una lectura única y estable de la arquitectura final. | Objetivo, integración NetSuite, flujo operativo, referencias |
 | 2026-03-31 | Se consolida el flujo Stop -> Push -> Pull(+replace). | Alinear operación y documentación. | Define la secuencia oficial de sincronización. | Flujo oficial de sincronización |
@@ -19,22 +20,25 @@ Cronometro captura tiempo real de operaciones WIP y publica a NetSuite tres dato
 2. `actual_run_time`
 3. `completed_quantity`
 
-Después del push, Cronometro vuelve a leer NetSuite para mantener consistencia local.
+Después del push/pull operativo, Cronometro vuelve a leer NetSuite para mantener consistencia local.
 
 ## 2. Principio rector
 
 La verdad operativa final yace en NetSuite.
 Cronometro es el motor de captura y consolidación local, pero se realinea por pull.
 
+A partir de la sincronización parcial cada 15 minutos, Cronometro mantiene una memoria local temporal de lo ya enviado a `import_ot` solamente para evitar duplicados entre pulls. Esa memoria local no reemplaza la verdad de NetSuite.
+
 ## 3. Estado final de la solución
 
-La arquitectura vigente y final del proyecto queda definida así:
+La arquitectura vigente del proyecto queda definida así:
 
 1. **OUT por Saved Search** sobre `manufacturingoperationtask`.
 2. **IN por RESTlet** en modo `import_ot`.
-3. **Flujo operativo oficial:** `Stop -> Push -> Pull(+replace)`.
-4. **Granularidad obligatoria de extracción:** `1 operación lógica = 1 fila`.
-5. **Contrato de retorno hacia NetSuite:** 3 datos reales por operación.
+3. **Flujo operativo oficial de cierre:** `Stop -> Push -> Pull(+replace)`.
+4. **Sincronización parcial durante el turno:** push de deltas a `import_ot` cada 15 minutos.
+5. **Granularidad obligatoria de extracción:** `1 operación lógica = 1 fila`.
+6. **Contrato de retorno hacia NetSuite:** 3 datos reales por operación.
 
 Toda referencia anterior a Dataset como fuente oficial OUT debe leerse como histórica/deprecada.
 
@@ -45,6 +49,7 @@ Toda referencia anterior a Dataset como fuente oficial OUT debe leerse como hist
 - Control de timers: `start`, `pause`, `resume`, `stop`
 - Cierre de turno
 - Consolidación de segundos/minutos y cantidades
+- Cálculo de deltas pendientes para `import_ot`
 - Reglas por área (`ME`, `ES`, `ALL`)
 - Endpoints admin de sincronización
 
@@ -67,18 +72,36 @@ Toda referencia anterior a Dataset como fuente oficial OUT debe leerse como hist
 
 ## 5. Flujo oficial de sincronización
 
-### 5.1 Sincronización operativa manual
+### 5.1 Sincronización parcial durante el turno
 
-1. Detener relojes activos/pausados
-2. Push a NetSuite
-3. Espera controlada (`pull_delay_seconds`)
-4. Pull + replace en tabla local WIP
+Durante el turno, Cronometro debe enviar a `import_ot` cada 15 minutos los deltas pendientes de relojes detenidos.
 
-### 5.2 Cierre de turno programado
+Reglas:
 
-- Ejecuta auto-stop
-- Consolida
-- Puede disparar sincronización según configuración
+1. No enviar relojes corriendo.
+2. No enviar relojes pausados.
+3. Solo considerar relojes detenidos con datos liquidables.
+4. Enviar delta, nunca el acumulado total si ya hubo envíos previos.
+5. El delta se calcula contra lo ya enviado desde el último pull/recalce.
+6. Después de un envío exitoso, registrar lo enviado para que el próximo ciclo no lo duplique.
+7. Registrar en logs locales y trazabilidad NetSuite/import_ot el payload enviado, montos enviados y resultado.
+
+### 5.2 Sincronización operativa de cierre
+
+El flujo actual de cierre se mantiene. No se debe cambiar su lógica general:
+
+1. A las 16:59 el sistema detiene los relojes activos.
+2. Se envía lo pendiente a `import_ot` usando la misma regla de delta.
+3. A las 17:02 se ejecuta pull + replace según lógica vigente.
+
+El pull trae la verdad completa de NetSuite en ese momento. Si la última data enviada no alcanzó a ser procesada por el batch de `import_ot`, se acepta como desfase temporal y no como corrupción de datos.
+
+### 5.3 Pull y verdad operativa
+
+- NetSuite sigue siendo la verdad final.
+- El pull no debe usarse para calcular qué enviar durante el día.
+- Cronometro usa memoria local de envíos solo para evitar duplicar deltas entre pulls.
+- Después del pull, Cronometro se realinea con NetSuite.
 
 ## 6. Modelo de datos funcional
 
@@ -90,6 +113,7 @@ Toda referencia anterior a Dataset como fuente oficial OUT debe leerse como hist
 - `operation_time_totals`
 - `sync_runs` (log de sincronizaciones)
 - `sync_run_steps` (etapas STOP/PUSH/WAIT/PULL)
+- registro/log de deltas enviados a `import_ot` (nombre físico a definir por implementación)
 
 ### 6.2 Reglas de datos
 
@@ -97,6 +121,7 @@ Toda referencia anterior a Dataset como fuente oficial OUT debe leerse como hist
 - Una máquina/recurso no debe tener dos operaciones activas simultáneas
 - Visibilidad por área de operario
 - Snapshot local WIP se puede reemplazar completo desde NetSuite
+- Para envíos parciales, se debe persistir cuánto ya fue enviado por operación/reloj desde el último pull.
 
 ## 7. Integración NetSuite OUT
 
@@ -185,6 +210,7 @@ Como la arquitectura del proyecto ya está cerrada, esto se considera un detalle
 - Agrupa por OT.
 - Crea registro de staging en `customrecord_3k_importacion_ot`.
 - Scripts internos de NetSuite procesan y aplican al módulo operativo.
+- `import_ot` se procesa en NetSuite por batch cada 15 minutos.
 
 ### 8.2 Regla de implementación vigente
 
@@ -209,11 +235,100 @@ Cronometro publica tres datos reales por operación:
 2. `actual_run_time`
 3. `completed_quantity`
 
-### Regla funcional clave
+### 9.1 Regla funcional vigente: deltas para `import_ot`
 
-- El envío es por **overwrite del valor vigente**.
-- No se envían deltas.
-- Después del push, Cronometro vuelve a hacer pull para recalzar el estado local.
+Para `import_ot`, Cronometro debe enviar **deltas**, no acumulados totales ya enviados.
+
+Motivo: NetSuite suma/aplica lo que recibe por `import_ot`. Si Cronometro vuelve a enviar un acumulado completo que ya tuvo envíos previos, NetSuite duplicará horas/cantidades.
+
+Fórmula obligatoria:
+
+```text
+delta_a_enviar = acumulado_actual_del_dia - acumulado_ya_enviado_desde_el_ultimo_pull
+```
+
+Esta regla aplica a todo emisor:
+
+- sincronización parcial cada 15 minutos,
+- cierre de turno 16:59,
+- cualquier reintento manual/admin.
+
+No debe existir un camino que envíe acumulado total saltándose el cálculo de delta.
+
+### 9.2 Ejemplo obligatorio para programador
+
+Caso: OT1 / Operación 4 / Requerido 100 min / Cantidad 0.
+
+```text
+10:00 reloj detenido
+acumulado del día = 25 min
+ya enviado desde último pull = 0 min
+delta = 25 - 0 = 25
+se envía a import_ot: 25
+se registra ya enviado = 25
+```
+
+Luego el operario vuelve a ejecutar la misma operación:
+
+```text
+12:00 reloj detenido
+acumulado del día = 35 min
+ya enviado desde último pull = 25 min
+delta = 35 - 25 = 10
+se envía a import_ot: 10
+se registra ya enviado = 35
+```
+
+Cierre de turno:
+
+```text
+16:59 sistema detiene todos los relojes
+acumulado del día = 49 min
+ya enviado desde último pull = 35 min
+delta = 49 - 35 = 14
+se envía a import_ot: 14
+se registra ya enviado = 49
+```
+
+Resultado esperado en NetSuite después de procesar los batch:
+
+```text
+25 + 10 + 14 = 49 min
+```
+
+Error que debe evitarse:
+
+```text
+Enviar 25, luego 35, luego 49.
+Eso duplicaría porque NetSuite sumaría 109 min.
+```
+
+### 9.3 Cantidades
+
+La misma regla aplica a cantidades si la cantidad se informa como acumulado diario:
+
+```text
+delta_cantidad = cantidad_actual_acumulada - cantidad_ya_enviada_desde_el_ultimo_pull
+```
+
+Si la interfaz cambia en el futuro para capturar “cantidad del tramo”, ese valor ya sería delta. Mientras la pantalla maneje acumulado, se debe calcular diferencia.
+
+### 9.4 Trazabilidad de lo enviado
+
+Cada envío a `import_ot` debe quedar trazable localmente y en NetSuite/import_ot:
+
+- operación/OT/secuencia,
+- empleado/recurso si aplica,
+- acumulado actual usado para calcular,
+- acumulado ya enviado,
+- delta enviado,
+- payload JSON exacto enviado,
+- fecha/hora del envío,
+- resultado del RESTlet,
+- identificador de registro `customrecord_3k_importacion_ot` si NetSuite lo devuelve,
+- error si falla.
+
+Esta trazabilidad es necesaria porque entre pulls Cronometro debe saber qué ya envió para no reenviar lo mismo.
 
 ## 10. Controles operativos admin
 
@@ -237,13 +352,16 @@ Body:
 
 ### 11.1 Consistencia
 
-- Nunca hacer push parcial si se busca foto operativa consistente.
-- Siempre realinear con pull después de publicar.
-- La extracción debe mantener unicidad efectiva por operación lógica.
+- NetSuite mantiene la verdad final.
+- El pull trae la verdad completa disponible al momento de consultar NetSuite.
+- Puede existir desfase si el último `import_ot` aún no fue procesado por el batch de NetSuite.
+- Durante el día, Cronometro evita duplicados con memoria local de deltas enviados.
+- El pull posterior realinea el snapshot local contra NetSuite.
 
 ### 11.2 Performance
 
 - `import_ot` reduce tiempo total frente a escritura directa uno a uno.
+- La sincronización parcial cada 15 minutos reduce el desfase acumulado al cierre.
 - La sincronización masiva depende de:
   - volumen de operaciones,
   - latencia NetSuite,
@@ -253,11 +371,17 @@ Body:
 
 1. OUT por Saved Search.
 2. IN por RESTlet en modo `import_ot`.
-3. Flujo operativo oficial: **Stop -> Push -> Pull(+replace)**.
-4. NetSuite mantiene la verdad final y Cronometro se recalza en cada ciclo operativo.
-5. Dataset OUT queda como referencia histórica, no como fuente oficial vigente.
+3. Durante el turno, enviar deltas a `import_ot` cada 15 minutos para reducir desfase.
+4. Mantener cierre 16:59 y pull 17:02 como flujo vigente.
+5. NetSuite mantiene la verdad final y Cronometro se recalza en cada pull operativo.
+6. Dataset OUT queda como referencia histórica, no como fuente oficial vigente.
 
-## 13. Referencias
+## 13. Fuera de alcance inmediato
+
+La población de `ZIM - Data Reloj Control` queda fuera de este cambio.
+Una vez estabilizado el envío de deltas a `import_ot`, ZIM podrá evaluarse como consumidor secundario del mismo bloque/delta validado.
+
+## 14. Referencias
 
 - `README.md`
 - `NETSUITE_RESTLET_IMPORT_OT_MODE.md`
