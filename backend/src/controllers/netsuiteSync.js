@@ -151,10 +151,6 @@ function asNonNegativeInt(value) {
   return Math.max(0, Math.floor(n));
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function asNullableInt(value) {
   if (value == null || value === '') return null;
   const n = Number(value);
@@ -620,6 +616,10 @@ function clampOperationalPullDelaySeconds(value) {
   return Math.max(0, Math.min(120, Math.floor(n)));
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function buildImportOtPendingSuiteQl(cfg) {
   const recordType = String(cfg.importOtRecordType || 'customrecord_3k_importacion_ot').trim();
   const otField = String(cfg.importOtWorkOrderField || 'custrecord_3k_ot_principal').trim();
@@ -725,100 +725,6 @@ async function waitImportOtGate({ itemCount }) {
     elapsedMs: Date.now() - startedAt,
     pendingCount: lastPendingCount,
     polls
-  };
-}
-
-async function waitForV4QueueBatch({ queueIds, timeoutSeconds, pollSeconds }) {
-  const ids = Array.from(
-    new Set(
-      (queueIds || [])
-        .map((id) => Number(id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
-  if (ids.length === 0) {
-    return {
-      status: 'SKIPPED_NO_QUEUE_ITEMS',
-      stable: true,
-      timedOut: false,
-      warning: null,
-      elapsedMs: 0,
-      totalItems: 0,
-      pendingCount: 0,
-      processingCount: 0,
-      sentCount: 0,
-      errorCount: 0,
-      retryCount: 0,
-      polls: []
-    };
-  }
-
-  const startedAt = Date.now();
-  const timeoutAt = startedAt + Math.max(1, timeoutSeconds) * 1000;
-  const polls = [];
-  let lastSnapshot = null;
-  while (Date.now() < timeoutAt) {
-    const rows = await NetsuiteSyncQueue.findAll({
-      where: { id: { [Op.in]: ids } },
-      attributes: ['id', 'status', 'attempt_count', 'last_error']
-    });
-    const snapshot = {
-      totalItems: ids.length,
-      foundItems: rows.length,
-      pendingCount: 0,
-      processingCount: 0,
-      sentCount: 0,
-      errorCount: 0,
-      retryCount: 0,
-      cancelledCount: 0
-    };
-    for (const row of rows) {
-      const status = String(row.status || '').toUpperCase();
-      if (status === 'PENDING') snapshot.pendingCount += 1;
-      else if (status === 'PROCESSING') snapshot.processingCount += 1;
-      else if (status === 'SENT') snapshot.sentCount += 1;
-      else if (status === 'ERROR') snapshot.errorCount += 1;
-      else if (status === 'RETRY') snapshot.retryCount += 1;
-      else if (status === 'CANCELLED') snapshot.cancelledCount += 1;
-    }
-    snapshot.missingCount = Math.max(0, ids.length - rows.length);
-    lastSnapshot = snapshot;
-    polls.push({ at: new Date().toISOString(), ...snapshot });
-    if (snapshot.pendingCount <= 0 && snapshot.processingCount <= 0) {
-      return {
-        status: snapshot.errorCount > 0 || snapshot.retryCount > 0 ? 'COMPLETED_WITH_WARNINGS' : 'STABLE',
-        stable: true,
-        timedOut: false,
-        warning: snapshot.errorCount > 0 || snapshot.retryCount > 0 ? 'V4 queue termino con errores o retries.' : null,
-        elapsedMs: Date.now() - startedAt,
-        polls,
-        ...snapshot
-      };
-    }
-    const remainingMs = Math.max(0, timeoutAt - Date.now());
-    const waitMs = Math.min(Math.max(1, pollSeconds) * 1000, remainingMs);
-    if (waitMs <= 0) break;
-    await sleep(waitMs);
-  }
-
-  return {
-    status: 'TIMEOUT',
-    stable: false,
-    timedOut: true,
-    warning: 'V4 queue no termino antes del timeout.',
-    elapsedMs: Date.now() - startedAt,
-    polls,
-    ...(lastSnapshot || {
-      totalItems: ids.length,
-      foundItems: 0,
-      missingCount: ids.length,
-      pendingCount: 0,
-      processingCount: 0,
-      sentCount: 0,
-      errorCount: 0,
-      retryCount: 0,
-      cancelledCount: 0
-    })
   };
 }
 
@@ -962,123 +868,8 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
   }
 }
 
-async function runOperationalV4WaitPullLogged(syncRun, { delaySeconds, startedAt, shift }) {
-  const v4TimeoutSeconds = Math.max(
-    5,
-    Math.min(120, Number(config.NETSUITE_IMPORT_OT_GATE_TIMEOUT_SECONDS || 60))
-  );
-  const v4PollSeconds = Math.max(
-    1,
-    Math.min(30, Number(config.NETSUITE_IMPORT_OT_GATE_POLL_SECONDS || 5))
-  );
-  const extraImportOtDelaySeconds = 30;
-  let stepQueue = null;
-  let stepWait = null;
-  let stepExtra = null;
-  let stepPull = null;
-  try {
-    stepQueue = await createSyncStep(syncRun.id, 'QUEUE_V4', {
-      queueEnabled: config.V4_SYNC_ENABLED,
-      queueItems: shift && shift.v4Queue ? Number((shift.v4Queue.queueIds || []).length) : 0
-    });
-    await finishSyncStep(stepQueue, {
-      ok: true,
-      result: shift && shift.v4Queue ? shift.v4Queue : { enabled: false, queueIds: [] }
-    });
-
-    stepWait = await createSyncStep(syncRun.id, 'WAIT_V4_QUEUE', {
-      timeoutSeconds: v4TimeoutSeconds,
-      pollSeconds: v4PollSeconds
-    });
-    const queueIds = shift && shift.v4Queue && Array.isArray(shift.v4Queue.queueIds)
-      ? shift.v4Queue.queueIds
-      : [];
-    const queueResult = await waitForV4QueueBatch({
-      queueIds,
-      timeoutSeconds: v4TimeoutSeconds,
-      pollSeconds: v4PollSeconds
-    });
-    await finishSyncStep(stepWait, { ok: true, result: queueResult });
-
-    const queueStableStep = await createSyncStep(
-      syncRun.id,
-      queueResult && queueResult.timedOut ? 'V4_QUEUE_TIMEOUT_WARNING' : 'V4_QUEUE_STABLE',
-      { queueResult }
-    );
-    await finishSyncStep(queueStableStep, { ok: true, result: queueResult });
-
-    stepExtra = await createSyncStep(syncRun.id, 'WAIT_IMPORT_OT_EXTRA', {
-      delaySecondsApplied: extraImportOtDelaySeconds
-    });
-    await sleep(extraImportOtDelaySeconds * 1000);
-    await finishSyncStep(stepExtra, {
-      ok: true,
-      result: {
-        status: 'EXTRA_DELAY_APPLIED',
-        stable: true,
-        timedOut: false,
-        warning: null,
-        elapsedMs: extraImportOtDelaySeconds * 1000
-      }
-    });
-
-    stepPull = await createSyncStep(
-      syncRun.id,
-      queueResult && queueResult.timedOut ? 'PULL_WITH_V4_WARNING' : 'PULL_SAFE_AFTER_V4',
-      {
-        action: 'pull_replace_wip',
-        out_source_type: String(process.env.NETSUITE_OUT_SOURCE_TYPE || 'dataset').trim().toLowerCase(),
-        replace_mode: 'all_wip_rows'
-      }
-    );
-    const { rows, totalRows } = await fetchFullDataset(resolveAreaFromResource, {});
-    const replaced = await replaceAllWipRows(rows);
-    await finishSyncStep(stepPull, { ok: true, result: { totalRows, imported: replaced.imported } });
-
-    const queueWarning = Boolean(
-      queueResult &&
-      (queueResult.timedOut || queueResult.errorCount > 0 || queueResult.retryCount > 0)
-    );
-    const summary = {
-      elapsedMs: Date.now() - startedAt,
-      delaySecondsApplied: delaySeconds,
-      shift,
-      gate: queueResult,
-      pull: { totalRows, imported: replaced.imported },
-      warning_message: queueResult && queueResult.warning ? queueResult.warning : null
-    };
-    await finishSyncRun(syncRun, { ok: true, summary, warning: queueWarning });
-
-    return {
-      shift,
-      delaySecondsApplied: delaySeconds,
-      gate: queueResult,
-      warning: queueWarning,
-      warningMessage: queueResult && queueResult.warning ? queueResult.warning : null,
-      totalRows,
-      replaced,
-      elapsedMs: Date.now() - startedAt
-    };
-  } catch (err) {
-    const detail = err.response && err.response.data ? err.response.data : explainSequelizeError(err);
-    const msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
-    try {
-      if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
-      if (stepExtra && stepExtra.status === 'RUNNING') await finishSyncStep(stepExtra, { ok: false, errorMessage: msg });
-      if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
-      if (stepQueue && stepQueue.status === 'RUNNING') await finishSyncStep(stepQueue, { ok: false, errorMessage: msg });
-      await finishSyncRun(syncRun, {
-        ok: false,
-        errorMessage: msg,
-        summary: { elapsedMs: Date.now() - startedAt, delaySecondsApplied: delaySeconds, shift }
-      });
-    } catch (_) {}
-    throw err;
-  }
-}
-
 /**
- * Cierre de turno programado: mismo log que sync operativa (STOP + V4 + WAIT + PULL).
+ * Cierre de turno programado: mismo log que sync operativa (STOP + opcional PUSH/WAIT/PULL).
  */
 async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhases }) {
   const delaySeconds = clampOperationalPullDelaySeconds(config.NS_OPERATIONAL_PULL_DELAY_SECONDS);
@@ -1147,19 +938,22 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
     const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
     await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
 
-    const out = await runOperationalV4WaitPullLogged(syncRun, {
+    const out = await runOperationalPushWaitPullLogged(syncRun, {
       delaySeconds,
       startedAt,
       shift: shiftSummary
     });
 
+    const itemCount = out.items.length;
     const netsuiteSync = {
-      queued: shiftSummary && shiftSummary.v4Queue ? Number((shiftSummary.v4Queue.queueIds || []).length) : 0,
+      pushed: itemCount,
+      pushSkipped: itemCount === 0,
       imported: out.replaced.imported,
       totalRows: out.totalRows,
       maxRowsApplied: null,
       warning: !!out.warning,
-      warning_message: out.warningMessage
+      warning_message: out.warningMessage,
+      netsuitePush: out.netsuitePush
     };
 
     return {
@@ -1686,13 +1480,10 @@ exports.operationalSync = async function operationalSync(req, res) {
     syncRun = await createSyncRun({ flowType: 'operational', trigger: 'manual', req });
 
     stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL' });
-    const shift = await runShiftClose('manual_operational_sync', {
-      skipNetsuiteSync: true,
-      enqueueV4: true
-    });
+    const shift = await runShiftClose('manual_operational_sync', { skipNetsuiteSync: true });
     await finishSyncStep(stepStop, { ok: true, result: shift });
 
-    const out = await runOperationalV4WaitPullLogged(syncRun, {
+    const out = await runOperationalPushWaitPullLogged(syncRun, {
       delaySeconds,
       startedAt,
       shift
@@ -1706,11 +1497,10 @@ exports.operationalSync = async function operationalSync(req, res) {
       warning_message: out.warningMessage,
       shift: out.shift,
       gate: out.gate,
-      queue: {
-        itemCount: shift && shift.v4Queue ? Number((shift.v4Queue.queueIds || []).length) : 0,
-        created: shift && shift.v4Queue ? Number(shift.v4Queue.created || 0) : 0,
-        reused: shift && shift.v4Queue ? Number(shift.v4Queue.reused || 0) : 0,
-        failed: shift && shift.v4Queue ? Number(shift.v4Queue.failed || 0) : 0
+      push: {
+        itemCount: out.items.length,
+        markedSuccessfulPushes: out.markedSuccessfulPushes,
+        netsuite: out.netsuitePush
       },
       pull: {
         totalRows: out.totalRows,

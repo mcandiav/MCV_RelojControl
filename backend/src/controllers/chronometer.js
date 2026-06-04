@@ -122,8 +122,6 @@ async function consolidateShiftForOperation(operationId, shiftDate) {
 }
 
 async function runShiftClose(trigger = 'manual', options = {}) {
-  const shouldEnqueueV4 =
-    config.V4_SYNC_ENABLED && (trigger === 'scheduler' || (options && options.enqueueV4 === true));
   const shiftDate = getShiftDateString(new Date());
   const activeOrPausedTimers = await OperationTimer.findAll({
     where: {
@@ -132,9 +130,7 @@ async function runShiftClose(trigger = 'manual', options = {}) {
   });
 
   const affectedOperationIds = new Set();
-  const queueIds = [];
-  let queueCreated = 0;
-  let queueReused = 0;
+  let queueEnqueued = 0;
   let queueFailed = 0;
   for (const timer of activeOrPausedTimers) {
     affectedOperationIds.add(timer.work_order_operation_id);
@@ -158,18 +154,14 @@ async function runShiftClose(trigger = 'manual', options = {}) {
     timer.last_event_at = new Date();
     await timer.save();
 
-    if (shouldEnqueueV4) {
+    if (config.V4_SYNC_ENABLED) {
       try {
-        const out = await enqueueFromStop({
+        await enqueueFromStop({
           operationId: timer.work_order_operation_id,
           eventId: stopEvent && stopEvent.id ? stopEvent.id : null,
           userId: timer.current_user_id || null
         });
-        if (out && out.row && Number.isInteger(Number(out.row.id))) {
-          queueIds.push(Number(out.row.id));
-        }
-        if (out && out.created) queueCreated += 1;
-        else queueReused += 1;
+        queueEnqueued += 1;
       } catch (queueErr) {
         queueFailed += 1;
         console.error(
@@ -189,10 +181,8 @@ async function runShiftClose(trigger = 'manual', options = {}) {
     stoppedTimers: activeOrPausedTimers.length,
     consolidatedOperations: affectedOperationIds.size,
     v4Queue: {
-      enabled: shouldEnqueueV4,
-      queueIds,
-      created: queueCreated,
-      reused: queueReused,
+      enabled: config.V4_SYNC_ENABLED,
+      enqueued: queueEnqueued,
       failed: queueFailed
     }
   };
