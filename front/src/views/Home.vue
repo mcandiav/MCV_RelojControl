@@ -144,6 +144,7 @@
                     <thead>
                       <tr>
                         <th>Orden de Trabajo</th>
+                        <th>Usuario</th>
                         <th>Secuencia</th>
                         <th>Operación</th>
                         <th>Recurso</th>
@@ -155,6 +156,7 @@
                     <tbody>
                       <tr v-for="row in activeBoard" :key="row.id">
                         <td>{{ extractOperation(row).ot_number || '-' }}</td>
+                        <td class="active-user-cell">{{ activeBoardUserName(row) }}</td>
                         <td>{{ extractOperation(row).operation_sequence || '-' }}</td>
                         <td>
                           <div>{{ extractOperation(row).operation_name || '-' }}</div>
@@ -1772,6 +1774,9 @@ export default {
       }
       return '-'
     },
+    activeBoardUserName(row) {
+      return this.quadrantOperatorName(row)
+    },
     quadrantModeLabel(cell) {
       return this.extractTimerMode(cell) === 'SETUP' ? 'MONTAJE' : 'EJECUCIÓN'
     },
@@ -2981,6 +2986,23 @@ export default {
   max-height: 40vh;
 }
 
+.active-wrap .dual-board-table table {
+  min-width: 1120px;
+}
+
+.active-wrap .dual-board-table table th,
+.active-wrap .dual-board-table table td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.active-user-cell {
+  max-width: 120px;
+  white-space: normal;
+  word-break: break-word;
+  font-weight: 700;
+}
+
 .area-wrap {
   max-height: 52vh;
 }
@@ -3005,6 +3027,11 @@ export default {
   border-radius: 8px;
   padding: 6px;
   background: #fff;
+}
+
+.active-wrap .lane-cell {
+  min-width: 190px;
+  padding: 5px;
 }
 
 .lane-idle {
@@ -3038,8 +3065,18 @@ export default {
   min-width: 44px !important;
 }
 
+.active-wrap .timer-btn-round {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+}
+
 .timer-btn-round .v-icon {
   font-size: 22px !important;
+}
+
+.active-wrap .timer-btn-round .v-icon {
+  font-size: 19px !important;
 }
 
 .lane-time {
