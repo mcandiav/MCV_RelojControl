@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-06-04 | Se define que el cierre programado operational debe publicar a `import_ot` y ZIM400 dentro del mismo `sync_run`, sin reutilizar el flujo completo `v4_stop_queue`. | Evitar duplicacion de PUSH hacia `import_ot` y mantener estable el cierre programado, incorporando ZIM400 como segundo destino obligatorio. | El Programador debe extraer/reutilizar ZIM400 como publisher independiente, agregar el step `PUSH_ZIM400` al flujo operational y mantener idempotencia/logs por destino. | Flujo oficial de sincronizacion, Integracion NetSuite IN, Poblar Reporte ZIM400, Decisiones cerradas |
 | 2026-05-22 | Se corrige el mapping de empleado ZIM400: se elimina el hardcode temporal `42027` y se define que `custrecord_zim_reloj_empleado` debe poblarse desde `Users.netsuiteEmployeeId`. | Se poblo MariaDB con usuarios vinculados al ID interno real de empleado NetSuite y ya no corresponde enviar un empleado generico. | El programador debe agregar/usar `Users.netsuiteEmployeeId` como fuente obligatoria para enviar el empleado correcto a NetSuite ZIM400. La carga inicial de usuarios queda como CSV controlado, con passwords bcrypt y sin passwords planos. | Gestion de usuarios, MariaDB, Poblar Reporte ZIM400 |
 | 2026-05-20 | Se agrega requerimiento de log diagnostico util para `PUSH_ZIM400`, incluyendo payload, destino NetSuite, status HTTP y respuesta completa de NetSuite. | La primera prueba del modulo ZIM400 retorno `Request failed with status code 400`, mensaje insuficiente para diagnosticar campo, formato, referencia o permisos. | El programador debe persistir y exponer error detallado por etapa, sin secretos, para poder indagar y corregir despues de programar. | Poblar Reporte ZIM400, Logs, Diagnostico |
 | 2026-05-20 | Se define el modulo Poblar Reporte ZIM400 como segunda entrega paralela del worker STOP hacia `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL`, destino de la Saved Search `customsearch400`. | `import_ot` no alimenta el reporte Data Reloj Control y se requiere poblarlo desde Cronometro con un registro por STOP. | El worker debera ejecutar dos push independientes: el push vigente a `import_ot` sin modificar y un nuevo push ZIM400 con payload ampliado, trazabilidad e idempotencia propia. El fallo ZIM400 no debe bloquear `import_ot`. | Integracion NetSuite IN, Flujo V4, Poblar Reporte ZIM400 |
@@ -43,7 +44,8 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 - Staging record vigente: `customrecord_3k_importacion_ot`.
 - Procesamiento posterior vigente: Map/Reduce `customscript_3k_procesar_imp_ot_mr`, deployment `customdeploy_3k_procesar_imp_ot_mr_prog`.
 - Fuente de verdad operativa: NetSuite.
-- Flujo operativo final: `Stop -> Push -> Gate Import OT -> Pull(+replace)`.
+- Flujo operativo final base: `Stop -> Push -> Gate Import OT -> Pull(+replace)`.
+- Cierre programado operational: debe usar un unico `sync_run` con `STOP_BATCH -> PUSH_IMPORT_OT -> PUSH_ZIM400 -> GATE_IMPORT_OT -> GATE_ZIM400_STATUS -> PULL`, evitando cualquier doble publicacion de actuals hacia `import_ot`.
 - Usuarios vigentes: solo los creados y administrados desde Cronometro. No se permite carga automatica desde `usuarios.txt`, seeds, archivos estaticos ni scripts de arranque.
 
 ## Principios rectores
@@ -515,11 +517,19 @@ NETSUITE_IMPORT_OT_DATE_FIELD=custrecord_3k_imp_ot_fecha
 
 ### Modulo Poblar Reporte ZIM400
 
-Se define el modulo **Poblar Reporte ZIM400** como una segunda entrega NetSuite ejecutada por el mismo worker que procesa los pendientes generados por STOP.
+Se define el modulo **Poblar Reporte ZIM400** como una segunda entrega NetSuite reutilizable para publicar registros en `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL`, destino de la Saved Search `customsearch400` / `ZIM - Data Reloj Control Default View`.
 
-Este modulo no reemplaza ni modifica el flujo vigente hacia `import_ot`. El worker debe mantener intacto el push actual hacia `customrecord_3k_importacion_ot`, porque ese canal ya esta probado y cumple la funcion transaccional de alimentar el procesamiento operativo de OT. Adicionalmente, con el mismo gatillo y el mismo contexto consolidado del STOP, el worker debe ejecutar un segundo push hacia el record `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL`, que alimenta la Saved Search `customsearch400` / `ZIM - Data Reloj Control Default View`.
+Este modulo no reemplaza ni modifica el flujo vigente hacia `import_ot`. `import_ot` conserva su contrato transaccional actual hacia `customrecord_3k_importacion_ot`; ZIM400 agrega una publicacion independiente para alimentar el reporte Data Reloj Control.
 
-La arquitectura esperada queda:
+Decision arquitectonica vigente 2026-06-04:
+
+- ZIM400 debe implementarse como **publisher independiente y reutilizable**, no como orquestador completo.
+- El worker V4 puede usar el publisher ZIM400 para STOP individuales desacoplados.
+- El cierre programado operational tambien debe usar el publisher ZIM400, pero dentro de su propio `sync_run` operational.
+- El cierre programado **no debe reutilizar el flujo completo `v4_stop_queue`**, porque ese flujo fue concebido para reprocesar pendientes STOP y puede volver a ejecutar `PUSH_IMPORT_OT`, duplicando publicaciones de actuals.
+- Para cierre programado, el responsable de la orquestacion es el `sync_run` operational, no el worker V4.
+
+Arquitectura esperada para STOP individual desacoplado V4:
 
 ```text
 STOP del operario
@@ -527,6 +537,18 @@ STOP del operario
   -> crear/procesar pendiente del worker
   -> push 1: import_ot vigente, sin modificar
   -> push 2: Poblar Reporte ZIM400
+```
+
+Arquitectura esperada para cierre programado operational:
+
+```text
+Cierre programado operational
+  -> STOP_BATCH
+  -> PUSH_IMPORT_OT una sola vez para el conjunto consolidado
+  -> PUSH_ZIM400 usando los STOP generados por el cierre
+  -> GATE_IMPORT_OT
+  -> GATE_ZIM400_STATUS
+  -> PULL
 ```
 
 La entrega a ZIM400 debe tratarse como un modulo independiente, con armado de payload propio, trazabilidad propia y manejo de errores propio. El fallo del push a ZIM400 no debe bloquear ni invalidar el envio exitoso a `import_ot`. Si `import_ot` fue enviado correctamente y ZIM400 falla, el flujo operativo queda valido y solo debe quedar pendiente el reintento o diagnostico del modulo ZIM400.
@@ -653,12 +675,12 @@ Tambien se debe validar que `custrecord_zim_reloj_fin` no sea anterior a `custre
 
 La captura funcional del reporte confirma que las columnas visibles esperadas incluyen, entre otras: `ZIM - RELOJ OT TEXTO`, `ZIM - RELOJ OT ID`, `ZIM - RELOJ TAREA TEXTO`, `ZIM - RELOJ TIEMPO PLANIFICADO`, `ZIM - RELOJ CANTIDAD PRODUCIR`, `ZIM - RELOJ CANTIDAD TERMINADA`, `ZIM - RELOJ OT FECHA FIN`, `ZIM - RELOJ OT ESTADO`, `ZIM - RELOJ REVISION`, `ZIM - RELOJ NUMERO SECUENCIA`, `ZIM - RELOJ OPERACION` y `FECHA DE CREACION`.
 
-#### Regla de dos push del worker
+#### Regla de publishers independientes por destino
 
-El programador debe entender el procesamiento como dos publishers independientes llamados por el mismo worker:
+El programador debe entender el procesamiento como dos publishers independientes llamados por un orquestador superior. El orquestador puede ser el worker V4 para STOP individuales, o el `sync_run` operational para cierre programado.
 
 ```text
-worker STOP
+orquestador de sincronizacion
   ├─ importOtPublisher         -> customrecord_3k_importacion_ot
   └─ poblarReporteZIM400       -> CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL
 ```
@@ -666,13 +688,14 @@ worker STOP
 Reglas obligatorias:
 
 1. No modificar el payload, contrato ni semantica del push actual a `import_ot` salvo que el proyecto lo pida explicitamente.
-2. El modulo ZIM400 recibe el mismo contexto del STOP, pero arma su propio payload ampliado.
+2. El modulo ZIM400 recibe el mismo contexto funcional del STOP/cierre, pero arma su propio payload ampliado.
 3. `import_ot` y ZIM400 deben tener trazabilidad y estado de envio independientes.
 4. Si ZIM400 falla, no debe revertir, bloquear ni marcar como fallido el push exitoso a `import_ot`.
 5. Si `import_ot` falla, no se debe asumir que ZIM400 fallo; cada destino debe registrar su resultado.
-6. El modulo ZIM400 debe ser reintentable.
+6. El modulo ZIM400 debe ser reintentable sin reejecutar necesariamente `import_ot`.
 7. El modulo ZIM400 debe tener idempotencia por evento STOP para evitar duplicar registros historicos en reintentos.
-8. Las pruebas contra `customsearch400` / `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL` se realizaran despues de programar el modulo; no forman parte de esta definicion arquitectonica inicial.
+8. El cierre programado operational no debe invocar el flujo completo `v4_stop_queue` si este vuelve a ejecutar `import_ot`; debe llamar directamente al publisher ZIM400 o a un servicio comun que no duplique `PUSH_IMPORT_OT`.
+9. Las pruebas contra `customsearch400` / `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL` se realizaran despues de programar el modulo; no forman parte de esta definicion arquitectonica inicial.
 
 #### Idempotencia ZIM400
 
@@ -941,6 +964,100 @@ Propuesta/evaluable, no vigente en productivo salvo decision explicita. Si se ac
 
 El flujo manual y el cierre de turno programado deben usar la misma semantica de sincronizacion y dejar registro en `sync_runs` / `sync_run_steps`.
 
+### Cierre programado operational con doble destino NetSuite
+
+Decision vigente 2026-06-04:
+
+El cierre programado debe operar como **un solo flujo confiable** y un solo `sync_run` operational con `trigger = scheduler`. Dentro de ese mismo `sync_run` debe publicar a ambos destinos NetSuite requeridos:
+
+1. `import_ot`, mediante el flujo transaccional vigente.
+2. ZIM400, mediante el publisher `PUSH_ZIM400` hacia `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL`.
+
+El cierre programado no debe depender de un worker separado que reprocesa la misma operacion si ese worker tambien ejecuta `PUSH_IMPORT_OT`. Esa reutilizacion de flujo completo duplica actuals y vuelve inestable la sincronizacion operational.
+
+Secuencia objetivo:
+
+```text
+sync_run operational trigger=scheduler
+  -> STOP_BATCH
+  -> PUSH_IMPORT_OT
+  -> PUSH_ZIM400
+  -> GATE_IMPORT_OT
+  -> GATE_ZIM400_STATUS
+  -> PULL
+```
+
+Reglas obligatorias para Programador:
+
+1. `PUSH_IMPORT_OT` debe ejecutarse una sola vez por cierre programado operational.
+2. `PUSH_ZIM400` debe ejecutarse dentro del mismo `sync_run`, usando los eventos STOP generados o identificados por el `STOP_BATCH`.
+3. No llamar al flujo completo `v4_stop_queue` desde el cierre programado si ese flujo vuelve a ejecutar `PUSH_IMPORT_OT`.
+4. ZIM400 debe exponerse como publisher/servicio reutilizable, invocable por el cierre programado sin reencolar ni reprocesar `import_ot`.
+5. Cada destino debe tener step, payload, resultado, error e idempotencia independiente.
+6. El PULL debe ocurrir solo despues de registrar el resultado de `PUSH_IMPORT_OT`, `PUSH_ZIM400` y aplicar `GATE_IMPORT_OT`.
+7. Un fallo parcial de ZIM400 no debe duplicar ni reintentar automaticamente `PUSH_IMPORT_OT`.
+8. Si `import_ot` fue exitoso y ZIM400 falla parcialmente, el cierre puede terminar como `SUCCESS_WITH_ZIM400_WARNING` y dejar reintento/diagnostico para ZIM400.
+9. Si `import_ot` falla completamente, el cierre debe marcar error operacional principal y no debe asumir que el PULL es seguro salvo politica explicita de pull forzado.
+
+Estados sugeridos para `sync_run_steps`:
+
+```text
+STOP_BATCH
+PUSH_IMPORT_OT
+PUSH_ZIM400
+GATE_IMPORT_OT
+GATE_ZIM400_STATUS
+PULL_AFTER_GATES
+```
+
+Estados globales sugeridos del `sync_run`:
+
+```text
+SUCCESS
+SUCCESS_WITH_ZIM400_WARNING
+SUCCESS_WITH_IMPORT_OT_WARNING
+ERROR_IMPORT_OT
+ERROR_STOP_BATCH
+ERROR_PULL
+```
+
+Ejemplo de trazabilidad esperada:
+
+```text
+sync_run #123
+trigger: scheduler
+tipo: operational
+
+STOP_BATCH
+  status: OK
+  operaciones detenidas: 40
+
+PUSH_IMPORT_OT
+  status: OK
+  OTs enviadas: 12
+  operaciones enviadas: 40
+
+PUSH_ZIM400
+  status: WARNING
+  eventos STOP: 40
+  enviados: 38
+  fallidos: 2
+
+GATE_IMPORT_OT
+  status: OK
+
+GATE_ZIM400_STATUS
+  status: WARNING
+
+PULL_AFTER_GATES
+  status: OK
+
+resultado global:
+  SUCCESS_WITH_ZIM400_WARNING
+```
+
+El criterio de exito del cierre programado no es que ambos destinos compartan el mismo estado, sino que el flujo mantenga trazabilidad separada y no duplique publicaciones. `import_ot` es el destino transaccional principal; ZIM400 es obligatorio como destino de reporte, pero sus fallos deben aislarse con warning/reintento cuando `import_ot` ya fue exitoso.
+
 ### Arquitectura objetivo V4: STOP desacoplado + worker
 
 La evolucion V4 no reemplaza automaticamente la operacion V3. V3 queda como baseline estable del sistema actual.
@@ -1006,6 +1123,8 @@ Trazabilidad minima esperada:
 - Consolida tiempos.
 - Puede disparar sincronizacion segun configuracion.
 - Zona horaria: `America/Santiago`.
+- Cuando el cierre de turno dispara sincronizacion operational, debe usar un solo `sync_run` con doble destino NetSuite: `import_ot` y ZIM400.
+- No debe delegar el cierre programado al flujo completo del worker V4 si ese worker reprocesa `import_ot`; solo puede reutilizar publishers/servicios independientes que no dupliquen publicaciones.
 
 Variables funcionales:
 
@@ -1373,6 +1492,10 @@ Camino operativo vigente. Requiere Gate Import OT antes del pull.
 ### Sincronizacion V4 por evento STOP desacoplado
 
 Decision objetivo para V4. El STOP genera un pendiente persistente y un worker/servicio procesa el envio hacia NetSuite. El cron queda como rescate/fallback, no como generador principal de envios. El Pull no forma parte del procesamiento de cada STOP; se ejecuta solo al cierre de turno o manualmente por operacion administrativa, siempre aplicando Gate Import OT cuando corresponda.
+
+### Cierre programado operational con ZIM400
+
+Decision cerrada 2026-06-04. El cierre programado debe publicar a `import_ot` y ZIM400 dentro de un unico `sync_run` operational. No debe reutilizar el flujo completo `v4_stop_queue` cuando este reprocesa la misma operacion y vuelve a ejecutar `PUSH_IMPORT_OT`. Para cierre programado, ZIM400 se incorpora como etapa `PUSH_ZIM400` del mismo flujo operational, con idempotencia, log y estado independiente por destino. El resultado esperado es un solo flujo confiable, sin doble publicacion de actuals y con `PULL` posterior a los gates definidos.
 
 ### Version unica SB/PROD
 
