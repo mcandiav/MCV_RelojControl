@@ -130,12 +130,13 @@ async function runShiftClose(trigger = 'manual', options = {}) {
   });
 
   const affectedOperationIds = new Set();
+  const stopEvents = [];
   for (const timer of activeOrPausedTimers) {
     affectedOperationIds.add(timer.work_order_operation_id);
     if (timer.status === 'ACTIVE') {
       timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
     }
-    await appendEvent({
+    const stopEvent = await appendEvent({
       timerId: timer.id,
       operationId: timer.work_order_operation_id,
       userId: timer.current_user_id || null,
@@ -151,6 +152,11 @@ async function runShiftClose(trigger = 'manual', options = {}) {
     timer.active_since = null;
     timer.last_event_at = new Date();
     await timer.save();
+    stopEvents.push({
+      stop_event_id: stopEvent && stopEvent.id ? Number(stopEvent.id) : null,
+      work_order_operation_id: Number(timer.work_order_operation_id),
+      user_id: timer.current_user_id ? Number(timer.current_user_id) : null
+    });
   }
 
   for (const operationId of affectedOperationIds) {
@@ -160,7 +166,8 @@ async function runShiftClose(trigger = 'manual', options = {}) {
   const result = {
     shiftDate,
     stoppedTimers: activeOrPausedTimers.length,
-    consolidatedOperations: affectedOperationIds.size
+    consolidatedOperations: affectedOperationIds.size,
+    stopEvents
   };
 
   const shouldRunNetsuiteSync = options && options.skipNetsuiteSync === true
