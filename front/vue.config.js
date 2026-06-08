@@ -1,5 +1,5 @@
-/** Version UI del front (V4). Mantener alineado con public/index.html (title + fallback). */
-const PAGE_TITLE = 'Bignotti Â· CronÃ³metro V4'
+const UI_VERSION = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'Version').trim()
+const PAGE_TITLE = `Usuario - Cronometro - ${UI_VERSION}`
 
 module.exports = {
   transpileDependencies: [

@@ -6,7 +6,7 @@
 
 <script>
 import { mapGetters } from 'vuex'
-import { isTestBuild } from '@/utils/buildMode'
+import { getUiVersion, isTestBuild } from '@/utils/buildMode'
 
 export default {
   name: 'App',
@@ -37,7 +37,7 @@ export default {
       const who = this.user
         ? String(this.user.username || [this.user.name, this.user.lastname].filter(Boolean).join(' ') || 'Usuario').trim()
         : 'Usuario'
-      const base = 'Cronometro V4'
+      const base = `Cronometro - ${getUiVersion()}`
       document.title = isTestBuild() ? `${who} - ${base} [TEST]` : `${who} - ${base}`
     }
   },
