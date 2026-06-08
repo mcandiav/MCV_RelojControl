@@ -2613,15 +2613,7 @@ export default {
               enabled: s.enabled !== false
             }))
         }
-        const scheduler = res.data && res.data.scheduler ? res.data.scheduler : null
-        const registered = scheduler && Array.isArray(scheduler.registered) ? scheduler.registered.length : null
-        if (registered === 0 && scheduler && scheduler.reason) {
-          this.showSnack(`Horarios guardados. Crons desactivados: ${scheduler.reason}`, 'warning')
-        } else if (registered != null) {
-          this.showSnack(`Horarios guardados. Crons activos: ${registered}.`)
-        } else {
-          this.showSnack('Horarios de cierre guardados y crons actualizados.')
-        }
+        this.showSnack('Horarios de cierre guardados y crons actualizados.')
       } catch (error) {
         const msg =
           (error.response && error.response.data && error.response.data.message) ||
