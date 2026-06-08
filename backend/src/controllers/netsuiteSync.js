@@ -424,6 +424,9 @@ async function runZim400Publisher(queueItem, pushItem) {
   if (row.status === 'SENT') {
     return { skipped: true, reason: 'already_sent', stop_event_id: stopEventId, netsuite_record_id: row.netsuite_record_id };
   }
+  if (row.status === 'PROCESSING') {
+    return { skipped: true, reason: 'already_processing', stop_event_id: stopEventId };
+  }
   row.status = 'PROCESSING';
   row.attempt_count = Number(row.attempt_count || 0) + 1;
   row.payload_json = safeJsonString(payload);
@@ -1255,41 +1258,58 @@ async function runV4QueueSync(queueItem) {
   let stepPush = null;
   let stepZim400 = null;
   try {
+    const triggerEvent = queueItem.trigger_event_id ? await TimerEvent.findByPk(queueItem.trigger_event_id) : null;
+    const isScheduledAutoStop =
+      triggerEvent && String(triggerEvent.event_type || '').toUpperCase() === 'AUTO_STOP_SHIFT_END';
     syncRun = await createSyncRun({ flowType: 'v4_stop_queue', trigger: 'worker', req: null });
     stepPush = await createSyncStep(syncRun.id, 'PUSH', {
       queue_id: queueItem.id,
       operation_id: operationId,
-      note: 'V4 queue push by operation id'
+      note: isScheduledAutoStop
+        ? 'PUSH omitido: cierre programado usa operational/scheduler como fuente unica'
+        : 'V4 queue push by operation id'
     });
 
-    const built = await buildActualsPayload({ operationIds: [operationId] });
-    const items = Array.isArray(built && built.items) ? built.items : [];
-    if (items.length > 0) {
-      const netsuitePush = await pushActualsBatch(items);
-      const marked = await markSuccessfulPushes(items, netsuitePush);
-      const reportRows = await buildPushComparisonRows(items, netsuitePush);
-      const pushItems = items.map((it) => ({
-        operation_id: it.operation_id,
-        ot_number: it.ot_number,
-        operation_sequence: it.operation_sequence,
-        netsuite_work_order_id: it.netsuite_work_order_id,
-        netsuite_operation_id: it.netsuite_operation_id,
-        actual_setup_time: it.actual_setup_time,
-        actual_run_time: it.actual_run_time,
-        completed_quantity: it.completed_quantity
-      }));
+    let items = [];
+    if (isScheduledAutoStop) {
       await finishSyncStep(stepPush, {
         ok: true,
         result: {
-          itemCount: items.length,
-          markedSuccessfulPushes: marked,
-          push_items: pushItems,
-          netsuite: netsuitePush,
-          report_rows: reportRows
+          itemCount: 0,
+          pushSkipped: true,
+          reason: 'scheduled_auto_stop_operational_scheduler_owns_push'
         }
       });
     } else {
-      await finishSyncStep(stepPush, { ok: true, result: { itemCount: 0, pushSkipped: true } });
+      const built = await buildActualsPayload({ operationIds: [operationId] });
+      items = Array.isArray(built && built.items) ? built.items : [];
+      if (items.length > 0) {
+        const netsuitePush = await pushActualsBatch(items);
+        const marked = await markSuccessfulPushes(items, netsuitePush);
+        const reportRows = await buildPushComparisonRows(items, netsuitePush);
+        const pushItems = items.map((it) => ({
+          operation_id: it.operation_id,
+          ot_number: it.ot_number,
+          operation_sequence: it.operation_sequence,
+          netsuite_work_order_id: it.netsuite_work_order_id,
+          netsuite_operation_id: it.netsuite_operation_id,
+          actual_setup_time: it.actual_setup_time,
+          actual_run_time: it.actual_run_time,
+          completed_quantity: it.completed_quantity
+        }));
+        await finishSyncStep(stepPush, {
+          ok: true,
+          result: {
+            itemCount: items.length,
+            markedSuccessfulPushes: marked,
+            push_items: pushItems,
+            netsuite: netsuitePush,
+            report_rows: reportRows
+          }
+        });
+      } else {
+        await finishSyncStep(stepPush, { ok: true, result: { itemCount: 0, pushSkipped: true } });
+      }
     }
 
     if (ZIM400_ENABLED) {
