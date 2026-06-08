@@ -792,7 +792,7 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
   let stepWait = null;
   let stepPull = null;
   try {
-    stepPush = await createSyncStep(syncRun.id, 'PUSH', { note: 'pushActualsBatch(buildActualsPayload())' });
+    stepPush = await createSyncStep(syncRun.id, 'PUSH_IMPORT_OT', { note: 'pushActualsBatch(buildActualsPayload())' });
     const { items } = await buildActualsPayload();
     let netsuitePush = null;
     let markedSuccessfulPushes = 0;
@@ -854,7 +854,7 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
       });
     }
 
-    stepWait = await createSyncStep(syncRun.id, 'GATE_WAITING_IMPORT_OT', {
+    stepWait = await createSyncStep(syncRun.id, 'GATE_IMPORT_OT', {
       delaySecondsApplied: delaySeconds,
       gateEnabled: config.NETSUITE_IMPORT_OT_GATE_ENABLED,
       gateTimeoutSeconds: config.NETSUITE_IMPORT_OT_GATE_TIMEOUT_SECONDS,
@@ -903,7 +903,7 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
 
     stepPull = await createSyncStep(
       syncRun.id,
-      gateResult && gateResult.timedOut ? 'PULL_WITH_IMPORT_OT_WARNING' : 'PULL_SAFE_AFTER_GATE',
+      'PULL_AFTER_GATES',
       {
         action: 'pull_replace_wip',
         out_source_type: String(process.env.NETSUITE_OUT_SOURCE_TYPE || 'dataset').trim().toLowerCase(),
@@ -991,7 +991,7 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
 
   if (!runNetSuitePhases) {
     const syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
-    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP_BATCH', { scope: 'ALL', source: 'shift_close_scheduler' });
     await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
     await finishSyncRun(syncRun, {
       ok: true,
@@ -1006,7 +1006,7 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
 
   if (netsuiteOperationalSyncInFlight || netsuitePushInFlight) {
     const syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
-    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP_BATCH', { scope: 'ALL', source: 'shift_close_scheduler' });
     await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
     const errMsg = 'Ya hay una sincronizacion/push en curso. Espera a que termine.';
     await finishSyncRun(syncRun, {
@@ -1025,7 +1025,7 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
 
   if (!isNetsuiteConfigured()) {
     const syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
-    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP_BATCH', { scope: 'ALL', source: 'shift_close_scheduler' });
     await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
     const errMsg =
       'NetSuite no esta configurado. Ver NETSUITE_ENV_TEMPLATE.md y variables de entorno.';
@@ -1049,7 +1049,7 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
   let syncRun = null;
   try {
     syncRun = await createSyncRun({ flowType: 'operational', trigger: 'scheduler', req: null });
-    const stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL', source: 'shift_close_scheduler' });
+    const stepStop = await createSyncStep(syncRun.id, 'STOP_BATCH', { scope: 'ALL', source: 'shift_close_scheduler' });
     await finishSyncStep(stepStop, { ok: true, result: shiftSummary });
 
     const out = await runOperationalPushWaitPullLogged(syncRun, {
@@ -1262,7 +1262,7 @@ async function runV4QueueSync(queueItem) {
     const isScheduledAutoStop =
       triggerEvent && String(triggerEvent.event_type || '').toUpperCase() === 'AUTO_STOP_SHIFT_END';
     syncRun = await createSyncRun({ flowType: 'v4_stop_queue', trigger: 'worker', req: null });
-    stepPush = await createSyncStep(syncRun.id, 'PUSH', {
+    stepPush = await createSyncStep(syncRun.id, 'PUSH_IMPORT_OT', {
       queue_id: queueItem.id,
       operation_id: operationId,
       note: isScheduledAutoStop
@@ -1612,7 +1612,7 @@ exports.operationalSync = async function operationalSync(req, res) {
     const { runShiftClose } = require('./chronometer');
     syncRun = await createSyncRun({ flowType: 'operational', trigger: 'manual', req });
 
-    stepStop = await createSyncStep(syncRun.id, 'STOP', { scope: 'ALL' });
+    stepStop = await createSyncStep(syncRun.id, 'STOP_BATCH', { scope: 'ALL' });
     const shift = await runShiftClose('manual_operational_sync', { skipNetsuiteSync: true });
     await finishSyncStep(stepStop, { ok: true, result: shift });
 
@@ -1722,7 +1722,7 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
   };
 
   const steps = await SyncRunStep.findAll({
-    where: { step_name: 'PUSH' },
+    where: { step_name: { [Op.in]: ['PUSH_IMPORT_OT', 'PUSH'] } },
     order: [['started_at', 'DESC']],
     limit: stepLimit
   });

@@ -882,6 +882,21 @@
       </v-card>
     </v-dialog>
 
+    <!-- Transición MONTAJE → EJECUCIÓN tras detener montaje -->
+    <v-dialog v-model="setupTransitionDialog" max-width="420" persistent>
+      <v-card>
+        <v-card-title class="text-h6">Montaje detenido</v-card-title>
+        <v-card-text>
+          <p class="body-2 mb-0">¿Quieres seguir cronometrando ejecución?</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text :disabled="setupTransitionLoading" @click="closeSetupTransitionDialog">No iniciar ahora</v-btn>
+          <v-btn color="primary" :loading="setupTransitionLoading" @click="confirmStartExecutionFromSetup">Iniciar ejecución</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="editUserDialog" max-width="560" persistent>
       <v-card>
         <v-card-title class="text-h6">Editar usuario</v-card-title>
@@ -1043,6 +1058,9 @@ export default {
       stopQtyValue: '',
       stopQtyPlanned: null,
       stopQtyLoading: false,
+      setupTransitionDialog: false,
+      setupTransitionOpId: null,
+      setupTransitionLoading: false,
       shiftSlotsDraft: [
         { sequence: 1, hhmm: '08:00', enabled: true },
         { sequence: 2, hhmm: '17:00', enabled: true },
@@ -1968,10 +1986,14 @@ export default {
           this.openStopQuantityDialog(op)
           return
         }
+        const wasSetupActive = this.isLaneCurrent(item, 'setup')
         try {
           await axios.post('/chronometer/timers/stop', { work_order_operation_id: op.id })
           await this.refreshBoard()
-        await this.refreshOperationsForCurrentRole()
+          await this.refreshOperationsForCurrentRole()
+          if (wasSetupActive) {
+            this.openSetupTransitionDialog(op)
+          }
         } catch (error) {
           const msg = this.timerTerminalLockMessage(error, 'No fue posible detener el cronómetro.')
           alert(msg)
@@ -2442,6 +2464,33 @@ export default {
       this.stopQtyOpId = null
       this.stopQtyValue = ''
       this.stopQtyPlanned = null
+    },
+    openSetupTransitionDialog(op) {
+      if (!op || !op.id) return
+      this.setupTransitionOpId = op.id
+      this.setupTransitionDialog = true
+    },
+    closeSetupTransitionDialog() {
+      this.setupTransitionDialog = false
+      this.setupTransitionOpId = null
+    },
+    async confirmStartExecutionFromSetup() {
+      if (!this.setupTransitionOpId) return
+      this.setupTransitionLoading = true
+      try {
+        await axios.post('/chronometer/timers/start', {
+          work_order_operation_id: this.setupTransitionOpId,
+          timer_mode: 'RUN'
+        })
+        await this.refreshBoard()
+        await this.refreshOperationsForCurrentRole()
+        this.closeSetupTransitionDialog()
+      } catch (error) {
+        const msg = this.timerTerminalLockMessage(error, 'No fue posible iniciar ejecución.')
+        alert(msg)
+      } finally {
+        this.setupTransitionLoading = false
+      }
     },
     async confirmStopWithQuantity() {
       if (!this.stopQtyOpId) return

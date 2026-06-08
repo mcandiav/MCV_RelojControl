@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-06-08 | Se define popup de transicion al detener MONTAJE para proponer iniciar EJECUCION con el mismo contexto operativo. | Evitar que el operario salga del apartado Operaciones Activas sin una accion guiada y reducir friccion al pasar de montaje a ejecucion. | Frontend debe mostrar popup despues de STOP de montaje exitoso; backend/front deben reutilizar OT, operacion, recurso, usuario y terminal para iniciar ejecucion si el usuario confirma. No cambia el contrato NetSuite. | Requisitos funcionales de UI y operacion, Tablero operativo V3 |
 | 2026-06-04 | Se define que el cierre programado operational debe publicar a `import_ot` y ZIM400 dentro del mismo `sync_run`, sin reutilizar el flujo completo `v4_stop_queue`. | Evitar duplicacion de PUSH hacia `import_ot` y mantener estable el cierre programado, incorporando ZIM400 como segundo destino obligatorio. | El Programador debe extraer/reutilizar ZIM400 como publisher independiente, agregar el step `PUSH_ZIM400` al flujo operational y mantener idempotencia/logs por destino. | Flujo oficial de sincronizacion, Integracion NetSuite IN, Poblar Reporte ZIM400, Decisiones cerradas |
 | 2026-05-22 | Se corrige el mapping de empleado ZIM400: se elimina el hardcode temporal `42027` y se define que `custrecord_zim_reloj_empleado` debe poblarse desde `Users.netsuiteEmployeeId`. | Se poblo MariaDB con usuarios vinculados al ID interno real de empleado NetSuite y ya no corresponde enviar un empleado generico. | El programador debe agregar/usar `Users.netsuiteEmployeeId` como fuente obligatoria para enviar el empleado correcto a NetSuite ZIM400. La carga inicial de usuarios queda como CSV controlado, con passwords bcrypt y sin passwords planos. | Gestion de usuarios, MariaDB, Poblar Reporte ZIM400 |
 | 2026-05-20 | Se agrega requerimiento de log diagnostico util para `PUSH_ZIM400`, incluyendo payload, destino NetSuite, status HTTP y respuesta completa de NetSuite. | La primera prueba del modulo ZIM400 retorno `Request failed with status code 400`, mensaje insuficiente para diagnosticar campo, formato, referencia o permisos. | El programador debe persistir y exponer error detallado por etapa, sin secretos, para poder indagar y corregir despues de programar. | Poblar Reporte ZIM400, Logs, Diagnostico |
@@ -259,6 +260,53 @@ Criterio de aceptacion:
 - Leyenda de colores en una sola linea y centrada.
 - Al detener MONTAJE no se muestra popup de cantidad terminada.
 - Popup de cantidad terminada solo al detener EJECUCION.
+
+#### Transicion asistida de MONTAJE a EJECUCION
+
+Cuando el usuario presiona **Detener** sobre un cronometro de tipo **MONTAJE**, el sistema debe cerrar correctamente el tramo de montaje y mostrar un popup de transicion para proponer continuar con **EJECUCION** de la misma OT y operacion.
+
+El comportamiento esperado es:
+
+```text
+Usuario detiene MONTAJE
+  -> sistema guarda/cierra el tiempo de MONTAJE
+  -> la operacion no debe desaparecer silenciosamente del flujo del usuario
+  -> sistema muestra popup de transicion
+  -> usuario elige si inicia EJECUCION ahora
+```
+
+Texto funcional del popup:
+
+```text
+Montaje detenido.
+¿Quieres seguir cronometrando ejecucion?
+```
+
+Acciones del popup:
+
+| Accion | Comportamiento esperado |
+|---|---|
+| `Iniciar ejecucion` | Inicia inmediatamente un nuevo cronometro de tipo EJECUCION usando el mismo contexto operativo: OT, operacion, recurso, usuario y terminal. |
+| `No iniciar ahora` | Cierra el popup y deja la operacion sin cronometro activo, sin iniciar ejecucion. |
+
+Reglas obligatorias para Programador:
+
+1. El popup solo aplica al detener **MONTAJE**.
+2. No aplica al detener **EJECUCION**; en ejecucion se mantiene la regla vigente del popup de cantidad terminada.
+3. La ejecucion no debe iniciarse automaticamente solo por detener montaje; debe iniciarse cuando el usuario presiona `Iniciar ejecucion`.
+4. Si el STOP de montaje falla o queda pendiente sin confirmacion local, no mostrar el popup como exitoso.
+5. Si el usuario presiona `Iniciar ejecucion`, el cronometro de ejecucion debe quedar visible en Operaciones Activas inmediatamente.
+6. El nuevo cronometro de ejecucion debe heredar el mismo contexto operativo del montaje detenido: OT, operacion, recurso, usuario, area/workplace y `station_id`.
+7. No se debe pedir cantidad, observacion, motivo ni datos adicionales en esta transicion.
+8. Esta transicion no cambia el contrato NetSuite: montaje y ejecucion siguen consolidandose como tiempos reales separados de la misma operacion.
+
+Criterios de aceptacion:
+
+1. Al detener MONTAJE, el usuario ve el popup y no queda simplemente expulsado del flujo de Operaciones Activas sin propuesta de continuidad.
+2. El boton principal del popup permite iniciar EJECUCION sin volver a buscar ni seleccionar la OT.
+3. Al iniciar EJECUCION desde el popup, la pantalla muestra la misma OT/operacion con etiqueta `EJECUCION` y cronometro corriendo.
+4. Al elegir `No iniciar ahora`, no se crea cronometro de ejecucion.
+5. Al detener EJECUCION, se conserva el flujo existente de cantidad terminada.
 
 ### Terminal compartida
 
