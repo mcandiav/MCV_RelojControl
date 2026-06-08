@@ -501,57 +501,6 @@ async function runZim400Publisher(queueItem, pushItem) {
   }
 }
 
-async function runZim400BatchPublisher(stopEvents, pushItems) {
-  const events = Array.isArray(stopEvents) ? stopEvents : [];
-  const items = Array.isArray(pushItems) ? pushItems : [];
-  const pushItemByOperationId = new Map(
-    items
-      .filter((it) => Number.isInteger(Number(it && it.operation_id)))
-      .map((it) => [Number(it.operation_id), it])
-  );
-  const results = [];
-  let successCount = 0;
-  let skippedCount = 0;
-  let errorCount = 0;
-  for (const ev of events) {
-    const operationId = Number(ev && ev.work_order_operation_id);
-    const queueLike = {
-      id: null,
-      trigger_event_id: ev && ev.stop_event_id ? Number(ev.stop_event_id) : null,
-      work_order_operation_id: operationId
-    };
-    const pushItem = pushItemByOperationId.get(operationId) || null;
-    try {
-      const out = await runZim400Publisher(queueLike, pushItem);
-      if (out && out.skipped) skippedCount += 1;
-      else successCount += 1;
-      results.push({
-        operation_id: operationId,
-        stop_event_id: queueLike.trigger_event_id,
-        success: true,
-        skipped: !!(out && out.skipped),
-        result: out
-      });
-    } catch (error) {
-      errorCount += 1;
-      results.push({
-        operation_id: operationId,
-        stop_event_id: queueLike.trigger_event_id,
-        success: false,
-        error_message: String(error && error.message ? error.message : error),
-        diagnostic: error && error.diagnostic ? error.diagnostic : null
-      });
-    }
-  }
-  return {
-    itemCount: events.length,
-    successCount,
-    skippedCount,
-    errorCount,
-    results
-  };
-}
-
 async function buildPushComparisonRows(items, netsuiteResult) {
   if (!Array.isArray(items) || items.length === 0) return [];
 
@@ -785,7 +734,6 @@ async function waitImportOtGate({ itemCount }) {
 async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, startedAt, shift }) {
   const delayMs = delaySeconds * 1000;
   let stepPush = null;
-  let stepZim400 = null;
   let stepWait = null;
   let stepPull = null;
   try {
@@ -808,48 +756,6 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
         report_rows: reportRows
       }
     });
-
-    let zim400Result = {
-      itemCount: 0,
-      successCount: 0,
-      skippedCount: 0,
-      errorCount: 0,
-      results: []
-    };
-    if (ZIM400_ENABLED) {
-      stepZim400 = await createSyncStep(syncRun.id, 'PUSH_ZIM400', {
-        source: 'operational_sync',
-        stopEventsCount: Array.isArray(shift && shift.stopEvents) ? shift.stopEvents.length : 0
-      });
-      zim400Result = await runZim400BatchPublisher(
-        Array.isArray(shift && shift.stopEvents) ? shift.stopEvents : [],
-        items
-      );
-      await finishSyncStep(stepZim400, {
-        ok: zim400Result.errorCount === 0,
-        result: zim400Result,
-        errorMessage:
-          zim400Result.errorCount > 0
-            ? `${zim400Result.errorCount} envio(s) ZIM400 con error.`
-            : null
-      });
-      const stepZimGate = await createSyncStep(syncRun.id, 'GATE_ZIM400_STATUS', {
-        itemCount: zim400Result.itemCount
-      });
-      await finishSyncStep(stepZimGate, {
-        ok: true,
-        result: {
-          status: zim400Result.errorCount > 0 ? 'SUCCESS_WITH_ZIM400_WARNING' : 'STABLE',
-          stable: true,
-          timedOut: false,
-          warning: zim400Result.errorCount > 0 ? 'ZIM400 termino con errores parciales.' : null,
-          itemCount: zim400Result.itemCount,
-          successCount: zim400Result.successCount,
-          skippedCount: zim400Result.skippedCount,
-          errorCount: zim400Result.errorCount
-        }
-      });
-    }
 
     stepWait = await createSyncStep(syncRun.id, 'GATE_WAITING_IMPORT_OT', {
       delaySecondsApplied: delaySeconds,
@@ -917,41 +823,25 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
       shift,
       gate: gateResult,
       push: { itemCount: items.length, markedSuccessfulPushes, reportRowsCount: reportRows.length },
-      zim400: {
-        itemCount: zim400Result.itemCount,
-        successCount: zim400Result.successCount,
-        skippedCount: zim400Result.skippedCount,
-        errorCount: zim400Result.errorCount
-      },
       pull: { totalRows, imported: replaced.imported }
     };
     const pushWarning = Array.isArray(netsuitePush && netsuitePush.results)
       ? netsuitePush.results.some((r) => r && r.success === false)
       : false;
     const timeoutWarning = Boolean(gateResult && gateResult.timedOut);
-    const zim400Warning = Boolean(zim400Result && zim400Result.errorCount > 0);
     if (timeoutWarning) {
       summary.warning_message = IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE;
-    } else if (zim400Warning) {
-      summary.warning_message = 'ZIM400 termino con errores parciales.';
     }
-    await finishSyncRun(syncRun, {
-      ok: true,
-      summary,
-      warning: pushWarning || timeoutWarning || zim400Warning
-    });
+    await finishSyncRun(syncRun, { ok: true, summary, warning: pushWarning || timeoutWarning });
 
     return {
       shift,
       delaySecondsApplied: delaySeconds,
       gate: gateResult,
-      warning: timeoutWarning || zim400Warning,
-      warningMessage: timeoutWarning
-        ? IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE
-        : (zim400Warning ? 'ZIM400 termino con errores parciales.' : null),
+      warning: timeoutWarning,
+      warningMessage: timeoutWarning ? IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE : null,
       items,
       netsuitePush,
-      zim400: zim400Result,
       markedSuccessfulPushes,
       totalRows,
       replaced,
@@ -967,7 +857,6 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
     try {
       if (stepPull && stepPull.status === 'RUNNING') await finishSyncStep(stepPull, { ok: false, errorMessage: msg });
       if (stepWait && stepWait.status === 'RUNNING') await finishSyncStep(stepWait, { ok: false, errorMessage: msg });
-      if (stepZim400 && stepZim400.status === 'RUNNING') await finishSyncStep(stepZim400, { ok: false, errorMessage: msg });
       if (stepPush && stepPush.status === 'RUNNING') await finishSyncStep(stepPush, { ok: false, errorMessage: msg });
       await finishSyncRun(syncRun, {
         ok: false,
@@ -1059,8 +948,6 @@ async function logSchedulerShiftCloseOperational(shiftSummary, { runNetSuitePhas
     const netsuiteSync = {
       pushed: itemCount,
       pushSkipped: itemCount === 0,
-      zim400Pushed: out.zim400 ? out.zim400.successCount : 0,
-      zim400Errors: out.zim400 ? out.zim400.errorCount : 0,
       imported: out.replaced.imported,
       totalRows: out.totalRows,
       maxRowsApplied: null,
@@ -1614,12 +1501,6 @@ exports.operationalSync = async function operationalSync(req, res) {
         itemCount: out.items.length,
         markedSuccessfulPushes: out.markedSuccessfulPushes,
         netsuite: out.netsuitePush
-      },
-      zim400: out.zim400 || {
-        itemCount: 0,
-        successCount: 0,
-        skippedCount: 0,
-        errorCount: 0
       },
       pull: {
         totalRows: out.totalRows,
