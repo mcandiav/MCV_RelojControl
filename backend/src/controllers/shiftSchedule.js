@@ -52,11 +52,22 @@ exports.putShiftSchedule = async function putShiftSchedule(req, res) {
     );
   }
 
-  await registerShiftCloseCrons();
+  const savedSlots = Array.from(bySeq.entries()).map(([sequence, row]) => ({
+    sequence,
+    hhmm: row.hhmm,
+    enabled: row.enabled
+  }));
+  console.log('Shift schedule actualizado desde admin:', {
+    userId: req.userId || null,
+    slots: savedSlots
+  });
+
+  const scheduler = await registerShiftCloseCrons();
 
   const updated = await ShiftCloseSlot.findAll({ order: [['sequence', 'ASC']] });
   return res.status(200).json({
     message: 'Horarios de cierre actualizados y crons recargados.',
+    scheduler,
     slots: updated.map((s) => ({
       id: s.id,
       sequence: s.sequence,
