@@ -45,5 +45,6 @@ router.post('/timers/pause', security.verifyToken, chronometer.pauseTimer);
 router.post('/timers/resume', security.verifyToken, chronometer.resumeTimer);
 router.post('/timers/mode', security.verifyToken, chronometer.switchTimerMode);
 router.post('/timers/stop', security.verifyToken, chronometer.stopTimer);
+router.post('/timers/setup-transition', security.verifyToken, chronometer.transitionSetupStop);
 
 module.exports = router;

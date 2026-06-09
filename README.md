@@ -8,7 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
-| 2026-06-08 | Se define popup de transicion al detener MONTAJE para proponer iniciar EJECUCION con el mismo contexto operativo. | Evitar que el operario salga del apartado Operaciones Activas sin una accion guiada y reducir friccion al pasar de montaje a ejecucion. | Frontend debe mostrar popup despues de STOP de montaje exitoso; backend/front deben reutilizar OT, operacion, recurso, usuario y terminal para iniciar ejecucion si el usuario confirma. No cambia el contrato NetSuite. | Requisitos funcionales de UI y operacion, Tablero operativo V3 |
+| 2026-06-08 | Se define que MONTAJE debe usar el mismo patron de confirmacion que EJECUCION: el boton STOP solo abre popup y el STOP real ocurre al confirmar una opcion del popup. | Evitar inconsistencias operativas entre montaje y ejecucion, donde un popup podria quedar desacoplado del cierre real del cronometro. | Frontend debe abrir popup inmediatamente al presionar STOP en MONTAJE; backend debe cerrar montaje solo cuando el usuario confirme `Iniciar ejecucion` o `No iniciar ahora`. Si confirma iniciar, el backend debe cerrar montaje e iniciar ejecucion en la misma accion. No cambia el contrato NetSuite. | Requisitos funcionales de UI y operacion, Tablero operativo V3 |
 | 2026-06-04 | Se define que el cierre programado operational debe publicar a `import_ot` y ZIM400 dentro del mismo `sync_run`, sin reutilizar el flujo completo `v4_stop_queue`. | Evitar duplicacion de PUSH hacia `import_ot` y mantener estable el cierre programado, incorporando ZIM400 como segundo destino obligatorio. | El Programador debe extraer/reutilizar ZIM400 como publisher independiente, agregar el step `PUSH_ZIM400` al flujo operational y mantener idempotencia/logs por destino. | Flujo oficial de sincronizacion, Integracion NetSuite IN, Poblar Reporte ZIM400, Decisiones cerradas |
 | 2026-05-22 | Se corrige el mapping de empleado ZIM400: se elimina el hardcode temporal `42027` y se define que `custrecord_zim_reloj_empleado` debe poblarse desde `Users.netsuiteEmployeeId`. | Se poblo MariaDB con usuarios vinculados al ID interno real de empleado NetSuite y ya no corresponde enviar un empleado generico. | El programador debe agregar/usar `Users.netsuiteEmployeeId` como fuente obligatoria para enviar el empleado correcto a NetSuite ZIM400. La carga inicial de usuarios queda como CSV controlado, con passwords bcrypt y sin passwords planos. | Gestion de usuarios, MariaDB, Poblar Reporte ZIM400 |
 | 2026-05-20 | Se agrega requerimiento de log diagnostico util para `PUSH_ZIM400`, incluyendo payload, destino NetSuite, status HTTP y respuesta completa de NetSuite. | La primera prueba del modulo ZIM400 retorno `Request failed with status code 400`, mensaje insuficiente para diagnosticar campo, formato, referencia o permisos. | El programador debe persistir y exponer error detallado por etapa, sin secretos, para poder indagar y corregir despues de programar. | Poblar Reporte ZIM400, Logs, Diagnostico |
@@ -265,14 +265,15 @@ Criterio de aceptacion:
 
 Cuando el usuario presiona **Detener** sobre un cronometro de tipo **MONTAJE**, el sistema debe cerrar correctamente el tramo de montaje y mostrar un popup de transicion para proponer continuar con **EJECUCION** de la misma OT y operacion.
 
-El comportamiento esperado es:
+El comportamiento esperado debe copiar el patron vigente del STOP de **EJECUCION** con popup de cantidad: el boton STOP no ejecuta el cierre definitivo por si solo; solo abre el popup. El cierre real se ejecuta cuando el usuario confirma una opcion del popup.
 
 ```text
-Usuario detiene MONTAJE
-  -> sistema guarda/cierra el tiempo de MONTAJE
-  -> la operacion no debe desaparecer silenciosamente del flujo del usuario
-  -> sistema muestra popup de transicion
-  -> usuario elige si inicia EJECUCION ahora
+Usuario presiona STOP en MONTAJE
+  -> frontend muestra popup de transicion inmediatamente
+  -> todavia no se debe cerrar MONTAJE en backend
+  -> usuario elige `Iniciar ejecucion` o `No iniciar ahora`
+  -> backend cierra MONTAJE al confirmar la opcion
+  -> si eligio `Iniciar ejecucion`, backend inicia EJECUCION en la misma accion
 ```
 
 Texto funcional del popup:
@@ -291,22 +292,29 @@ Acciones del popup:
 
 Reglas obligatorias para Programador:
 
-1. El popup solo aplica al detener **MONTAJE**.
-2. No aplica al detener **EJECUCION**; en ejecucion se mantiene la regla vigente del popup de cantidad terminada.
-3. La ejecucion no debe iniciarse automaticamente solo por detener montaje; debe iniciarse cuando el usuario presiona `Iniciar ejecucion`.
-4. Si el STOP de montaje falla o queda pendiente sin confirmacion local, no mostrar el popup como exitoso.
-5. Si el usuario presiona `Iniciar ejecucion`, el cronometro de ejecucion debe quedar visible en Operaciones Activas inmediatamente.
-6. El nuevo cronometro de ejecucion debe heredar el mismo contexto operativo del montaje detenido: OT, operacion, recurso, usuario, area/workplace y `station_id`.
-7. No se debe pedir cantidad, observacion, motivo ni datos adicionales en esta transicion.
-8. Esta transicion no cambia el contrato NetSuite: montaje y ejecucion siguen consolidandose como tiempos reales separados de la misma operacion.
+1. El popup solo aplica al presionar STOP sobre **MONTAJE** activo o pausado.
+2. MONTAJE debe seguir el mismo patron de **EJECUCION**: el boton STOP abre popup; el endpoint de cierre se llama solo al confirmar el popup.
+3. No cerrar MONTAJE antes de mostrar el popup.
+4. No mostrar el popup como confirmacion de algo ya cerrado; el popup es la decision previa al cierre real.
+5. No aplica al detener **EJECUCION**; en ejecucion se mantiene la regla vigente del popup de cantidad terminada.
+6. La ejecucion no debe iniciarse automaticamente solo por presionar STOP en montaje; debe iniciarse cuando el usuario presiona `Iniciar ejecucion`.
+7. Si el usuario presiona `Iniciar ejecucion`, backend debe cerrar MONTAJE e iniciar EJECUCION en una misma accion transaccional/logica.
+8. Si el usuario presiona `No iniciar ahora`, backend debe cerrar MONTAJE y no crear/iniciar cronometro de EJECUCION.
+9. Si la llamada al backend falla, el frontend debe mantener el popup o mostrar error claro; no debe simular que montaje quedo detenido.
+10. Si el usuario presiona `Iniciar ejecucion`, el cronometro de ejecucion debe quedar visible en Operaciones Activas inmediatamente.
+11. El nuevo cronometro de ejecucion debe heredar el mismo contexto operativo del montaje: OT, operacion, recurso, usuario, area/workplace y `station_id`.
+12. No se debe pedir cantidad, observacion, motivo ni datos adicionales en esta transicion.
+13. Esta transicion no cambia el contrato NetSuite: montaje y ejecucion siguen consolidandose como tiempos reales separados de la misma operacion.
 
 Criterios de aceptacion:
 
-1. Al detener MONTAJE, el usuario ve el popup y no queda simplemente expulsado del flujo de Operaciones Activas sin propuesta de continuidad.
-2. El boton principal del popup permite iniciar EJECUCION sin volver a buscar ni seleccionar la OT.
-3. Al iniciar EJECUCION desde el popup, la pantalla muestra la misma OT/operacion con etiqueta `EJECUCION` y cronometro corriendo.
-4. Al elegir `No iniciar ahora`, no se crea cronometro de ejecucion.
-5. Al detener EJECUCION, se conserva el flujo existente de cantidad terminada.
+1. Al presionar STOP en MONTAJE, el popup aparece inmediatamente, igual que el popup de cantidad al detener EJECUCION.
+2. Antes de confirmar una opcion del popup, MONTAJE no debe quedar cerrado en backend.
+3. El boton principal del popup permite iniciar EJECUCION sin volver a buscar ni seleccionar la OT.
+4. Al confirmar `Iniciar ejecucion`, el backend registra STOP de MONTAJE y START de EJECUCION para la misma OT/operacion, y la pantalla muestra etiqueta `EJECUCION` con cronometro corriendo.
+5. Al confirmar `No iniciar ahora`, el backend registra STOP de MONTAJE y no crea/inicia cronometro de EJECUCION.
+6. Si la confirmacion falla, el usuario ve error y no se debe mostrar un estado falso de montaje detenido.
+7. Al detener EJECUCION, se conserva el flujo existente de cantidad terminada.
 
 ### Terminal compartida
 

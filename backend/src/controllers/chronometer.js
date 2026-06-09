@@ -801,6 +801,121 @@ exports.stopTimer = async function stopTimer(req, res) {
   return res.status(200).json(timer);
 };
 
+/**
+ * Popup MONTAJE → EJECUCIÓN: stop de montaje y opcionalmente start RUN en la misma petición.
+ * V4 se encola al final para no activar la ventana de sync antes del start RUN.
+ */
+exports.transitionSetupStop = async function transitionSetupStop(req, res) {
+  const { work_order_operation_id } = req.body;
+  if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });
+
+  const startRun = req.body && (req.body.start_run === true || req.body.start_run === 'true');
+
+  const timer = await OperationTimer.findOne({ where: { work_order_operation_id } });
+  if (!timer) return res.status(404).json({ message: 'Timer not found.' });
+  if (timer.status === 'STOPPED') return res.status(400).json({ message: 'Timer is already stopped.' });
+  if (!(await assertTimerControlOrRespond(req, timer, res))) return;
+
+  const currentMode = normalizeTimerMode(timer.timer_mode, 'RUN');
+  if (currentMode !== 'SETUP' || (timer.status !== 'ACTIVE' && timer.status !== 'PAUSED')) {
+    return res.status(400).json({ message: 'Solo se puede usar cuando montaje está activo o pausado.' });
+  }
+
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
+
+  if (timer.status === 'ACTIVE') {
+    timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
+  }
+  timer.status = 'STOPPED';
+  timer.active_since = null;
+  timer.last_event_at = new Date();
+  await timer.save();
+
+  const stopEvent = await appendEvent({
+    timerId: timer.id,
+    operationId: timer.work_order_operation_id,
+    userId: req.userId,
+    eventType: 'STOP',
+    details: { setup_transition: startRun ? 'stop_and_run' : 'stop_only' }
+  });
+
+  if (!startRun) {
+    if (config.V4_SYNC_ENABLED) {
+      try {
+        await enqueueFromStop({
+          operationId: timer.work_order_operation_id,
+          eventId: stopEvent && stopEvent.id ? stopEvent.id : null,
+          userId: req.userId
+        });
+      } catch (queueErr) {
+        console.error(
+          'V4 queue enqueue failed on setup transition stop:',
+          queueErr && queueErr.message ? queueErr.message : queueErr
+        );
+      }
+    }
+    return res.status(200).json(timer);
+  }
+
+  const operation = await WorkOrderOperation.findByPk(work_order_operation_id);
+  if (!operation) return res.status(404).json({ message: 'Operation not found.' });
+
+  const userArea = resolveEffectiveUserArea(currentUser);
+  if (userArea === 'UNKNOWN') return res.status(400).json({ message: 'User area is not configured.' });
+  if (userArea !== 'BOTH' && userArea !== operation.area) {
+    return res.status(403).json({ message: 'Operation is outside your area.' });
+  }
+
+  const lockTimer = await OperationTimer.findOne({
+    where: {
+      resource_code: operation.resource_code,
+      status: 'ACTIVE',
+      work_order_operation_id: { [Op.ne]: operation.id }
+    }
+  });
+  if (lockTimer) {
+    return res.status(409).json({ message: 'Machine/resource already has an active operation.' });
+  }
+
+  timer.current_user_id = currentUser.id;
+  if (req.stationId) timer.station_id = req.stationId;
+  timer.status = 'ACTIVE';
+  timer.timer_mode = 'RUN';
+  timer.active_since = new Date();
+  timer.last_event_at = new Date();
+  await timer.save();
+
+  await appendEvent({
+    timerId: timer.id,
+    operationId: operation.id,
+    userId: currentUser.id,
+    eventType: 'START',
+    details: {
+      resource_code: operation.resource_code,
+      timer_mode: 'RUN',
+      setup_transition: 'stop_and_run'
+    }
+  });
+
+  if (config.V4_SYNC_ENABLED) {
+    try {
+      await enqueueFromStop({
+        operationId: timer.work_order_operation_id,
+        eventId: stopEvent && stopEvent.id ? stopEvent.id : null,
+        userId: req.userId
+      });
+    } catch (queueErr) {
+      console.error(
+        'V4 queue enqueue failed on setup transition stop-and-run:',
+        queueErr && queueErr.message ? queueErr.message : queueErr
+      );
+    }
+  }
+
+  return res.status(200).json(timer);
+};
+
 exports.switchTimerMode = async function switchTimerMode(req, res) {
   const { work_order_operation_id } = req.body;
   if (!work_order_operation_id) return res.status(400).json({ message: 'work_order_operation_id is required.' });

@@ -36,13 +36,13 @@ Sistema de gestión de tiempos de producción para operarios de Bignotti.
 
 ## Repositorios
 - **Producción (NO TOCAR):** `https://github.com/mcandiav/RelojControl`
-- **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — rama de trabajo **`V2`** (EasyPanel); **`main`** se alinea a la versión final al pasar a producción.
+- **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — rama de trabajo **`V4`** (EasyPanel); **`main`** se alinea a la versión final al pasar a producción.
 
-### Push al sandbox (rama V2)
+### Push al sandbox (rama V4)
 ```bash
 git add .
 git commit -m "descripción"
-git push origin V2
+git push origin V4
 ```
 
 ## Infraestructura sandbox
