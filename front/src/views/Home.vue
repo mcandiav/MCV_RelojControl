@@ -1986,7 +1986,10 @@ export default {
           this.openStopQuantityDialog(op)
           return
         }
-        const wasSetupActive = this.isLaneCurrent(item, 'setup')
+        const wasSetupActive =
+          lane === 'setup' &&
+          (this.extractStatus(item) === 'ACTIVE' || this.extractStatus(item) === 'PAUSED') &&
+          this.extractTimerMode(item) === 'SETUP'
         try {
           await axios.post('/chronometer/timers/stop', { work_order_operation_id: op.id })
           await this.refreshBoard()

@@ -344,6 +344,7 @@ exports.listOperations = async function listOperations(req, res) {
     return {
       ...opWithComputedActuals,
       status: timer ? timer.status : 'STOPPED',
+      timer_mode: timer ? normalizeTimerMode(timer.timer_mode, 'RUN') : null,
       elapsed_seconds: elapsed
     };
   });
@@ -399,6 +400,7 @@ exports.getOperationsByOt = async function getOperationsByOt(req, res) {
     return {
       ...opWithComputedActuals,
       status: timer ? timer.status : 'STOPPED',
+      timer_mode: timer ? normalizeTimerMode(timer.timer_mode, 'RUN') : null,
       elapsed_seconds: elapsed
     };
   });

@@ -5,6 +5,11 @@ module.exports = {
   transpileDependencies: [
     'vuetify'
   ],
+  configureWebpack: {
+    performance: {
+      hints: false
+    }
+  },
   devServer: {
     // API Express (backend/src/index.js) escucha en 8000
     proxy: 'http://localhost:8000'

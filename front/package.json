@@ -8,12 +8,12 @@
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
-    "axios": "^0.21.4",
+    "axios": "^0.27.2",
     "exceljs": "^4.3.0",
     "json-as-xlsx": "^2.4.2",
     "lodash": "^4.17.21",
     "moment-timezone": "^0.5.40",
-    "vue": "^2.6.11",
+    "vue": "2.6.14",
     "vue-cookies": "^1.7.4",
     "vue-router": "^3.5.2",
     "vuetify": "^2.6.13",
@@ -21,19 +21,24 @@
   },
   "devDependencies": {
     "@mdi/font": "^7.0.96",
-    "@vue/cli-plugin-babel": "~4.5.0",
-    "@vue/cli-plugin-eslint": "~4.5.0",
-    "@vue/cli-service": "~4.5.0",
+    "@vue/cli-plugin-babel": "~4.5.19",
+    "@vue/cli-plugin-eslint": "~4.5.19",
+    "@vue/cli-service": "~4.5.19",
     "babel-eslint": "^10.1.0",
-    "eslint": "^6.7.2",
+    "browserslist": "^4.24.4",
+    "caniuse-lite": "^1.0.30001690",
+    "eslint": "^6.8.0",
     "eslint-plugin-vue": "^6.2.2",
     "material-design-icons-iconfont": "^6.7.0",
-    "sass": "~1.32.0",
-    "sass-loader": "^10.0.0",
+    "sass": "~1.32.13",
+    "sass-loader": "^10.5.2",
     "vue-cli-plugin-vuetify": "~2.4.1",
     "vue-session": "^1.0.0",
-    "vue-template-compiler": "^2.6.11",
-    "vuetify-loader": "^1.7.0"
+    "vue-template-compiler": "2.6.14",
+    "vuetify-loader": "1.7.3"
+  },
+  "overrides": {
+    "node-releases": "2.0.36"
   },
   "eslintConfig": {
     "root": true,

@@ -1,13 +1,15 @@
 FROM node:16-alpine AS build
 
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+
 WORKDIR /app
 
 # La URL del API debe inyectarse por despliegue. Sin valor por defecto en el repo.
 ARG VUE_APP_API_URL
 ARG VUE_APP_BUILD_PATH=default
 
-COPY package*.json ./
-RUN npm install
+COPY package*.json .npmrc ./
+RUN npm install --no-fund --no-audit --loglevel=error
 
 COPY . .
 
