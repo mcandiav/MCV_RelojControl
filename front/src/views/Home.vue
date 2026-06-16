@@ -1004,6 +1004,8 @@ export default {
       activeTab: 0,
       operations: [],
       activeBoard: [],
+      /** Tablero grande 2x2: cronómetros de la estación (PC), no solo del usuario logueado. */
+      stationBoard: [],
       loadingOps: false,
       loadingSeed: false,
       loadingImportUpload: false,
@@ -1332,7 +1334,7 @@ export default {
       return Math.max(1, Math.min(4, n))
     },
     idleActiveTimersSorted() {
-      const rows = this.activeBoard.filter((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
+      const rows = this.stationBoard.filter((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
       return [...rows].sort((a, b) => String(a.resource_code || '').localeCompare(String(b.resource_code || '')))
     },
     idleBoardTotalPages() {
@@ -1638,7 +1640,7 @@ export default {
       clearTimeout(this.idleBoardOpenTimeout)
       if (this.showIdleBoard) return
       this.idleBoardOpenTimeout = setTimeout(() => {
-        const has = this.activeBoard.some((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
+        const has = this.stationBoard.some((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
         if (has) {
           this.showIdleBoard = true
           this.startBoardPollWhileOpen()
@@ -2208,14 +2210,20 @@ export default {
         this.loadingOps = false
       }
     },
+    normalizeBoardResponse(data) {
+      if (Array.isArray(data)) return data
+      if (data && Array.isArray(data.timers)) return data.timers
+      return []
+    },
     async refreshBoard() {
       this.errorBoard = ''
       try {
-        const res = await axios.get('/chronometer/board/active')
-        const data = res.data
-        if (Array.isArray(data)) this.activeBoard = data
-        else if (data && Array.isArray(data.timers)) this.activeBoard = data.timers
-        else this.activeBoard = []
+        const [mineRes, stationRes] = await Promise.all([
+          axios.get('/chronometer/board/active', { params: { scope: 'mine' } }),
+          axios.get('/chronometer/board/active', { params: { scope: 'station' } })
+        ])
+        this.activeBoard = this.normalizeBoardResponse(mineRes.data)
+        this.stationBoard = this.normalizeBoardResponse(stationRes.data)
       } catch (error) {
         this.errorBoard = (error.response && error.response.data && error.response.data.message) || 'No fue posible cargar el tablero.'
       }

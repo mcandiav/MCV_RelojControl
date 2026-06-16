@@ -422,23 +422,25 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
       : '';
   const isAdmin = roleName === 'admin';
 
+  const scopeRaw = req.query && req.query.scope ? String(req.query.scope).trim().toLowerCase() : 'mine';
+  const scope = scopeRaw === 'station' ? 'station' : 'mine';
+
   const where = {
     status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
   };
-  // Operario: cronómetros de ESTA terminal (cabecera x-station-id), no solo del usuario actual.
-  // Compatibilidad: sin station_id en BD (null) se muestran solo los que inició este usuario.
-  if (!isAdmin) {
+
+  if (scope === 'station') {
+    // Tablero grande / protector: todas las tareas activas de esta estación (PC compartido).
     if (req.stationId) {
-      where[Op.or] = [
-        { station_id: req.stationId },
-        {
-          [Op.and]: [{ station_id: { [Op.is]: null } }, { current_user_id: req.userId }]
-        }
-      ];
-    } else {
+      where.station_id = req.stationId;
+    } else if (!isAdmin) {
       where.current_user_id = req.userId;
     }
+  } else if (!isAdmin) {
+    // Operaciones Activas del operario: solo lo que cronometra el usuario logueado en esta pestaña.
+    where.current_user_id = req.userId;
   }
+  // scope=mine + admin: sin filtro adicional (todas las operaciones activas de la planta).
 
   const timers = await OperationTimer.findAll({
     where,
