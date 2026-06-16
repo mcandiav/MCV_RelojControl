@@ -1,4 +1,8 @@
-const UI_VERSION = String(process.env.VUE_APP_BUILD_VERSION || process.env.VUE_APP_BUILD_LABEL || 'Version').trim()
+const { resolveBuildVersion } = require('./scripts/resolve-build-version')
+
+const UI_VERSION = resolveBuildVersion({ fallback: 'Version' })
+process.env.VUE_APP_BUILD_VERSION = UI_VERSION
+
 const PAGE_TITLE = `Usuario - Cronometro - ${UI_VERSION}`
 
 module.exports = {
