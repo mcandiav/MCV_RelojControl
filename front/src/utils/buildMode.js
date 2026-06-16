@@ -24,7 +24,7 @@ export function getUiVersion() {
     (process.env.VUE_APP_BUILD_VERSION && String(process.env.VUE_APP_BUILD_VERSION).trim()) ||
     (process.env.VUE_APP_BUILD_LABEL && String(process.env.VUE_APP_BUILD_LABEL).trim()) ||
     ''
-  return runtime || env || 'Version'
+  return runtime || env || 'dev'
 }
 
 export function isTestBuild() {

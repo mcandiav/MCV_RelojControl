@@ -1,6 +1,6 @@
 const { resolveBuildVersion } = require('./scripts/resolve-build-version')
 
-const UI_VERSION = resolveBuildVersion({ fallback: 'Version' })
+const UI_VERSION = resolveBuildVersion({ fallback: 'dev' })
 process.env.VUE_APP_BUILD_VERSION = UI_VERSION
 
 const PAGE_TITLE = `Usuario - Cronometro - ${UI_VERSION}`

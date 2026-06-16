@@ -1,0 +1,17 @@
+# Build del front desde raíz del repo: docker build -f front/Dockerfile .
+# Mantener .git para resolver el hash de commit en la imagen.
+
+**/node_modules
+**/dist
+**/build
+**/.cache
+.cursor
+.tools
+test
+certs
+*.md
+*.md.bak*
+.gitignore
+
+# No copiar backend al contexto del front (solo se usa front/)
+backend

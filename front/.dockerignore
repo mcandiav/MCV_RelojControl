@@ -1,3 +1,6 @@
+# Build del front: preferir contexto en raíz del repo (ver front/Dockerfile).
+# Si el contexto es solo front/, .git no estará disponible — usar build arg VUE_APP_BUILD_VERSION.
+
 node_modules
 dist
 .git

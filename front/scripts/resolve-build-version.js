@@ -1,5 +1,17 @@
+const fs = require('fs')
 const { execSync } = require('child_process')
 const path = require('path')
+
+function findGitRoot(startDir) {
+  let dir = path.resolve(startDir)
+  for (let i = 0; i < 6; i += 1) {
+    if (fs.existsSync(path.join(dir, '.git'))) return dir
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
 
 /**
  * Versión visible en UI (hash corto de Git). Orden: env explícita → git HEAD → fallback.
@@ -12,12 +24,15 @@ function resolveBuildVersion(options = {}) {
     (process.env.SOURCE_COMMIT && String(process.env.SOURCE_COMMIT).trim()) ||
     ''
   if (fromEnv) return fromEnv.slice(0, 40)
-  try {
-    const root = path.resolve(__dirname, '..', '..')
-    return execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim()
-  } catch (_) {
-    return fallback
+  const gitRoot = findGitRoot(path.resolve(__dirname, '..'))
+  if (gitRoot) {
+    try {
+      return execSync('git rev-parse --short HEAD', { cwd: gitRoot, encoding: 'utf8' }).trim()
+    } catch (_) {
+      /* ignore */
+    }
   }
+  return fallback
 }
 
 module.exports = { resolveBuildVersion }
