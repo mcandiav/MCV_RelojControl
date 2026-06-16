@@ -1,32 +1,31 @@
-# Build desde la RAÍZ del repositorio (EasyPanel: directorio de build = . o vacío, Dockerfile = front/Dockerfile).
-# Alternativa legacy: contexto front/ + build arg VUE_APP_BUILD_VERSION=<hash>.
+# EasyPanel: contexto = carpeta front/, Dockerfile = front/Dockerfile.
+# EasyPanel inyecta build-arg GIT_SHA con el commit desplegado.
 
 FROM node:16-alpine AS build
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
-RUN apk add --no-cache git
-
 ARG VUE_APP_API_URL
 ARG VUE_APP_BUILD_PATH=default
 ARG VUE_APP_BUILD_VERSION=
+ARG GIT_SHA=
 
-WORKDIR /app/front
+WORKDIR /app
 
-COPY front/package*.json front/.npmrc ./
+COPY package*.json .npmrc ./
 RUN npm install --no-fund --no-audit --loglevel=error
 
-COPY front/ ./
-
-# Metadatos Git (disponible si el contexto de build es la raíz del repo).
-COPY .git /app/.git
+COPY . .
 
 RUN set -e; \
     BUILD_VERSION="${VUE_APP_BUILD_VERSION:-}"; \
-    if [ -z "$BUILD_VERSION" ] && [ -d /app/.git ]; then \
-      BUILD_VERSION="$(git -C /app rev-parse --short HEAD 2>/dev/null || true)"; \
+    if [ -z "$BUILD_VERSION" ] && [ -n "${GIT_SHA:-}" ]; then \
+      BUILD_VERSION="${GIT_SHA}"; \
     fi; \
     if [ -z "$BUILD_VERSION" ]; then BUILD_VERSION="unknown"; fi; \
+    if [ ${#BUILD_VERSION} -gt 12 ]; then \
+      BUILD_VERSION="$(printf '%.7s' "$BUILD_VERSION")"; \
+    fi; \
     echo "$BUILD_VERSION" > BUILD_VERSION.txt; \
     export VUE_APP_BUILD_VERSION="$BUILD_VERSION"; \
     export VUE_APP_API_URL="${VUE_APP_API_URL:-}"; \
@@ -43,10 +42,10 @@ FROM nginx:alpine
 ARG VUE_APP_API_URL
 ARG VUE_APP_BUILD_PATH=default
 
-COPY front/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/front/dist /usr/share/nginx/html
-COPY --from=build /app/front/BUILD_VERSION.txt /usr/share/nginx/html/BUILD_VERSION.txt
-COPY front/docker-entrypoint.sh /docker-entrypoint.sh
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/BUILD_VERSION.txt /usr/share/nginx/html/BUILD_VERSION.txt
+COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
 RUN RAW="${VUE_APP_API_URL:-}" && \

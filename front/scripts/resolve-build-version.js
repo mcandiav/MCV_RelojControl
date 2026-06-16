@@ -21,9 +21,13 @@ function resolveBuildVersion(options = {}) {
   const fromEnv =
     (process.env.VUE_APP_BUILD_VERSION && String(process.env.VUE_APP_BUILD_VERSION).trim()) ||
     (process.env.VUE_APP_BUILD_LABEL && String(process.env.VUE_APP_BUILD_LABEL).trim()) ||
+    (process.env.GIT_SHA && String(process.env.GIT_SHA).trim()) ||
     (process.env.SOURCE_COMMIT && String(process.env.SOURCE_COMMIT).trim()) ||
     ''
-  if (fromEnv) return fromEnv.slice(0, 40)
+  if (fromEnv) {
+    const v = fromEnv.slice(0, 40)
+    return v.length > 12 ? v.slice(0, 7) : v
+  }
   const gitRoot = findGitRoot(path.resolve(__dirname, '..'))
   if (gitRoot) {
     try {

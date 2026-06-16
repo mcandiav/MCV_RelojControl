@@ -1,5 +1,4 @@
-# Build del front: preferir contexto en raíz del repo (ver front/Dockerfile).
-# Si el contexto es solo front/, .git no estará disponible — usar build arg VUE_APP_BUILD_VERSION.
+# Build del front (contexto = esta carpeta front/). EasyPanel pasa build-arg GIT_SHA.
 
 node_modules
 dist
