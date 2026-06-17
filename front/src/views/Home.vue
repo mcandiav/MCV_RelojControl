@@ -35,27 +35,31 @@
               }"
             >
               <template v-if="cell">
-                <div class="q-user">{{ quadrantOperatorName(cell) }}</div>
-                <div class="q-op-line">{{ quadrantOperationLine(cell) }}</div>
-                <div class="q-mode">{{ quadrantModeLabel(cell) }}</div>
-                <div class="q-time" :style="quadrantTimeStyle(cell)">{{ formatElapsed(cell) }}</div>
-                <div class="q-qty">{{ quadrantQtyText(cell) }}</div>
-                <div class="q-progress-row">
-                  <span>0%</span>
-                  <span>{{ quadrantProgressPercentLabel(cell) }}</span>
-                </div>
-                <div class="q-progress-track">
-                  <div class="q-progress-fill" :style="quadrantProgressStyle(cell)" />
-                </div>
-                <div class="q-legend">
-                  <span><span class="legend-dot legend-dot--green"></span>Verde 0% --- 90%</span>
-                  <span><span class="legend-dot legend-dot--yellow"></span>Amarillo 90% --- 99%</span>
-                  <span><span class="legend-dot legend-dot--red"></span>Rojo 100% --- +</span>
+                <div class="idle-quadrant-inner">
+                  <div class="q-user">{{ quadrantOperatorName(cell) }}</div>
+                  <div class="q-op-line">{{ quadrantOperationLine(cell) }}</div>
+                  <div class="q-mode">{{ quadrantModeLabel(cell) }}</div>
+                  <div class="q-time" :style="quadrantTimeStyle(cell)">{{ formatElapsed(cell) }}</div>
+                  <div class="q-qty">{{ quadrantQtyText(cell) }}</div>
+                  <div class="q-progress-row">
+                    <span>0%</span>
+                    <span>{{ quadrantProgressPercentLabel(cell) }}</span>
+                  </div>
+                  <div class="q-progress-track">
+                    <div class="q-progress-fill" :style="quadrantProgressStyle(cell)" />
+                  </div>
+                  <div class="q-legend">
+                    <span><span class="legend-dot legend-dot--green"></span>Verde 0% --- 90%</span>
+                    <span><span class="legend-dot legend-dot--yellow"></span>Amarillo 90% --- 99%</span>
+                    <span><span class="legend-dot legend-dot--red"></span>Rojo 100% --- +</span>
+                  </div>
                 </div>
               </template>
               <template v-else>
-                <div class="empty-label">Libre</div>
-                <div class="meta">Panel {{ idx + 1 }}</div>
+                <div class="idle-quadrant-inner idle-quadrant-inner--empty">
+                  <div class="empty-label">Libre</div>
+                  <div class="meta">Panel {{ idx + 1 }}</div>
+                </div>
               </template>
             </div>
           </div>
@@ -3253,33 +3257,21 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: clamp(6px, 1.2vw, 12px);
+  padding: clamp(6px, 1.2vh, 10px) clamp(10px, 1.5vw, 16px);
   background: #161b22;
   border-bottom: 1px solid #30363d;
 }
 
-.carousel-nav {
-  opacity: 0.92;
-}
-
-.carousel-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 100px;
-}
-
 .carousel-page {
-  font-size: 1.35rem;
+  font-size: clamp(1rem, min(2.5vw, 2.8vh), 1.35rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 
 .carousel-count {
-  font-size: 0.72rem;
+  font-size: clamp(0.62rem, min(1.4vw, 1.6vh), 0.72rem);
   color: #8b949e;
   letter-spacing: 0.02em;
 }
@@ -3290,21 +3282,40 @@ export default {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: 8px;
-  padding: 8px;
+  gap: clamp(4px, 0.8vh, 8px);
+  padding: clamp(4px, 0.8vh, 8px);
 }
 
 .idle-quadrant {
-  border-radius: 12px;
-  border: 3px solid #30363d;
+  container-type: size;
+  container-name: quadrant;
+  border-radius: clamp(8px, 1vh, 12px);
+  border: 2px solid #30363d;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  text-align: center;
+  padding: clamp(4px, 1.2vh, 12px) clamp(4px, 1vw, 12px);
+  overflow: hidden;
+  background: #161b22;
+  min-height: 0;
+}
+
+.idle-quadrant-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  padding: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  gap: clamp(1px, 0.6vh, 6px);
   overflow: hidden;
-  background: #161b22;
+}
+
+.idle-quadrant-inner--empty {
+  justify-content: center;
 }
 
 /* Fondo distinto según fase del cronómetro (tablero 2×2): setup = frío, run = tono producción. */
@@ -3331,14 +3342,105 @@ export default {
   box-shadow: 0 0 0 2px rgba(187, 128, 9, 0.35);
 }
 
-/* Cuadrantes: tiempo muy grande â†’ OT â†’ operaciÃ³n â†’ recurso â†’ operario (mÃ¡s chico) */
+/* Tipografía del cuadrante: escala por viewport (vh/vw) y, si el navegador lo soporta, por altura del panel (cqh). */
+.q-user {
+  flex-shrink: 0;
+  font-size: clamp(0.65rem, min(2.4vw, 3.2vh), 1.55rem);
+  font-weight: 700;
+  color: #dbe7f5;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.q-op-line {
+  flex-shrink: 0;
+  font-size: clamp(0.62rem, min(1.8vw, 2.4vh), 0.96rem);
+  font-weight: 600;
+  color: #a8c9ef;
+  max-width: 95%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-line;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.q-mode {
+  flex-shrink: 0;
+  font-size: clamp(0.72rem, min(2.2vw, 3vh), 1.35rem);
+  font-weight: 800;
+  color: #d0d7de;
+  letter-spacing: 0.03em;
+  line-height: 1.1;
+}
+
 .q-time {
-  font-size: clamp(3.2rem, 14vw, 8.5rem);
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(1.75rem, min(8.8vw, 13vh), 6.5rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-  margin: 6px 0 4px;
+  line-height: 0.95;
+  margin: 0;
   color: #e6edf3;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.q-qty {
+  flex-shrink: 0;
+  font-size: clamp(0.72rem, min(2.8vw, 3.2vh), 2rem);
+  font-weight: 800;
+  color: #e6edf3;
+  line-height: 1.1;
+  max-width: 95%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.q-progress-row {
+  flex-shrink: 0;
+  width: 78%;
+  display: flex;
+  justify-content: space-between;
+  color: #d0d7de;
+  font-size: clamp(0.62rem, min(1.7vw, 2.2vh), 1.1rem);
+}
+
+.q-progress-track {
+  flex-shrink: 0;
+  width: 78%;
+  height: clamp(8px, min(1.8vw, 2vh), 20px);
+  border-radius: 9999px;
+  background: #9ec0e3;
+  overflow: hidden;
+}
+
+.q-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+}
+
+.q-legend {
+  flex-shrink: 0;
+  width: 96%;
+  font-size: clamp(0.48rem, min(1.1vw, 1.8vh), 0.76rem);
+  color: #d0d7de;
+  text-align: center;
+  line-height: 1.2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 1vw, 14px);
 }
 
 .q-ot {
@@ -3396,12 +3498,6 @@ export default {
   margin: 2px 0;
 }
 
-.q-qty {
-  font-size: clamp(0.72rem, 2.1vw, 0.98rem);
-  color: #c9d1d9;
-  margin-bottom: 2px;
-}
-
 .q-res {
   font-size: clamp(0.72rem, 2.2vw, 1rem);
   font-weight: 500;
@@ -3414,19 +3510,8 @@ export default {
   white-space: nowrap;
 }
 
-.q-user {
-  font-size: clamp(0.65rem, 1.8vw, 0.88rem);
-  font-weight: 500;
-  color: #6e7681;
-  margin-top: 4px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .meta {
-  font-size: clamp(0.95rem, 2.2vw, 1.35rem);
+  font-size: clamp(0.85rem, min(2.2vw, 3vh), 1.35rem);
   color: #8b949e;
   max-width: 100%;
   overflow: hidden;
@@ -3440,16 +3525,28 @@ export default {
 }
 
 .empty-label {
-  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-size: clamp(1rem, min(3vw, 5vh), 2rem);
   color: #484f58;
   font-weight: 600;
+}
+
+.carousel-nav {
+  opacity: 0.92;
+}
+
+.carousel-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 80px;
 }
 
 .idle-board-footer {
   flex-shrink: 0;
   text-align: center;
-  padding: 10px 12px;
-  font-size: 0.85rem;
+  padding: clamp(6px, 1vh, 10px) clamp(8px, 1.5vw, 12px);
+  font-size: clamp(0.72rem, min(1.6vw, 2vh), 0.85rem);
   color: #6e7681;
   background: #010409;
   cursor: pointer;
@@ -3460,95 +3557,58 @@ export default {
   background: #0d1117;
 }
 
-.q-user {
-  font-size: clamp(1.05rem, 2.4vw, 1.55rem);
-  font-weight: 700;
-  color: #dbe7f5;
-  margin-bottom: 1px;
-}
-
-.q-op-line {
-  font-size: clamp(0.72rem, 1.8vw, 0.96rem);
-  font-weight: 600;
-  color: #a8c9ef;
-  max-width: 95%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre-line;
-}
-
-.q-mode {
-  margin-top: 4px;
-  font-size: clamp(1rem, 2.2vw, 1.35rem);
-  font-weight: 800;
-  color: #d0d7de;
-  letter-spacing: 0.03em;
-}
-
-.q-time {
-  font-size: clamp(3.3rem, 8.8vw, 6.2rem);
-  line-height: 0.95;
-  margin-top: 2px;
-  margin-bottom: 4px;
-}
-
-.q-qty {
-  font-size: clamp(1.25rem, 2.8vw, 2rem);
-  font-weight: 800;
-  color: #e6edf3;
-  margin-top: 2px;
-  margin-bottom: 2px;
-}
-
-.q-progress-row {
-  width: 78%;
-  display: flex;
-  justify-content: space-between;
-  color: #d0d7de;
-  font-size: clamp(0.85rem, 1.7vw, 1.1rem);
-  margin-top: 2px;
-}
-
-.q-progress-track {
-  width: 78%;
-  height: clamp(14px, 1.8vw, 20px);
-  border-radius: 9999px;
-  background: #9ec0e3;
-  overflow: hidden;
-  margin-top: 4px;
-}
-
-.q-progress-fill {
-  height: 100%;
-  border-radius: 9999px;
-}
-
-.q-legend {
-  width: 78%;
-  margin-top: 8px;
-  font-size: clamp(0.58rem, 1.1vw, 0.76rem);
-  color: #d0d7de;
-  text-align: center;
-  line-height: 1.25;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
 .legend-dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: clamp(5px, 0.9vw, 8px);
+  height: clamp(5px, 0.9vw, 8px);
   border-radius: 50%;
-  margin-right: 6px;
+  margin-right: clamp(3px, 0.5vw, 6px);
 }
 
 .legend-dot--green { background: #00c853; }
 .legend-dot--yellow { background: #ffca28; }
 .legend-dot--red { background: #ff5252; }
+
+/* Ajuste fino por altura real del cuadrante (navegadores con container queries). */
+@supports (container-type: size) {
+  .idle-quadrant {
+    border-radius: clamp(8px, 1.2cqmin, 12px);
+    border-width: clamp(2px, 0.35cqmin, 3px);
+    padding: clamp(4px, 2.5cqh, 12px) clamp(4px, 2cqw, 12px);
+  }
+  .idle-quadrant-inner {
+    gap: clamp(1px, 1.2cqh, 6px);
+  }
+  .q-time {
+    font-size: clamp(1.75rem, min(8.8vw, 22cqh, 13vh), 6.5rem);
+  }
+  .q-user {
+    font-size: clamp(0.65rem, min(2.4vw, 4.2cqh, 3.2vh), 1.55rem);
+  }
+  .q-op-line {
+    font-size: clamp(0.62rem, min(1.8vw, 3.6cqh, 2.4vh), 0.96rem);
+  }
+  .q-mode {
+    font-size: clamp(0.72rem, min(2.2vw, 4.5cqh, 3vh), 1.35rem);
+  }
+  .q-qty {
+    font-size: clamp(0.72rem, min(2.8vw, 5cqh, 3.2vh), 2rem);
+  }
+  .q-progress-row {
+    font-size: clamp(0.62rem, min(1.7vw, 3.2cqh, 2.2vh), 1.1rem);
+  }
+  .q-progress-track {
+    height: clamp(8px, min(1.8vw, 2.8cqh, 2vh), 20px);
+  }
+  .q-legend {
+    font-size: clamp(0.48rem, min(1.1vw, 2.8cqh, 1.8vh), 0.76rem);
+    gap: clamp(4px, 1.2cqw, 14px);
+  }
+  .legend-dot {
+    width: clamp(5px, 1.2cqmin, 8px);
+    height: clamp(5px, 1.2cqmin, 8px);
+  }
+}
 
 .ns-json {
   max-height: 220px;
