@@ -3306,11 +3306,11 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: space-evenly;
   width: 100%;
   height: 100%;
   min-height: 0;
-  gap: clamp(1px, 0.6vh, 6px);
+  padding: 1% 0;
   overflow: hidden;
 }
 
@@ -3342,10 +3342,10 @@ export default {
   box-shadow: 0 0 0 2px rgba(187, 128, 9, 0.35);
 }
 
-/* Tipografía del cuadrante: escala por viewport (vh/vw) y, si el navegador lo soporta, por altura del panel (cqh). */
+/* Cuadrante: jerarquía original (cronómetro dominante). Escala por viewport; con container queries, por altura del panel. */
 .q-user {
-  flex-shrink: 0;
-  font-size: clamp(0.65rem, min(2.4vw, 3.2vh), 1.55rem);
+  flex: 0 0 auto;
+  font-size: clamp(0.95rem, min(2.4vw, 2.8vh), 1.55rem);
   font-weight: 700;
   color: #dbe7f5;
   max-width: 100%;
@@ -3356,8 +3356,8 @@ export default {
 }
 
 .q-op-line {
-  flex-shrink: 0;
-  font-size: clamp(0.62rem, min(1.8vw, 2.4vh), 0.96rem);
+  flex: 0 0 auto;
+  font-size: clamp(0.72rem, min(1.8vw, 2.2vh), 0.96rem);
   font-weight: 600;
   color: #a8c9ef;
   max-width: 95%;
@@ -3371,8 +3371,8 @@ export default {
 }
 
 .q-mode {
-  flex-shrink: 0;
-  font-size: clamp(0.72rem, min(2.2vw, 3vh), 1.35rem);
+  flex: 0 0 auto;
+  font-size: clamp(0.95rem, min(2.2vw, 2.8vh), 1.35rem);
   font-weight: 800;
   color: #d0d7de;
   letter-spacing: 0.03em;
@@ -3380,11 +3380,8 @@ export default {
 }
 
 .q-time {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(1.75rem, min(8.8vw, 13vh), 6.5rem);
+  flex: 0 0 auto;
+  font-size: clamp(2.5rem, min(14vw, 18vh), 8.5rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 0.95;
@@ -3395,8 +3392,8 @@ export default {
 }
 
 .q-qty {
-  flex-shrink: 0;
-  font-size: clamp(0.72rem, min(2.8vw, 3.2vh), 2rem);
+  flex: 0 0 auto;
+  font-size: clamp(1rem, min(2.8vw, 3.5vh), 2rem);
   font-weight: 800;
   color: #e6edf3;
   line-height: 1.1;
@@ -3407,18 +3404,18 @@ export default {
 }
 
 .q-progress-row {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   width: 78%;
   display: flex;
   justify-content: space-between;
   color: #d0d7de;
-  font-size: clamp(0.62rem, min(1.7vw, 2.2vh), 1.1rem);
+  font-size: clamp(0.75rem, min(1.7vw, 2.2vh), 1.1rem);
 }
 
 .q-progress-track {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   width: 78%;
-  height: clamp(8px, min(1.8vw, 2vh), 20px);
+  height: clamp(12px, min(1.8vw, 2.2vh), 20px);
   border-radius: 9999px;
   background: #9ec0e3;
   overflow: hidden;
@@ -3430,9 +3427,9 @@ export default {
 }
 
 .q-legend {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   width: 96%;
-  font-size: clamp(0.48rem, min(1.1vw, 1.8vh), 0.76rem);
+  font-size: clamp(0.55rem, min(1.1vw, 1.6vh), 0.76rem);
   color: #d0d7de;
   text-align: center;
   line-height: 1.2;
@@ -3440,7 +3437,7 @@ export default {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: clamp(4px, 1vw, 14px);
+  gap: clamp(6px, 1.2vw, 20px);
 }
 
 .q-ot {
@@ -3569,44 +3566,41 @@ export default {
 .legend-dot--yellow { background: #ffca28; }
 .legend-dot--red { background: #ff5252; }
 
-/* Ajuste fino por altura real del cuadrante (navegadores con container queries). */
+/* Escala proporcional por altura real del cuadrante (misma relación visual que diseño aprobado). */
 @supports (container-type: size) {
   .idle-quadrant {
     border-radius: clamp(8px, 1.2cqmin, 12px);
     border-width: clamp(2px, 0.35cqmin, 3px);
-    padding: clamp(4px, 2.5cqh, 12px) clamp(4px, 2cqw, 12px);
-  }
-  .idle-quadrant-inner {
-    gap: clamp(1px, 1.2cqh, 6px);
-  }
-  .q-time {
-    font-size: clamp(1.75rem, min(8.8vw, 22cqh, 13vh), 6.5rem);
+    padding: clamp(6px, 2cqh, 14px) clamp(6px, 2cqw, 14px);
   }
   .q-user {
-    font-size: clamp(0.65rem, min(2.4vw, 4.2cqh, 3.2vh), 1.55rem);
+    font-size: clamp(0.95rem, 5.5cqh, 1.55rem);
   }
   .q-op-line {
-    font-size: clamp(0.62rem, min(1.8vw, 3.6cqh, 2.4vh), 0.96rem);
+    font-size: clamp(0.72rem, 4cqh, 0.96rem);
   }
   .q-mode {
-    font-size: clamp(0.72rem, min(2.2vw, 4.5cqh, 3vh), 1.35rem);
+    font-size: clamp(0.95rem, 5cqh, 1.35rem);
+  }
+  .q-time {
+    font-size: clamp(2.5rem, 38cqh, 8.5rem);
   }
   .q-qty {
-    font-size: clamp(0.72rem, min(2.8vw, 5cqh, 3.2vh), 2rem);
+    font-size: clamp(1rem, 7.5cqh, 2rem);
   }
   .q-progress-row {
-    font-size: clamp(0.62rem, min(1.7vw, 3.2cqh, 2.2vh), 1.1rem);
+    font-size: clamp(0.75rem, 4cqh, 1.1rem);
   }
   .q-progress-track {
-    height: clamp(8px, min(1.8vw, 2.8cqh, 2vh), 20px);
+    height: clamp(12px, 2.5cqh, 20px);
   }
   .q-legend {
-    font-size: clamp(0.48rem, min(1.1vw, 2.8cqh, 1.8vh), 0.76rem);
-    gap: clamp(4px, 1.2cqw, 14px);
+    font-size: clamp(0.55rem, 3.2cqh, 0.76rem);
+    gap: clamp(6px, 1.5cqw, 20px);
   }
   .legend-dot {
-    width: clamp(5px, 1.2cqmin, 8px);
-    height: clamp(5px, 1.2cqmin, 8px);
+    width: clamp(6px, 1.2cqmin, 8px);
+    height: clamp(6px, 1.2cqmin, 8px);
   }
 }
 
