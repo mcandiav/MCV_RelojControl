@@ -44,11 +44,24 @@ Sistema de gestión de tiempos de producción para operarios de Bignotti.
 - **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — rama de trabajo **`V5`** (multioperario); baselines congeladas **`V3`** y **`V4`**; **`main`** se alinea a la versión final al pasar a producción.
 
 ### Push al sandbox (rama V5)
+
+Los commits deben llevar prefijo **`[V5@hash]`** al inicio del asunto para que EasyPanel muestre la versión Git en *Deployment History* (`Deploy service: [V5@abc1234] ...`).
+
 ```bash
 git add .
-git commit -m "descripción"
+node scripts/versioned-commit.mjs "descripción del cambio"
 git push origin V5
 ```
+
+En PowerShell:
+
+```powershell
+git add .
+powershell -File scripts/versioned-commit.ps1 "descripción del cambio"
+git push origin V5
+```
+
+**EasyPanel — build args** (front y reloj-api): configurar `GIT_SHA` con el commit de GitHub (EasyPanel suele inyectarlo al hacer deploy desde repo; si no, usar el hash corto del commit). Opcional: `GIT_BRANCH=V5`. El log del build Docker imprimirá `Git: V5@<hash>` al inicio.
 
 ## Infraestructura sandbox
 - **Servidor EasyPanel:** 177.136.6.181

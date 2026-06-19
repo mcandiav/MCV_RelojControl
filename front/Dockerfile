@@ -9,8 +9,14 @@ ARG VUE_APP_API_URL
 ARG VUE_APP_BUILD_PATH=default
 ARG VUE_APP_BUILD_VERSION=
 ARG GIT_SHA=
+ARG GIT_BRANCH=unknown
 
 WORKDIR /app
+
+RUN echo "========================================" && \
+    echo " CRONOMETRO FRONT build" && \
+    echo " Git: ${GIT_BRANCH}@${GIT_SHA}" && \
+    echo "========================================"
 
 COPY package*.json .npmrc ./
 RUN npm install --no-fund --no-audit --loglevel=error
@@ -41,6 +47,11 @@ FROM nginx:alpine
 
 ARG VUE_APP_API_URL
 ARG VUE_APP_BUILD_PATH=default
+ARG GIT_SHA=unknown
+ARG GIT_BRANCH=unknown
+
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+LABEL org.opencontainers.image.version="${GIT_BRANCH}"
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
