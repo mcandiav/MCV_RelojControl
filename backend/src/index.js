@@ -7,6 +7,7 @@ const server = http.createServer(app);
 const db = require('./config/db');
 const compression = require('compression');
 const { load_data_workplaces, ensureShiftCloseSlots } = require('./libs/initialSetup');
+const { runSchemaMigrations } = require('./libs/runSchemaMigrations');
 require('./models/work_order_operation');
 require('./models/operation_timer');
 require('./models/timer_event');
@@ -125,7 +126,8 @@ server.listen(8000, () => {
     console.log(`HTTP en puerto 8000 (build=${BUILD_VERSION}) (sync DB en curso; /health = 503 hasta listo).`);
 });
 
-db.sync({ alter: true })
+runSchemaMigrations(db)
+    .then(() => db.sync({ alter: true }))
     .then(async () => {
         console.log('Base de datos sincronizada.');
         await load_data_workplaces();
