@@ -1974,12 +1974,25 @@ export default {
       const code = d && d.code ? String(d.code).trim() : ''
       const message = d && (d.message || d.text) ? String(d.message || d.text) : ''
       const normalized = message.toLowerCase()
+      if (
+        code === 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER' ||
+        code === 'TIMER_LOCKED_BY_OTHER_TERMINAL'
+      ) {
+        return message || fallback
+      }
       const isLegacyLockMessage =
         normalized.includes('only active timers can change mode') ||
         normalized.includes('only paused timers can be resumed') ||
         normalized.includes('cronómetro pertenece a otra terminal') ||
-        normalized.includes('cronometro pertenece a otra terminal')
+        normalized.includes('cronometro pertenece a otra terminal') ||
+        normalized.includes('timer is already active')
       if (code === 'TIMER_LOCKED_BY_OTHER_TERMINAL' || isLegacyLockMessage) {
+        if (message) return message
+        const owner =
+          (d && (d.locked_by_display_name || d.locked_by_username)) ? String(d.locked_by_display_name || d.locked_by_username) : ''
+        if (owner) {
+          return `Esta operación ya fue lanzada o pausada en otro terminal por el usuario "${owner}". Debe detenerla en el terminal original para liberarla. El supervisor también puede liberarla.`
+        }
         return 'Esta operación ya fue lanzada o pausada en otro terminal. Debe detenerla en el terminal original para liberarla. El supervisor también puede liberarla.'
       }
       return message || fallback

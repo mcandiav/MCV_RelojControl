@@ -14,9 +14,55 @@ const config = require('../config/config');
 const { getShiftDateString, computeTotalsFromEvents } = require('../lib/timerEventTotals');
 const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
 const { enqueueFromStop } = require('../services/netsuiteSyncQueue');
+const TIMER_LOCKED_SAME_STATION_CODE = 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER';
 const TIMER_TERMINAL_LOCK_CODE = 'TIMER_LOCKED_BY_OTHER_TERMINAL';
-const TIMER_TERMINAL_LOCK_MESSAGE =
-  'Esta operación ya fue lanzada o pausada en otro terminal. Debe detenerla en el terminal original para liberarla. El supervisor también puede liberarla.';
+
+function formatUserDisplayName(user) {
+  if (!user) return 'otro usuario';
+  const full = [user.name, user.lastname].filter(Boolean).join(' ').trim();
+  if (full) return full;
+  const username = user.username ? String(user.username).trim() : '';
+  if (username) return username;
+  return 'otro usuario';
+}
+
+async function loadTimerOwnerUser(timer) {
+  if (!timer || timer.current_user_id == null) return null;
+  return User.findByPk(timer.current_user_id, {
+    attributes: ['id', 'name', 'lastname', 'username']
+  });
+}
+
+function isSameTimerOwner(req, timer) {
+  return Boolean(timer && Number(timer.current_user_id) === Number(req.userId));
+}
+
+function isSameStation(req, timer) {
+  return Boolean(req.stationId && timer && timer.station_id && timer.station_id === req.stationId);
+}
+
+async function respondTimerLockedByOtherUser(req, res, timer, statusCode = 403) {
+  const owner = await loadTimerOwnerUser(timer);
+  const ownerName = formatUserDisplayName(owner);
+  const sameStation = isSameStation(req, timer);
+  const payload = {
+    locked_by_user_id: owner ? owner.id : null,
+    locked_by_username: owner && owner.username ? String(owner.username).trim() : null,
+    locked_by_display_name: ownerName
+  };
+  if (sameStation) {
+    return res.status(statusCode).json({
+      ...payload,
+      code: TIMER_LOCKED_SAME_STATION_CODE,
+      message: `Esta operación ya fue lanzada o pausada en este terminal por el usuario "${ownerName}".`
+    });
+  }
+  return res.status(statusCode).json({
+    ...payload,
+    code: TIMER_TERMINAL_LOCK_CODE,
+    message: `Esta operación ya fue lanzada o pausada en otro terminal por el usuario "${ownerName}". Debe detenerla en el terminal original para liberarla. El supervisor también puede liberarla.`
+  });
+}
 
 function normalizeWorkplaceArea(workplaceName) {
   const area = String(workplaceName || '').trim().toUpperCase();
@@ -44,18 +90,13 @@ async function getCurrentUser(req) {
 }
 
 /**
- * Operario: pause/stop/resume solo en la misma terminal (cabecera x-station-id ↔ timer.station_id).
- * Timer sin station_id (datos viejos): solo quien tiene current_user_id.
- * Sin cabecera de terminal: mismo criterio que antes (solo current_user_id).
+ * Operario: solo el dueño del timer (current_user_id) puede controlarlo.
+ * Varios operarios en la misma terminal comparten station_id pero no pueden tomar el cronómetro ajeno.
  */
 function operarioMayControlTimer(req, timer) {
   if (!timer) return false;
-  if (req.stationId) {
-    if (timer.station_id && timer.station_id === req.stationId) return true;
-    if (!timer.station_id && Number(timer.current_user_id) === Number(req.userId)) return true;
-    return false;
-  }
-  return Number(timer.current_user_id) === Number(req.userId);
+  if (!timer.station_id && Number(timer.current_user_id) === Number(req.userId)) return true;
+  return isSameTimerOwner(req, timer);
 }
 
 function normalizeTimerMode(input, fallback = 'RUN') {
@@ -77,7 +118,7 @@ async function assertTimerControlOrRespond(req, timer, res) {
       : '';
   if (roleName === 'admin') return true;
   if (operarioMayControlTimer(req, timer)) return true;
-  res.status(403).json({ code: TIMER_TERMINAL_LOCK_CODE, message: TIMER_TERMINAL_LOCK_MESSAGE });
+  await respondTimerLockedByOtherUser(req, res, timer, 403);
   return false;
 }
 
@@ -616,6 +657,9 @@ exports.startTimer = async function startTimer(req, res) {
     }
   });
   if (lockTimer) {
+    if (Number(lockTimer.current_user_id) !== Number(currentUser.id)) {
+      return respondTimerLockedByOtherUser(req, res, lockTimer, 409);
+    }
     return res.status(409).json({ message: 'Machine/resource already has an active operation.' });
   }
 
@@ -638,6 +682,9 @@ exports.startTimer = async function startTimer(req, res) {
     });
   } else {
     if (timer.status === 'ACTIVE') {
+      if (Number(timer.current_user_id) !== Number(currentUser.id)) {
+        return respondTimerLockedByOtherUser(req, res, timer, 409);
+      }
       return res.status(400).json({ message: 'Timer is already active.' });
     }
     // En PAUSA solo la misma terminal (o dueño legacy) puede reanudar con Play; evita secuestrar desde otro PC.
@@ -715,6 +762,9 @@ exports.resumeTimer = async function resumeTimer(req, res) {
     }
   });
   if (lockTimer) {
+    if (Number(lockTimer.current_user_id) !== Number(req.userId)) {
+      return respondTimerLockedByOtherUser(req, res, lockTimer, 409);
+    }
     return res.status(409).json({ message: 'Machine/resource already has an active operation.' });
   }
 
@@ -877,6 +927,9 @@ exports.transitionSetupStop = async function transitionSetupStop(req, res) {
     }
   });
   if (lockTimer) {
+    if (Number(lockTimer.current_user_id) !== Number(currentUser.id)) {
+      return respondTimerLockedByOtherUser(req, res, lockTimer, 409);
+    }
     return res.status(409).json({ message: 'Machine/resource already has an active operation.' });
   }
 
