@@ -1344,8 +1344,11 @@ export default {
       const n = Number(process.env.VUE_APP_IDLE_BOARD_SLOTS || 4)
       return Math.max(1, Math.min(4, n))
     },
-    /** Estación + propios (V5: mismo usuario puede cronometrar en varias terminales). */
+    /** Admin: toda la planta. Operario: estación + propios en otras terminales (V5). */
     mergedIdleBoard() {
+      if (this.isAdmin) {
+        return Array.isArray(this.activeBoard) ? [...this.activeBoard] : []
+      }
       const byId = new Map()
       const push = (rows) => {
         for (const row of rows || []) {
