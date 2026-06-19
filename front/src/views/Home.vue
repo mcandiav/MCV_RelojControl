@@ -254,7 +254,12 @@
                       <tr v-for="op in operations" :key="op.id">
                         <td>{{ op.ot_number || '-' }}</td>
                         <td>{{ op.operation_sequence || '-' }}</td>
-                        <td>{{ op.operation_name || '-' }}</td>
+                        <td>
+                          {{ op.operation_name || '-' }}
+                          <div v-if="parallelActiveHint(op)" class="parallel-timers-hint caption grey--text text--darken-1">
+                            {{ parallelActiveHint(op) }}
+                          </div>
+                        </td>
                         <td>{{ op.resource_code || '-' }}</td>
                         <td>{{ quantityProgressText(op) }}</td>
                         <td>
@@ -1061,11 +1066,13 @@ export default {
       idleBoardPage: 0,
       stopQtyDialog: false,
       stopQtyOpId: null,
+      stopQtyTimerId: null,
       stopQtyValue: '',
       stopQtyPlanned: null,
       stopQtyLoading: false,
       setupTransitionDialog: false,
       setupTransitionOpId: null,
+      setupTransitionTimerId: null,
       setupTransitionLoading: false,
       shiftSlotsDraft: [
         { sequence: 1, hhmm: '08:00', enabled: true },
@@ -1934,6 +1941,24 @@ export default {
     extractTimerMode(item) {
       return String((item && item.timer_mode) || 'RUN').toUpperCase()
     },
+    extractTimerId(item) {
+      const id = item && item.timer_id != null ? Number(item.timer_id) : null
+      return Number.isInteger(id) && id > 0 ? id : null
+    },
+    timerRequestBody(item) {
+      const op = this.extractOperation(item)
+      const body = { work_order_operation_id: op.id }
+      const timerId = this.extractTimerId(item)
+      if (timerId) body.timer_id = timerId
+      return body
+    },
+    parallelActiveHint(item) {
+      const n = Number(item && item.parallel_active_count)
+      if (!Number.isFinite(n) || n <= 0) return ''
+      return n === 1
+        ? '1 operario más cronometrando esta operación'
+        : `${n} operarios más cronometrando esta operación`
+    },
     isLaneCurrent(item, lane) {
       const status = this.extractStatus(item)
       const mode = this.extractTimerMode(item)
@@ -2002,7 +2027,7 @@ export default {
       if (!op || !op.id) return
       if (action === 'stop') {
         if (lane === 'run') {
-          this.openStopQuantityDialog(op)
+          this.openStopQuantityDialog(item)
           return
         }
         const shouldShowSetupTransition =
@@ -2010,11 +2035,11 @@ export default {
           (this.extractStatus(item) === 'ACTIVE' || this.extractStatus(item) === 'PAUSED') &&
           this.extractTimerMode(item) === 'SETUP'
         if (shouldShowSetupTransition) {
-          this.openSetupTransitionDialog(op)
+          this.openSetupTransitionDialog(item)
           return
         }
         try {
-          await axios.post('/chronometer/timers/stop', { work_order_operation_id: op.id })
+          await axios.post('/chronometer/timers/stop', this.timerRequestBody(item))
           await this.refreshBoard()
           await this.refreshOperationsForCurrentRole()
         } catch (error) {
@@ -2026,36 +2051,22 @@ export default {
 
       const mode = lane === 'setup' ? 'SETUP' : 'RUN'
       const status = this.extractStatus(item)
+      const timerBody = () => ({ ...this.timerRequestBody(item), timer_mode: mode })
       try {
         if (action === 'play') {
           if (status === 'ACTIVE') {
-            await axios.post('/chronometer/timers/mode', {
-              work_order_operation_id: op.id,
-              timer_mode: mode
-            })
+            await axios.post('/chronometer/timers/mode', timerBody())
           } else if (status === 'PAUSED') {
-            await axios.post('/chronometer/timers/mode', {
-              work_order_operation_id: op.id,
-              timer_mode: mode
-            })
-            await axios.post('/chronometer/timers/resume', {
-              work_order_operation_id: op.id,
-              timer_mode: mode
-            })
+            await axios.post('/chronometer/timers/mode', timerBody())
+            await axios.post('/chronometer/timers/resume', timerBody())
           } else {
-            await axios.post('/chronometer/timers/start', {
-              work_order_operation_id: op.id,
-              timer_mode: mode
-            })
+            await axios.post('/chronometer/timers/start', timerBody())
           }
         } else if (action === 'pause') {
           if (status === 'PAUSED') {
-            await axios.post('/chronometer/timers/resume', {
-              work_order_operation_id: op.id,
-              timer_mode: mode
-            })
+            await axios.post('/chronometer/timers/resume', timerBody())
           } else {
-            await axios.post('/chronometer/timers/pause', { work_order_operation_id: op.id })
+            await axios.post('/chronometer/timers/pause', this.timerRequestBody(item))
           }
         }
         await this.refreshBoard()
@@ -2480,8 +2491,10 @@ export default {
         alert(msg)
       }
     },
-    openStopQuantityDialog(op) {
+    openStopQuantityDialog(item) {
+      const op = this.extractOperation(item)
       this.stopQtyOpId = op.id
+      this.stopQtyTimerId = this.extractTimerId(item)
       this.stopQtyPlanned = op && op.planned_quantity != null ? Number(op.planned_quantity) : null
       // Delta por cierre: iniciar vacÃ­o para no reenviar el acumulado por error.
       this.stopQtyValue = ''
@@ -2491,17 +2504,21 @@ export default {
       if (this.stopQtyLoading && !force) return
       this.stopQtyDialog = false
       this.stopQtyOpId = null
+      this.stopQtyTimerId = null
       this.stopQtyValue = ''
       this.stopQtyPlanned = null
     },
-    openSetupTransitionDialog(op) {
+    openSetupTransitionDialog(item) {
+      const op = this.extractOperation(item)
       if (!op || !op.id) return
       this.setupTransitionOpId = op.id
+      this.setupTransitionTimerId = this.extractTimerId(item)
       this.setupTransitionDialog = true
     },
     closeSetupTransitionDialog() {
       this.setupTransitionDialog = false
       this.setupTransitionOpId = null
+      this.setupTransitionTimerId = null
     },
     async dismissSetupTransitionWithoutRun() {
       if (!this.setupTransitionOpId || this.setupTransitionLoading) return
@@ -2509,6 +2526,7 @@ export default {
       try {
         await axios.post('/chronometer/timers/setup-transition', {
           work_order_operation_id: this.setupTransitionOpId,
+          timer_id: this.setupTransitionTimerId || undefined,
           start_run: false
         })
         await this.refreshBoard()
@@ -2527,6 +2545,7 @@ export default {
       try {
         await axios.post('/chronometer/timers/setup-transition', {
           work_order_operation_id: this.setupTransitionOpId,
+          timer_id: this.setupTransitionTimerId || undefined,
           start_run: true
         })
         await this.refreshBoard()
@@ -2543,6 +2562,7 @@ export default {
       if (!this.stopQtyOpId) return
       const trimmed = String(this.stopQtyValue || '').trim()
       const body = { work_order_operation_id: this.stopQtyOpId }
+      if (this.stopQtyTimerId) body.timer_id = this.stopQtyTimerId
       if (trimmed !== '') {
         if (!/^\d+$/.test(trimmed)) {
           alert('IngresÃ¡ solo nÃºmeros enteros â‰¥ 0, o dejÃ¡ vacÃ­o para no cambiar la cantidad terminada.')

@@ -19,6 +19,12 @@ Eres un experto en NetSuite, Node.js, Vue.js y despliegue con Docker/EasyPanel.
 8. Para operaciones que modifiquen datos: verificar primero que los servicios estén detenidos.
 9. Nunca asumir que una herramienta está instalada — proponer solución con Docker si es necesario.
 
+## Instrucciones de Trabajo
+1 Al terminar una modificación debes siempre hacer push a github
+2 En todos tus desarrollos la version Git debe aparecer en el titulo del programa como variable ajustada a la version y en la descripción del docker al inicio. De tal forma de saber cual version estoy desplegando en Easypanel.
+3 Las herramientas de trabajo son @NetsuiteSB para consultar Sandbox y @NetsuitePR para consultar el productivo.
+
+
 ## Descripción del sistema
 Sistema de gestión de tiempos de producción para operarios de Bignotti.
 - Los operarios registran **play / pause / stop** en Órdenes de Trabajo (OTs).
@@ -35,14 +41,13 @@ Sistema de gestión de tiempos de producción para operarios de Bignotti.
 - **Proxy:** Traefik (maneja SSL y dominios automáticamente)
 
 ## Repositorios
-- **Producción (NO TOCAR):** `https://github.com/mcandiav/RelojControl`
-- **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — rama de trabajo **`V4`** (EasyPanel); **`main`** se alinea a la versión final al pasar a producción.
+- **Sandbox (trabajar aquí):** `https://github.com/mcandiav/MCV_RelojControl` — rama de trabajo **`V5`** (multioperario); baselines congeladas **`V3`** y **`V4`**; **`main`** se alinea a la versión final al pasar a producción.
 
-### Push al sandbox (rama V4)
+### Push al sandbox (rama V5)
 ```bash
 git add .
 git commit -m "descripción"
-git push origin V4
+git push origin V5
 ```
 
 ## Infraestructura sandbox
@@ -81,5 +86,4 @@ VUE_APP_API_URL=https://reloj-api.at-once.cl/
 | `Role` | admin / operario |
 | `Workplace` | Puestos de trabajo / centros de costo |
 
-## Bitácora completa
-Ver `SANDBOX_CONFIG.md` en la raíz del proyecto (incluye **Git, despliegue y lecciones aprendidas**).
+

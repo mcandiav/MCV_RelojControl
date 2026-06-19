@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-06-19 | Se define requerimiento V5 de multioperario/multiterminal por operacion: una misma OT/operacion puede tener multiples cronometros simultaneos diferenciados por operacion, usuario y terminal. | Algunas operaciones, como pintura, pueden ser ejecutadas por varios operarios en paralelo y cada tiempo debe conservar trazabilidad individual para ZIM400. | La rama V5 debe eliminar el bloqueo global de cronometro unico por operacion y reemplazarlo por unicidad operacional `work_order_operation_id + current_user_id + station_id` para timers activos/pausados. No cambia contrato NetSuite ni logica vigente de envio; cada STOP debe seguir publicandose con la logica actual hacia `import_ot` y ZIM400. | Requisitos funcionales de UI y operacion, Terminal compartida, Integracion NetSuite IN, Poblar Reporte ZIM400, Ramas |
 | 2026-06-08 | Se define que MONTAJE debe usar el mismo patron de confirmacion que EJECUCION: el boton STOP solo abre popup y el STOP real ocurre al confirmar una opcion del popup. | Evitar inconsistencias operativas entre montaje y ejecucion, donde un popup podria quedar desacoplado del cierre real del cronometro. | Frontend debe abrir popup inmediatamente al presionar STOP en MONTAJE; backend debe cerrar montaje solo cuando el usuario confirme `Iniciar ejecucion` o `No iniciar ahora`. Si confirma iniciar, el backend debe cerrar montaje e iniciar ejecucion en la misma accion. No cambia el contrato NetSuite. | Requisitos funcionales de UI y operacion, Tablero operativo V3 |
 | 2026-06-04 | Se define que el cierre programado operational debe publicar a `import_ot` y ZIM400 dentro del mismo `sync_run`, sin reutilizar el flujo completo `v4_stop_queue`. | Evitar duplicacion de PUSH hacia `import_ot` y mantener estable el cierre programado, incorporando ZIM400 como segundo destino obligatorio. | El Programador debe extraer/reutilizar ZIM400 como publisher independiente, agregar el step `PUSH_ZIM400` al flujo operational y mantener idempotencia/logs por destino. | Flujo oficial de sincronizacion, Integracion NetSuite IN, Poblar Reporte ZIM400, Decisiones cerradas |
 | 2026-05-22 | Se corrige el mapping de empleado ZIM400: se elimina el hardcode temporal `42027` y se define que `custrecord_zim_reloj_empleado` debe poblarse desde `Users.netsuiteEmployeeId`. | Se poblo MariaDB con usuarios vinculados al ID interno real de empleado NetSuite y ya no corresponde enviar un empleado generico. | El programador debe agregar/usar `Users.netsuiteEmployeeId` como fuente obligatoria para enviar el empleado correcto a NetSuite ZIM400. La carga inicial de usuarios queda como CSV controlado, con passwords bcrypt y sin passwords planos. | Gestion de usuarios, MariaDB, Poblar Reporte ZIM400 |
@@ -326,6 +327,71 @@ Criterios de aceptacion:
 - Tablero protector lista tareas activas/pausadas de la terminal.
 - Vista 2x2 con carrusel si hay mas de 4.
 - Variables opcionales: `VUE_APP_IDLE_BOARD_SLOTS`, `VUE_APP_IDLE_BOARD_CAROUSEL_SEC`.
+
+### Requerimiento V5: multioperario y multiterminal por operacion
+
+Este requerimiento debe desarrollarse en una nueva rama `V5`, porque cambia una regla central del cronometraje: la cardinalidad de cronometros activos por OT/operacion.
+
+Situacion funcional:
+
+Una misma operacion puede ser ejecutada por varios operarios en paralelo. Ejemplo: `OT10534 / operacion 1 / Pintura` puede estar siendo cronometrada al mismo tiempo por mas de un usuario. En ese caso, cada usuario debe conservar su propio tiempo y trazabilidad. No corresponde bloquear la operacion completa solo porque otro usuario ya la esta cronometrando.
+
+Decision arquitectonica V5:
+
+```text
+Una misma OT/operacion puede tener multiples cronometros simultaneos.
+La unicidad del cronometro activo/pausado no es por operacion, sino por:
+  work_order_operation_id + current_user_id + station_id
+```
+
+Reglas obligatorias para Programador:
+
+1. Eliminar el bloqueo global que impide iniciar un cronometro sobre una operacion si ya existe otro cronometro activo/pausado de la misma `work_order_operation_id`.
+2. No reutilizar un `OperationTimer` existente solo por `work_order_operation_id`.
+3. Al iniciar cronometro, buscar o crear el timer usando como identidad funcional minima `work_order_operation_id + current_user_id + station_id`.
+4. Una misma combinacion `work_order_operation_id + current_user_id + station_id` no debe tener mas de un timer activo/pausado.
+5. El mismo usuario puede cronometrar la misma operacion desde otra terminal si el `station_id` es distinto.
+6. Usuarios distintos pueden cronometrar simultaneamente la misma operacion, incluso desde la misma terminal, siempre que cada timer quede asociado al usuario correcto.
+7. Pausar, reanudar, detener o cambiar modo debe operar sobre el timer propio de esa combinacion o sobre un `timer_id` explicito validado.
+8. Un usuario no debe detener ni modificar el timer de otro usuario/terminal, salvo rol supervisor/admin cuando exista una accion administrativa explicita.
+9. `current_user_id`, `station_id` y `timer_events.user_id` deben conservar trazabilidad correcta durante START, PAUSE, RESUME, MODE_CHANGE y STOP.
+10. El tablero operativo debe distinguir entre `mi cronometro en esta terminal` y `otros cronometros activos de la misma operacion`.
+11. Si el mismo usuario ya tiene la operacion activa en otra terminal, el sistema puede permitir iniciar otro cronometro, pero debe evitar que el usuario lo confunda con el timer de la terminal actual.
+12. El cierre programado/STOP_BATCH debe detener todos los timers activos/pausados, incluyendo multiples timers asociados a la misma operacion.
+13. No cambiar el contrato NetSuite ni la logica vigente de envio como parte de este requerimiento.
+14. Cada STOP debe seguir generando/publicandose con la logica actual hacia `import_ot` y ZIM400.
+15. ZIM400 debe conservar un registro por STOP con empleado derivado de `Users.netsuiteEmployeeId`.
+16. `import_ot` debe seguir recibiendo los envios tal como los genera hoy el sistema; si existen tres STOP de 60 minutos sobre la misma operacion, se deben procesar como tres aportes de tiempo equivalentes a 180 minutos totales aplicados por NetSuite.
+17. La cantidad terminada no debe duplicarse automaticamente por existir varios usuarios cronometrando la misma operacion. Si varios usuarios detienen ejecucion, la regla de cantidad debe mantenerse igual que hoy hasta que se defina un cambio funcional especifico.
+
+Ejemplo esperado:
+
+```text
+OT10534 / operacion 1 / Pintura
+
+Usuario A / Terminal 1 -> cronometra 60 min -> STOP A
+Usuario B / Terminal 2 -> cronometra 60 min -> STOP B
+Usuario C / Terminal 3 -> cronometra 60 min -> STOP C
+
+Resultado esperado:
+- Se conservan tres timers/eventos independientes.
+- ZIM400 recibe tres registros, cada uno con su empleado real.
+- import_ot recibe los envios segun la logica vigente, sin contrato nuevo.
+- El tiempo total operativo aplicado a la operacion equivale a 180 minutos.
+```
+
+Criterios de aceptacion V5:
+
+1. Usuario A puede iniciar OT/operacion aunque Usuario B ya la tenga activa.
+2. Usuario A y Usuario B no pisan el mismo `OperationTimer`.
+3. `current_user_id` no se sobrescribe con el ultimo usuario que presiona play.
+4. Cada STOP queda asociado al usuario real que cronometro.
+5. ZIM400 puede identificar el empleado correcto para cada STOP.
+6. El tablero no confunde el timer propio con timers de otros usuarios o terminales.
+7. El cierre programado detiene todos los timers paralelos de la misma operacion.
+8. La sincronizacion sigue usando la logica vigente sin modificar RESTlet, Saved Search, OAuth ni custom records NetSuite.
+9. No se duplica cantidad terminada por multioperario.
+10. V3 queda como baseline estable; V5 se desarrolla y valida en rama separada.
 
 ### Mensaje obligatorio para operacion tomada por otro terminal
 
@@ -1506,8 +1572,10 @@ Debe existir un usuario administrador inicial creado por mecanismo controlado y 
 
 ### Ramas
 
-- Trabajo diario en sandbox: `V3`.
-- Al cerrar productivo, alinear `main` al mismo commit probado en `V3`.
+- Baselines estables congeladas: `V3` y `V4`.
+- Desarrollo activo multioperario/multiterminal por operacion: `V5` (creada desde `V4`).
+- `V5` cambia la cardinalidad central de cronometros activos por operacion; validar en sandbox antes de alinear `main`.
+- Al cerrar productivo, alinear `main` al mismo commit final probado y aprobado.
 - Evitar merges grandes que mezclen historiales divergentes.
 
 ### EasyPanel

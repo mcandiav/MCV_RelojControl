@@ -17,10 +17,11 @@ const OperationTimer = sequelize.define('OperationTimer', {
     type: DataTypes.STRING(64),
     allowNull: false
   },
-  /** PC / kiosco: mismo valor en todos los operarios que usan este navegador (cabecera x-station-id). */
+  /** Terminal (x-station-id). V5: cadena vacía si no hay cabecera (evita NULL en índice único). */
   station_id: {
     type: DataTypes.STRING(64),
-    allowNull: true
+    allowNull: false,
+    defaultValue: ''
   },
   current_user_id: {
     type: DataTypes.INTEGER,
@@ -74,13 +75,17 @@ const OperationTimer = sequelize.define('OperationTimer', {
     },
     {
       unique: true,
+      fields: ['work_order_operation_id', 'current_user_id', 'station_id'],
+      name: 'uk_op_timer_user_station'
+    },
+    {
       fields: ['work_order_operation_id']
     }
   ]
 });
 
 OperationTimer.belongsTo(WorkOrderOperation, { foreignKey: 'work_order_operation_id' });
-WorkOrderOperation.hasOne(OperationTimer, { foreignKey: 'work_order_operation_id' });
+WorkOrderOperation.hasMany(OperationTimer, { foreignKey: 'work_order_operation_id' });
 
 OperationTimer.belongsTo(User, { foreignKey: 'current_user_id' });
 User.hasMany(OperationTimer, { foreignKey: 'current_user_id' });
