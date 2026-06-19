@@ -1013,7 +1013,7 @@ export default {
       activeTab: 0,
       operations: [],
       activeBoard: [],
-      /** Tablero grande 2x2: estación (todos los usuarios del PC) + mis timers en otras terminales. */
+      /** Tablero grande 2x2 / screensaver: scope=station (todos los usuarios del PC). */
       stationBoard: [],
       loadingOps: false,
       loadingSeed: false,
@@ -1344,21 +1344,16 @@ export default {
       const n = Number(process.env.VUE_APP_IDLE_BOARD_SLOTS || 4)
       return Math.max(1, Math.min(4, n))
     },
-    /** Admin: toda la planta. Operario: estación + propios en otras terminales (V5). */
+    /**
+     * Tablero grande / screensaver:
+     * - Operario (cualquier sesión en el PC): todos los relojes de ESTA estación.
+     * - Admin: todos los relojes de TODAS las estaciones y usuarios.
+     */
     mergedIdleBoard() {
       if (this.isAdmin) {
         return Array.isArray(this.activeBoard) ? [...this.activeBoard] : []
       }
-      const byId = new Map()
-      const push = (rows) => {
-        for (const row of rows || []) {
-          if (!row || row.id == null) continue
-          byId.set(String(row.id), row)
-        }
-      }
-      push(this.stationBoard)
-      push(this.activeBoard)
-      return Array.from(byId.values())
+      return Array.isArray(this.stationBoard) ? [...this.stationBoard] : []
     },
     idleActiveTimersSorted() {
       const rows = this.mergedIdleBoard.filter((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
