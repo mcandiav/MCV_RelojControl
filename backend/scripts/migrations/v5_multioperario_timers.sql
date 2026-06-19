@@ -4,7 +4,10 @@
 
 UPDATE operation_timers SET station_id = '' WHERE station_id IS NULL;
 
-ALTER TABLE operation_timers DROP INDEX operation_timers_work_order_operation_id;
+-- Reemplazar UNIQUE por índice normal (la FK lo exige); mismo ALTER atómico:
+ALTER TABLE operation_timers
+  DROP INDEX operation_timers_work_order_operation_id,
+  ADD INDEX operation_timers_work_order_operation_id (work_order_operation_id);
 
 CREATE UNIQUE INDEX uk_op_timer_user_station
   ON operation_timers (work_order_operation_id, current_user_id, station_id);

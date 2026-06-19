@@ -23,15 +23,50 @@ async function indexExists(sequelize, tableName, indexName) {
   return Array.isArray(rows) && rows.length > 0;
 }
 
-async function dropIndexIfExists(sequelize, tableName, indexName) {
-  if (!(await indexExists(sequelize, tableName, indexName))) return false;
+async function replaceLegacyUniqueOpIdIndex(sequelize, indexName) {
   const dialect = sequelize.getDialect();
+  const tableName = 'operation_timers';
+  if (!(await indexExists(sequelize, tableName, indexName))) return false;
+
+  console.log(`[migrate] V5: reemplazando índice único legacy ${indexName} por índice no único (FK)...`);
   if (dialect === 'mssql') {
     await sequelize.query(`DROP INDEX [${indexName}] ON [${tableName}]`);
-  } else {
-    await sequelize.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${indexName}\``);
+    await sequelize.query(`
+      CREATE INDEX [${indexName}] ON [${tableName}] ([work_order_operation_id])
+    `);
+    return true;
   }
+
+  // MariaDB/MySQL: DROP + ADD en la misma ALTER para no romper la FK que usa ese índice.
+  await sequelize.query(`
+    ALTER TABLE \`${tableName}\`
+      DROP INDEX \`${indexName}\`,
+      ADD INDEX \`${indexName}\` (\`work_order_operation_id\`)
+  `);
   return true;
+}
+
+async function ensureNonUniqueOpIdIndex(sequelize) {
+  const dialect = sequelize.getDialect();
+  if (dialect !== 'mariadb' && dialect !== 'mysql') return;
+
+  const [rows] = await sequelize.query('SHOW INDEX FROM `operation_timers`');
+  const hasNonUniqueOpId = (rows || []).some(
+    (row) =>
+      String(row.Column_name) === 'work_order_operation_id' &&
+      Number(row.Non_unique) === 1 &&
+      String(row.Key_name) !== 'uk_op_timer_user_station'
+  );
+  if (hasNonUniqueOpId) return;
+
+  const indexName = 'operation_timers_work_order_operation_id';
+  if (await indexExists(sequelize, 'operation_timers', indexName)) return;
+
+  console.log('[migrate] V5: creando índice no único en work_order_operation_id...');
+  await sequelize.query(`
+    ALTER TABLE \`operation_timers\`
+      ADD INDEX \`${indexName}\` (\`work_order_operation_id\`)
+  `);
 }
 
 async function findLegacySingleOperationUniqueIndexes(sequelize) {
@@ -80,9 +115,9 @@ async function runV5MultioperarioTimerMigration(sequelize) {
 
   const legacyIndexes = await findLegacySingleOperationUniqueIndexes(sequelize);
   for (const indexName of legacyIndexes) {
-    console.log(`[migrate] V5: eliminando índice único legacy ${indexName}...`);
-    await dropIndexIfExists(sequelize, 'operation_timers', indexName);
+    await replaceLegacyUniqueOpIdIndex(sequelize, indexName);
   }
+  await ensureNonUniqueOpIdIndex(sequelize);
 
   if (!(await indexExists(sequelize, 'operation_timers', 'uk_op_timer_user_station'))) {
     console.log('[migrate] V5: creando índice uk_op_timer_user_station...');
