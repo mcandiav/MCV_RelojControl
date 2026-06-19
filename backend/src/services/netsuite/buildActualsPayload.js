@@ -138,6 +138,106 @@ async function buildActualsPayload({ operationIds } = {}) {
   return { items };
 }
 
+/**
+ * V5: delta de import_ot por STOP concreto (mismo criterio que ZIM400 por cronómetro).
+ * Evita pushSkipped cuando otro operario ya procesó su cola y last_pushed refleja el acumulado global.
+ */
+async function buildActualsPayloadForStopEvent({ operationId, stopEventId } = {}) {
+  const secondsToRoundedMinutes = (seconds) => {
+    const s = Math.max(0, Number(seconds) || 0);
+    if (s <= 0) return 0;
+    return Math.ceil(s / 60);
+  };
+
+  const opId = Number(operationId);
+  const evId = Number(stopEventId);
+  if (!Number.isInteger(opId) || opId <= 0 || !Number.isInteger(evId) || evId <= 0) {
+    return { items: [] };
+  }
+
+  const stopEvent = await TimerEvent.findByPk(evId);
+  if (!stopEvent || Number(stopEvent.work_order_operation_id) !== opId) {
+    return { items: [] };
+  }
+  if (String(stopEvent.event_type || '').toUpperCase() !== 'STOP') {
+    return { items: [] };
+  }
+
+  const op = await WorkOrderOperation.findByPk(opId);
+  if (!op) return { items: [] };
+  const nsId = Number(op.netsuite_operation_id);
+  if (!Number.isFinite(nsId)) return { items: [] };
+
+  const timerId = stopEvent.operation_timer_id;
+  if (timerId == null || timerId === '') {
+    return { items: [] };
+  }
+
+  const stopAtMs = new Date(stopEvent.event_at).getTime();
+  if (!Number.isFinite(stopAtMs)) return { items: [] };
+
+  const allEvents = await TimerEvent.findAll({
+    where: { work_order_operation_id: opId },
+    order: [['event_at', 'ASC']]
+  });
+
+  const timerEvents = allEvents.filter((ev) => {
+    if (Number(ev.operation_timer_id) !== Number(timerId)) return false;
+    const at = new Date(ev.event_at).getTime();
+    return Number.isFinite(at) && at <= stopAtMs;
+  });
+
+  const totals = computeTotalsFromEvents(timerEvents);
+  const pendingRunDelta = secondsToRoundedMinutes(totals.total_run_seconds || 0);
+  const pendingSetupDelta = secondsToRoundedMinutes(totals.total_setup_seconds || 0);
+
+  let pendingQtyDelta = 0;
+  try {
+    const d = stopEvent.details_json ? JSON.parse(String(stopEvent.details_json)) : null;
+    if (d && d.completed_quantity != null && Number.isFinite(Number(d.completed_quantity))) {
+      pendingQtyDelta = Math.max(0, Math.floor(Number(d.completed_quantity)));
+    }
+  } catch (_) {}
+
+  if (pendingRunDelta <= 0 && pendingSetupDelta <= 0 && pendingQtyDelta <= 0) {
+    return { items: [] };
+  }
+
+  const lastPushedRun =
+    op.last_pushed_actual_run_time != null && Number.isFinite(Number(op.last_pushed_actual_run_time))
+      ? Math.max(0, Math.floor(Number(op.last_pushed_actual_run_time)))
+      : 0;
+  const lastPushedSetup =
+    op.last_pushed_actual_setup_time != null && Number.isFinite(Number(op.last_pushed_actual_setup_time))
+      ? Math.max(0, Math.floor(Number(op.last_pushed_actual_setup_time)))
+      : 0;
+  const lastPushedQty =
+    op.last_pushed_completed_quantity != null && Number.isFinite(Number(op.last_pushed_completed_quantity))
+      ? Math.max(0, Math.floor(Number(op.last_pushed_completed_quantity)))
+      : 0;
+
+  return {
+    items: [
+      {
+        operation_id: op.id,
+        ot_number: op.ot_number,
+        operation_sequence: op.operation_sequence,
+        netsuite_work_order_id: op.netsuite_work_order_id || null,
+        netsuite_operation_id: nsId,
+        actual_setup_time: pendingSetupDelta,
+        actual_run_time: pendingRunDelta,
+        completed_quantity: pendingQtyDelta,
+        absolute_actual_setup_time: lastPushedSetup + pendingSetupDelta,
+        absolute_actual_run_time: lastPushedRun + pendingRunDelta,
+        absolute_completed_quantity: lastPushedQty + pendingQtyDelta,
+        stop_event_id: evId,
+        operation_timer_id: timerId
+      }
+    ]
+  };
+}
+
 module.exports = {
-  buildActualsPayload
+  buildActualsPayload,
+  buildActualsPayloadForStopEvent
 };

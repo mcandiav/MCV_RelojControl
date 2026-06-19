@@ -7,7 +7,10 @@ const User = require('../models/user');
 const { isNetsuiteConfigured, getNetsuiteConfigStatus } = require('../services/netsuite/config');
 const { fetchFullDataset } = require('../services/netsuite/datasetClient');
 const { pushActualsBatch } = require('../services/netsuite/restletClient');
-const { buildActualsPayload } = require('../services/netsuite/buildActualsPayload');
+const {
+  buildActualsPayload,
+  buildActualsPayloadForStopEvent
+} = require('../services/netsuite/buildActualsPayload');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
 const { getNetsuiteConfig } = require('../services/netsuite/config');
 const { getNetsuiteAccessToken } = require('../services/netsuite/oauthToken');
@@ -74,54 +77,53 @@ async function markSuccessfulPushes(payloadItems, netsuiteResult) {
     byNsId.set(String(item.netsuite_operation_id), item);
   }
   const results = Array.isArray(netsuiteResult && netsuiteResult.results) ? netsuiteResult.results : [];
-  const updates = [];
+  let updated = 0;
   for (const r of results) {
     if (!r || r.success !== true) continue;
     const key = String(r.netsuite_operation_id || '');
     const src = byNsId.get(key);
     if (!src || !Number.isInteger(src.operation_id)) continue;
-    updates.push({
-      id: src.operation_id,
-      last_pushed_actual_run_time: Math.max(
-        0,
-        Math.floor(
-          Number(
-            src.absolute_actual_run_time != null ? src.absolute_actual_run_time : src.actual_run_time
-          ) || 0
-        )
-      ),
-      last_pushed_actual_setup_time: Math.max(
-        0,
-        Math.floor(
-          Number(
-            src.absolute_actual_setup_time != null ? src.absolute_actual_setup_time : src.actual_setup_time
-          ) || 0
-        )
-      ),
-      last_pushed_completed_quantity: Math.max(
-        0,
-        Math.floor(
-          Number(
-            src.absolute_completed_quantity != null ? src.absolute_completed_quantity : src.completed_quantity
-          ) || 0
-        )
-      )
+
+    const op = await WorkOrderOperation.findByPk(src.operation_id, {
+      attributes: [
+        'id',
+        'last_pushed_actual_run_time',
+        'last_pushed_actual_setup_time',
+        'last_pushed_completed_quantity'
+      ]
     });
+    if (!op) continue;
+
+    const curRun = Math.max(0, Math.floor(Number(op.last_pushed_actual_run_time) || 0));
+    const curSetup = Math.max(0, Math.floor(Number(op.last_pushed_actual_setup_time) || 0));
+    const curQty = Math.max(0, Math.floor(Number(op.last_pushed_completed_quantity) || 0));
+    const deltaRun = Math.max(0, Math.floor(Number(src.actual_run_time) || 0));
+    const deltaSetup = Math.max(0, Math.floor(Number(src.actual_setup_time) || 0));
+    const deltaQty = Math.max(0, Math.floor(Number(src.completed_quantity) || 0));
+    const absRun =
+      src.absolute_actual_run_time != null
+        ? Math.max(0, Math.floor(Number(src.absolute_actual_run_time) || 0))
+        : null;
+    const absSetup =
+      src.absolute_actual_setup_time != null
+        ? Math.max(0, Math.floor(Number(src.absolute_actual_setup_time) || 0))
+        : null;
+    const absQty =
+      src.absolute_completed_quantity != null
+        ? Math.max(0, Math.floor(Number(src.absolute_completed_quantity) || 0))
+        : null;
+
+    await WorkOrderOperation.update(
+      {
+        last_pushed_actual_run_time: Math.max(curRun + deltaRun, absRun != null ? absRun : 0),
+        last_pushed_actual_setup_time: Math.max(curSetup + deltaSetup, absSetup != null ? absSetup : 0),
+        last_pushed_completed_quantity: Math.max(curQty + deltaQty, absQty != null ? absQty : 0)
+      },
+      { where: { id: src.operation_id } }
+    );
+    updated += 1;
   }
-  if (updates.length === 0) return 0;
-  await Promise.all(
-    updates.map((u) =>
-      WorkOrderOperation.update(
-        {
-          last_pushed_actual_run_time: u.last_pushed_actual_run_time,
-          last_pushed_actual_setup_time: u.last_pushed_actual_setup_time,
-          last_pushed_completed_quantity: u.last_pushed_completed_quantity
-        },
-        { where: { id: u.id } }
-      )
-    )
-  );
-  return updates.length;
+  return updated;
 }
 
 function explainSequelizeError(err) {
@@ -1281,7 +1283,11 @@ async function runV4QueueSync(queueItem) {
         }
       });
     } else {
-      const built = await buildActualsPayload({ operationIds: [operationId] });
+      const stopEventId = Number(queueItem.trigger_event_id);
+      const built =
+        Number.isInteger(stopEventId) && stopEventId > 0
+          ? await buildActualsPayloadForStopEvent({ operationId, stopEventId })
+          : await buildActualsPayload({ operationIds: [operationId] });
       items = Array.isArray(built && built.items) ? built.items : [];
       if (items.length > 0) {
         const netsuitePush = await pushActualsBatch(items);
