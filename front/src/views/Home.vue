@@ -1013,7 +1013,7 @@ export default {
       activeTab: 0,
       operations: [],
       activeBoard: [],
-      /** Tablero grande 2x2: cronómetros de la estación (PC), no solo del usuario logueado. */
+      /** Tablero grande 2x2: estación (todos los usuarios del PC) + mis timers en otras terminales. */
       stationBoard: [],
       loadingOps: false,
       loadingSeed: false,
@@ -1344,8 +1344,21 @@ export default {
       const n = Number(process.env.VUE_APP_IDLE_BOARD_SLOTS || 4)
       return Math.max(1, Math.min(4, n))
     },
+    /** Estación + propios (V5: mismo usuario puede cronometrar en varias terminales). */
+    mergedIdleBoard() {
+      const byId = new Map()
+      const push = (rows) => {
+        for (const row of rows || []) {
+          if (!row || row.id == null) continue
+          byId.set(String(row.id), row)
+        }
+      }
+      push(this.stationBoard)
+      push(this.activeBoard)
+      return Array.from(byId.values())
+    },
     idleActiveTimersSorted() {
-      const rows = this.stationBoard.filter((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
+      const rows = this.mergedIdleBoard.filter((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
       return [...rows].sort((a, b) => String(a.resource_code || '').localeCompare(String(b.resource_code || '')))
     },
     idleBoardTotalPages() {
@@ -1651,7 +1664,7 @@ export default {
       clearTimeout(this.idleBoardOpenTimeout)
       if (this.showIdleBoard) return
       this.idleBoardOpenTimeout = setTimeout(() => {
-        const has = this.stationBoard.some((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
+        const has = this.mergedIdleBoard.some((r) => r.status === 'ACTIVE' || r.status === 'PAUSED')
         if (has) {
           this.showIdleBoard = true
           this.startBoardPollWhileOpen()
