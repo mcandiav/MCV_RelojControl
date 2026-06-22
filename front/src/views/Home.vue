@@ -1965,8 +1965,10 @@ export default {
       return String((item && item.timer_mode) || 'RUN').toUpperCase()
     },
     extractTimerId(item) {
-      const id = item && item.timer_id != null ? Number(item.timer_id) : null
-      return Number.isInteger(id) && id > 0 ? id : null
+      const fromField = item && item.timer_id != null ? Number(item.timer_id) : null
+      if (Number.isInteger(fromField) && fromField > 0) return fromField
+      const fromTimerRow = item && item.id != null ? Number(item.id) : null
+      return Number.isInteger(fromTimerRow) && fromTimerRow > 0 ? fromTimerRow : null
     },
     timerRequestBody(item) {
       const op = this.extractOperation(item)
@@ -2268,15 +2270,36 @@ export default {
     },
     async refreshBoard() {
       this.errorBoard = ''
+      const activeScope = this.isAdmin ? 'plant' : 'mine'
+      let activeError = ''
+      let stationError = ''
+
       try {
-        const [mineRes, stationRes] = await Promise.all([
-          axios.get('/chronometer/board/active', { params: { scope: 'mine' } }),
-          axios.get('/chronometer/board/active', { params: { scope: 'station' } })
-        ])
+        const mineRes = await axios.get('/chronometer/board/active', { params: { scope: activeScope } })
         this.activeBoard = this.normalizeBoardResponse(mineRes.data)
+      } catch (error) {
+        this.activeBoard = []
+        activeError =
+          (error.response && error.response.data && error.response.data.message) ||
+          'No fue posible cargar Operaciones Activas.'
+      }
+
+      try {
+        const stationRes = await axios.get('/chronometer/board/active', { params: { scope: 'station' } })
         this.stationBoard = this.normalizeBoardResponse(stationRes.data)
       } catch (error) {
-        this.errorBoard = (error.response && error.response.data && error.response.data.message) || 'No fue posible cargar el tablero.'
+        this.stationBoard = []
+        stationError =
+          (error.response && error.response.data && error.response.data.message) ||
+          'No fue posible cargar el tablero de estación.'
+      }
+
+      if (activeError && stationError) {
+        this.errorBoard = activeError
+      } else if (activeError) {
+        this.errorBoard = activeError
+      } else if (stationError) {
+        this.errorBoard = stationError
       }
     },
     async loadReportBoard() {

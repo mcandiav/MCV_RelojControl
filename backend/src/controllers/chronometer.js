@@ -89,6 +89,14 @@ async function getCurrentUser(req) {
   });
 }
 
+function isAdminUser(currentUser) {
+  const roleName =
+    currentUser && currentUser.Role && currentUser.Role.name
+      ? String(currentUser.Role.name).trim().toLowerCase()
+      : '';
+  return roleName === 'admin';
+}
+
 function stationIdForStorage(req) {
   const s = req && req.stationId != null ? String(req.stationId).trim() : '';
   return s || '';
@@ -567,14 +575,15 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
 
-  const roleName =
-    currentUser.Role && currentUser.Role.name
-      ? String(currentUser.Role.name).trim().toLowerCase()
-      : '';
-  const isAdmin = roleName === 'admin';
+  const isAdmin = isAdminUser(currentUser);
 
   const scopeRaw = req.query && req.query.scope ? String(req.query.scope).trim().toLowerCase() : 'mine';
-  const scope = scopeRaw === 'station' ? 'station' : 'mine';
+  const scope =
+    scopeRaw === 'station' ? 'station' : scopeRaw === 'plant' ? 'plant' : 'mine';
+
+  if (scope === 'plant' && !isAdmin) {
+    return res.status(403).json({ message: 'Solo administradores pueden usar scope=plant.' });
+  }
 
   const where = {
     status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
@@ -584,17 +593,17 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
     // Tablero grande: ACTIVE/PAUSED de esta estación (misma lógica que stationsMatch).
     const sid = req.stationId != null ? String(req.stationId).trim() : '';
     if (sid) {
-      where[Op.or] = [{ station_id: sid }, { station_id: '' }, { station_id: null }];
+      where[Op.or] = [{ station_id: sid }, { station_id: '' }];
     } else if (!isAdmin) {
       where.current_user_id = req.userId;
     } else {
       return res.status(200).json([]);
     }
-  } else if (!isAdmin) {
-    // Operaciones Activas del operario: solo lo que cronometra el usuario logueado en esta pestaña.
+  } else if (scope === 'mine' && !isAdmin) {
+    // Operaciones Activas del operario: solo lo que cronometra el usuario logueado.
     where.current_user_id = req.userId;
   }
-  // scope=mine + admin: sin filtro adicional (todas las operaciones activas de la planta).
+  // scope=plant o scope=mine + admin: sin filtro de usuario/estación (toda la planta).
 
   const timers = await OperationTimer.findAll({
     where,
