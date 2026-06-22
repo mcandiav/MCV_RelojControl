@@ -8,6 +8,8 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-06-21 | Se documenta de forma explicita la diferencia entre **Tablero Grande** (protector 2x2 por estacion) y **Operaciones Activas** (tabla con controles por rol). | Evitar confusion entre el screensaver de planta/terminal y la tabla operativa con play/pause/stop. | Tablero Grande: todos los cronometros ACTIVE/PAUSED de la estacion (`x-station-id`). Operaciones Activas sin cambio: operario ve solo los suyos; admin ve todos los terminales y usuarios. | Terminal compartida, Tableros operativos, V5 |
+| 2026-06-21 | Se crea estructura inicial QA del proyecto en `QA/README.md` y `QA/system-prompt.md`. | Implementar el proceso oficial definido en `QA Tester` para preparar rondas QA especificas de Cronometro sin adelantar pruebas aun no definidas. | Cronometro queda preparado para operar QA documentado por mejora, version o flujo, usando una futura ronda unica `QA-YYYY-MM-DD.md` cuando Miguel defina que validar. | Bitacora, Documentos QA |
 | 2026-06-19 | Se define requerimiento V5 de multioperario/multiterminal por operacion: una misma OT/operacion puede tener multiples cronometros simultaneos diferenciados por operacion, usuario y terminal. | Algunas operaciones, como pintura, pueden ser ejecutadas por varios operarios en paralelo y cada tiempo debe conservar trazabilidad individual para ZIM400. | La rama V5 debe eliminar el bloqueo global de cronometro unico por operacion y reemplazarlo por unicidad operacional `work_order_operation_id + current_user_id + station_id` para timers activos/pausados. No cambia contrato NetSuite ni logica vigente de envio; cada STOP debe seguir publicandose con la logica actual hacia `import_ot` y ZIM400. | Requisitos funcionales de UI y operacion, Terminal compartida, Integracion NetSuite IN, Poblar Reporte ZIM400, Ramas |
 | 2026-06-08 | Se define que MONTAJE debe usar el mismo patron de confirmacion que EJECUCION: el boton STOP solo abre popup y el STOP real ocurre al confirmar una opcion del popup. | Evitar inconsistencias operativas entre montaje y ejecucion, donde un popup podria quedar desacoplado del cierre real del cronometro. | Frontend debe abrir popup inmediatamente al presionar STOP en MONTAJE; backend debe cerrar montaje solo cuando el usuario confirme `Iniciar ejecucion` o `No iniciar ahora`. Si confirma iniciar, el backend debe cerrar montaje e iniciar ejecucion en la misma accion. No cambia el contrato NetSuite. | Requisitos funcionales de UI y operacion, Tablero operativo V3 |
 | 2026-06-04 | Se define que el cierre programado operational debe publicar a `import_ot` y ZIM400 dentro del mismo `sync_run`, sin reutilizar el flujo completo `v4_stop_queue`. | Evitar duplicacion de PUSH hacia `import_ot` y mantener estable el cierre programado, incorporando ZIM400 como segundo destino obligatorio. | El Programador debe extraer/reutilizar ZIM400 como publisher independiente, agregar el step `PUSH_ZIM400` al flujo operational y mantener idempotencia/logs por destino. | Flujo oficial de sincronizacion, Integracion NetSuite IN, Poblar Reporte ZIM400, Decisiones cerradas |
@@ -320,17 +322,43 @@ Criterios de aceptacion:
 ### Terminal compartida
 
 - El front envia `x-station-id` en todas las peticiones.
-- Se genera en `localStorage` como `reloj_station_id` por navegador.
+- Se genera en `localStorage` como `reloj_station_id` por navegador (mismo valor para todos los operarios que usen ese navegador/PC).
 - Opcionalmente puede fijarse por entorno con `VUE_APP_STATION_ID`.
-- El tablero de cronometros activos filtra por `station_id`, no solo por usuario.
-- Pausa, stop, resume y play sobre un timer en pausa deben rechazar otra terminal con `403`.
-- Tablero protector lista tareas activas/pausadas de la terminal.
-- Vista 2x2 con carrusel si hay mas de 4.
-- Variables opcionales: `VUE_APP_IDLE_BOARD_SLOTS`, `VUE_APP_IDLE_BOARD_CAROUSEL_SEC`.
+- Pausa, stop, resume y play sobre un timer en pausa deben rechazar otra terminal con `403` si el `station_id` del timer no corresponde a la terminal actual.
+
+### Tableros operativos (dos vistas distintas)
+
+El sistema expone **dos tableros** con propositos diferentes. No deben mezclarse ni unificarse.
+
+#### Tablero Grande (protector / screensaver 2x2)
+
+Vista de solo lectura para monitor de planta en el PC de la estacion.
+
+| Aspecto | Regla |
+|---|---|
+| **Que muestra** | Todas las operaciones en estado **ACTIVE** o **PAUSED** cronometradas en **esta estacion** (`station_id` = `x-station-id` del navegador), de **todos los operarios** que trabajen en ese PC. |
+| **Quien lo ve** | Operario y admin (misma regla por estacion: lo que ocurre en este terminal). |
+| **Controles** | Ninguno (solo visualizacion). |
+| **Apertura** | Automatica tras inactividad (`VUE_APP_IDLE_BOARD_MINUTES`, default 2 min) o boton **Ver tablero grande**. |
+| **Layout** | Rejilla **2x2**; **carrusel** automatico si hay mas de 4 tareas (`VUE_APP_IDLE_BOARD_CAROUSEL_SEC`). |
+| **API** | `GET /chronometer/board/active?scope=station` |
+
+#### Operaciones Activas (tabla con controles)
+
+Tabla operativa debajo de la busqueda de OT, con botones play / pause / stop por fila.
+
+| Rol | Que muestra | API |
+|---|---|---|
+| **Operario** | Solo las operaciones que **el usuario logueado** esta cronometrando (su timer en esta sesion). | `GET /chronometer/board/active?scope=mine` |
+| **Admin** | Todas las operaciones activas/pausadas de **todos los terminales y todos los usuarios** de la planta. | `GET /chronometer/board/active?scope=mine` (sin filtro adicional de usuario/estacion) |
+
+Esta tabla **no se modifica** con los cambios del Tablero Grande: el operario sigue viendo solo lo suyo para operar sin confusion; el admin sigue teniendo vision global para supervisar y liberar relojes.
+
+Variables opcionales del Tablero Grande: `VUE_APP_IDLE_BOARD_ENABLED`, `VUE_APP_IDLE_BOARD_SLOTS`, `VUE_APP_IDLE_BOARD_CAROUSEL_SEC`, `VUE_APP_IDLE_BOARD_POLL_SEC`.
 
 ### Requerimiento V5: multioperario y multiterminal por operacion
 
-Este requerimiento debe desarrollarse en una nueva rama `V5`, porque cambia una regla central del cronometraje: la cardinalidad de cronometros activos por OT/operacion.
+Este requerimiento debe desarrollarse en una nueva rama `V5`, porque cambia una regla central del cronometraje: la cardinalidad de cronometros activos por operacion.
 
 Situacion funcional:
 
@@ -355,8 +383,8 @@ Reglas obligatorias para Programador:
 7. Pausar, reanudar, detener o cambiar modo debe operar sobre el timer propio de esa combinacion o sobre un `timer_id` explicito validado.
 8. Un usuario no debe detener ni modificar el timer de otro usuario/terminal, salvo rol supervisor/admin cuando exista una accion administrativa explicita.
 9. `current_user_id`, `station_id` y `timer_events.user_id` deben conservar trazabilidad correcta durante START, PAUSE, RESUME, MODE_CHANGE y STOP.
-10. El tablero operativo debe distinguir entre `mi cronometro en esta terminal` y `otros cronometros activos de la misma operacion`.
-11. Si el mismo usuario ya tiene la operacion activa en otra terminal, el sistema puede permitir iniciar otro cronometro, pero debe evitar que el usuario lo confunda con el timer de la terminal actual.
+10. En **Operaciones Activas**, el operario solo ve y controla **su** cronometro; en la busqueda de OT puede indicarse `other_active_timers` si otros operarios cronometran la misma operacion. El **Tablero Grande** muestra en cambio todos los cronometros activos/pausados de la estacion (solo lectura).
+11. Si el mismo usuario ya tiene la operacion activa en otra terminal, el sistema puede permitir iniciar otro cronometro, pero debe evitar que el usuario lo confunda con el timer de la terminal actual (mensajes y scope `mine` en Operaciones Activas).
 12. El cierre programado/STOP_BATCH debe detener todos los timers activos/pausados, incluyendo multiples timers asociados a la misma operacion.
 13. No cambiar el contrato NetSuite ni la logica vigente de envio como parte de este requerimiento.
 14. Cada STOP debe seguir generando/publicandose con la logica actual hacia `import_ot` y ZIM400.
@@ -387,7 +415,7 @@ Criterios de aceptacion V5:
 3. `current_user_id` no se sobrescribe con el ultimo usuario que presiona play.
 4. Cada STOP queda asociado al usuario real que cronometro.
 5. ZIM400 puede identificar el empleado correcto para cada STOP.
-6. El tablero no confunde el timer propio con timers de otros usuarios o terminales.
+6. **Operaciones Activas** no mezcla controles del timer propio con timers ajenos; el **Tablero Grande** puede listar varios operarios en la misma estacion sin permitir operarlos.
 7. El cierre programado detiene todos los timers paralelos de la misma operacion.
 8. La sincronizacion sigue usando la logica vigente sin modificar RESTlet, Saved Search, OAuth ni custom records NetSuite.
 9. No se duplica cantidad terminada por multioperario.
@@ -1288,7 +1316,7 @@ Esta seccion es el directorio operativo de variables para configurar EasyPanel. 
 ### Directorio de servicios EasyPanel
 
 | Ambiente | Servicio | Dominio | Carpeta build | Puerto interno |
-|---|---|---|---|---|
+|---|---|---|---|
 | SB | `reloj-front` | `reloj-sb.at-once.cl` | `front/` | `80` |
 | SB | `reloj-api` | `https://reloj-api.at-once.cl/` o ruta API configurada | `backend/` | `8000` |
 | PROD | `reloj-front` | `reloj.at-once.cl` | `front/` | `80` |
@@ -1567,6 +1595,23 @@ Accion requerida: eliminar/desactivar esa carga. En SB y PROD operativo, los usu
 ### Usuario admin inicial
 
 Debe existir un usuario administrador inicial creado por mecanismo controlado y no recurrente en bases limpias. No se permite carga masiva automatica de usuarios operativos desde archivos.
+
+## Documentos QA
+
+La estructura QA inicial del proyecto queda definida en:
+
+```text
+Cronometro/QA/README.md
+Cronometro/QA/system-prompt.md
+```
+
+Regla vigente:
+
+- `Cronometro/QA/README.md` explica como implementar QA especifico para Cronometro.
+- `Cronometro/QA/system-prompt.md` adapta el rol QA Tester al contexto de Cronometro.
+- No existe todavia una ronda QA real.
+- La primera ronda solo debe crearse como `Cronometro/QA/QA-YYYY-MM-DD.md` cuando Miguel defina una mejora, version, commit o flujo concreto a validar.
+- Toda ronda QA debe ser un documento unico acumulativo basado en `QA Tester/plantillas/QA-YYYY-MM-DD.md`.
 
 ## Git, despliegue y lecciones aprendidas
 

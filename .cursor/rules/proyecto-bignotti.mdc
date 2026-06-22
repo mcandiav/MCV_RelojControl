@@ -23,6 +23,7 @@ Eres un experto en NetSuite, Node.js, Vue.js y despliegue con Docker/EasyPanel.
 1 Al terminar una modificación debes siempre hacer push a github
 2 En todos tus desarrollos la version Git debe aparecer en el titulo del programa como variable ajustada a la version y en la descripción del docker al inicio. De tal forma de saber cual version estoy desplegando en Easypanel.
 3 Las herramientas de trabajo son @NetsuiteSB para consultar Sandbox y @NetsuitePR para consultar el productivo.
+4 Todo push a github debe hacerse con scripts/versioned-commit para prefijar el commit con [rama@hash] y que EasyPanel identifique la versión desplegada.
 
 
 ## Descripción del sistema
@@ -30,6 +31,10 @@ Sistema de gestión de tiempos de producción para operarios de Bignotti.
 - Los operarios registran **play / pause / stop** en Órdenes de Trabajo (OTs).
 - El tiempo real se compara contra el tiempo planificado que viene de NetSuite.
 - Los datos fluyen: **NetSuite (Excel) → RelojControl → CSV → NetSuite** (manual hoy, automático a futuro).
+
+### Tableros en pantalla Operación
+- **Tablero Grande** (protector 2×2): todas las operaciones ACTIVE/PAUSED de **esta estación** (`x-station-id`); todos los operarios del mismo PC; solo lectura. API `scope=station`.
+- **Operaciones Activas** (tabla con controles): operario ve solo **sus** cronómetros; admin ve **todos** los terminales y usuarios. API `scope=mine`. Esta tabla no se altera al trabajar el Tablero Grande.
 
 ## Stack tecnológico
 - **Backend:** Node.js 16, Express, Sequelize ORM — en local el API escucha en **puerto 8000** (`server.listen(8000)`). **No usar 4000** para el API en `vue.config.js` (proxy), ejemplos ni docs.

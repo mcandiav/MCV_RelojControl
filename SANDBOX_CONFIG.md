@@ -215,7 +215,16 @@ Requiere **rebuild/redeploy de backend + front** para que:
 
 La UI formatea la hora y fechas del log usando zona horaria fija **`America/Santiago`** para evitar desfase cuando el kiosco/PC no aplica correctamente el cambio de horario.
 
-**Terminal compartida (varios operarios, mismo PC):** el front envía **`x-station-id`** en todas las peticiones. Se genera una vez en `localStorage` (`reloj_station_id`) por navegador; el tablero de cronómetros activos filtra por ese valor (columna **`station_id`** en `operation_timers`), no solo por usuario. Opcional en build: **`VUE_APP_STATION_ID`** (fijo por máquina en Docker/EasyPanel, p. ej. `LINEA-ME-01`). **Pausa / stop / resume** (y **Play** sobre un timer en pausa) rechazan otra terminal con `403`. **Tablero protector:** lista todas las tareas activas/pausadas de la terminal; vista **2×2** con **carrusel** si hay más de 4 (`VUE_APP_IDLE_BOARD_SLOTS`, máx. 4). **Carrusel automático** cada **2 s** por defecto (`VUE_APP_IDLE_BOARD_CAROUSEL_SEC`, rango 1–120).
+**Terminal compartida (varios operarios, mismo PC):** el front envía **`x-station-id`** en todas las peticiones. Se genera una vez en `localStorage` (`reloj_station_id`) por navegador; opcional en build: **`VUE_APP_STATION_ID`** (fijo por máquina en Docker/EasyPanel, p. ej. `LINEA-ME-01`). **Pausa / stop / resume** (y **Play** sobre un timer en pausa) rechazan otra terminal con `403` si el `station_id` del timer no coincide.
+
+**Dos tableros (no confundir):**
+
+| Vista | Operario | Admin |
+|-------|----------|-------|
+| **Tablero Grande** (protector 2×2, solo lectura) | Todos los cronómetros ACTIVE/PAUSED de **esta estación** (`scope=station`) | Igual: todos los de **esta estación** en ese PC |
+| **Operaciones Activas** (tabla con controles) | Solo los que **él** cronometra (`scope=mine`) | Todos los terminales y usuarios de la planta |
+
+Tablero Grande: carrusel si hay más de 4 (`VUE_APP_IDLE_BOARD_SLOTS`, máx. 4); carrusel automático cada **2 s** por defecto (`VUE_APP_IDLE_BOARD_CAROUSEL_SEC`, rango 1–120); apertura tras inactividad (`VUE_APP_IDLE_BOARD_MINUTES`).
 
 ---
 
