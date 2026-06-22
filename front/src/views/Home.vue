@@ -79,7 +79,7 @@
               <div class="chrono-brand">
                 <img :src="logoSrc" alt="Logo Cronometro" class="chrono-logo" />
                 <div class="chrono-brand-text">
-                  <div class="chrono-title primary--text">CRONÓMETRO</div>
+                  <div class="chrono-title primary--text">CRONÓMETRO V5</div>
                   <div class="chrono-subtitle">Operación en planta</div>
                 </div>
               </div>
@@ -138,7 +138,7 @@
                 <div class="d-flex flex-wrap align-center justify-space-between mb-2">
                   <div class="text-subtitle-1 font-weight-bold">Operaciones Activas</div>
                   <div class="d-flex flex-wrap align-center" style="gap: 8px">
-                    <span class="grey--text text-caption">Protector 2x2 tras {{ idleBoardMinutes }} min; todas las tareas activas, carrusel si hay mas de 4.</span>
+                    <span class="grey--text text-caption">Tablero grande 2x2 tras {{ idleBoardMinutes }} min: cronómetros activos de esta estación (carrusel si hay mas de 4).</span>
                     <v-btn small outlined color="primary" @click="openIdleBoardPreview">Ver tablero grande</v-btn>
                   </div>
                 </div>
@@ -1059,6 +1059,7 @@ export default {
       idleBoardCarouselIntervalId: null,
       idleBoardOpenTimeout: null,
       boardPollIntervalId: null,
+      boardBackgroundPollIntervalId: null,
       elapsedModeCache: {},
       lastPointerMoveTs: 0,
       lastSeedResponse: '',
@@ -1237,6 +1238,7 @@ export default {
       window.addEventListener('keydown', this.scheduleIdleOpen)
       window.addEventListener('touchstart', this.scheduleIdleOpen, { passive: true })
       window.addEventListener('mousemove', this.onMouseMoveForIdle, { passive: true })
+      this.startBoardBackgroundPoll()
       this.scheduleIdleOpen()
     }
   },
@@ -1249,6 +1251,7 @@ export default {
     window.removeEventListener('mousemove', this.onMouseMoveForIdle)
     clearTimeout(this.idleBoardOpenTimeout)
     this.stopBoardPollWhileOpen()
+    this.stopBoardBackgroundPoll()
     this.stopIdleBoardCarousel()
     document.removeEventListener('keydown', this.onIdleBoardKeydown)
   },
@@ -1345,14 +1348,10 @@ export default {
       return Math.max(1, Math.min(4, n))
     },
     /**
-     * Tablero grande / screensaver:
-     * - Operario (cualquier sesión en el PC): todos los relojes de ESTA estación.
-     * - Admin: todos los relojes de TODAS las estaciones y usuarios.
+     * Tablero grande / screensaver: todos los relojes ACTIVE/PAUSED de esta estación
+     * (operario y admin en el mismo PC; fuente scope=station).
      */
     mergedIdleBoard() {
-      if (this.isAdmin) {
-        return Array.isArray(this.activeBoard) ? [...this.activeBoard] : []
-      }
       return Array.isArray(this.stationBoard) ? [...this.stationBoard] : []
     },
     idleActiveTimersSorted() {
@@ -1668,6 +1667,19 @@ export default {
           this.startBoardPollWhileOpen()
         }
       }, this.idleMs)
+    },
+    startBoardBackgroundPoll() {
+      this.stopBoardBackgroundPoll()
+      const ms = Math.max(5, this.boardPollSeconds) * 1000
+      this.boardBackgroundPollIntervalId = setInterval(() => {
+        if (!this.showIdleBoard) this.refreshBoard()
+      }, ms)
+    },
+    stopBoardBackgroundPoll() {
+      if (this.boardBackgroundPollIntervalId) {
+        clearInterval(this.boardBackgroundPollIntervalId)
+        this.boardBackgroundPollIntervalId = null
+      }
     },
     startBoardPollWhileOpen() {
       this.stopBoardPollWhileOpen()

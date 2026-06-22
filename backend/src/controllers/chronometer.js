@@ -581,11 +581,14 @@ exports.getActiveBoard = async function getActiveBoard(req, res) {
   };
 
   if (scope === 'station') {
-    // Tablero grande / protector: todas las tareas activas de esta estación (PC compartido).
-    if (req.stationId) {
-      where.station_id = req.stationId;
+    // Tablero grande: ACTIVE/PAUSED de esta estación (misma lógica que stationsMatch).
+    const sid = req.stationId != null ? String(req.stationId).trim() : '';
+    if (sid) {
+      where[Op.or] = [{ station_id: sid }, { station_id: '' }, { station_id: null }];
     } else if (!isAdmin) {
       where.current_user_id = req.userId;
+    } else {
+      return res.status(200).json([]);
     }
   } else if (!isAdmin) {
     // Operaciones Activas del operario: solo lo que cronometra el usuario logueado en esta pestaña.
