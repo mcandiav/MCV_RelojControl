@@ -2019,11 +2019,28 @@ export default {
       const pct = Math.max(0, Math.round((Math.max(0, completed) / planned) * 100))
       return `${left} / ${right} / ${pct}%`
     },
+    formatResourceBusyMessage(data) {
+      const d = data || {}
+      const user =
+        (d.locked_by_display_name || d.locked_by_username)
+          ? String(d.locked_by_display_name || d.locked_by_username)
+          : 'Otro usuario'
+      const resource = d.resource_code ? String(d.resource_code).trim() : 'este recurso'
+      const ot = d.locked_ot_number ? String(d.locked_ot_number).trim() : 'OT'
+      const seq =
+        d.locked_operation_sequence != null && String(d.locked_operation_sequence).trim() !== ''
+          ? String(d.locked_operation_sequence).trim()
+          : '?'
+      return `${user} está usando el recurso "${resource}" con la ${ot}/${seq}. "${resource}" debe estar libre para cargar tiempos en otra OT.`
+    },
     timerTerminalLockMessage(error, fallback = 'No fue posible ejecutar la acción.') {
       const d = error && error.response && error.response.data ? error.response.data : null
       const code = d && d.code ? String(d.code).trim() : ''
       const message = d && (d.message || d.text) ? String(d.message || d.text) : ''
       const normalized = message.toLowerCase()
+      if (code === 'RESOURCE_BUSY_BY_OTHER_USER') {
+        return message || this.formatResourceBusyMessage(d) || fallback
+      }
       if (
         code === 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER' ||
         code === 'TIMER_LOCKED_BY_OTHER_TERMINAL'
