@@ -1,3 +1,12 @@
+import { APP_RELEASE } from '@/constants/appRelease'
+
+/** Versión de producto visible para operarios (no confundir con hash de build Git). */
+export { APP_RELEASE }
+
+export function getAppReleaseLabel() {
+  return APP_RELEASE
+}
+
 function readWindowBuildPath() {
   if (typeof window === 'undefined') return ''
   if (window.__CRONOMETRO_BUILD_PATH == null) return ''

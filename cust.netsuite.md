@@ -4,6 +4,9 @@
 
 | Fecha | Cambio realizado | Motivo | Impacto | Sección afectada |
 |---|---|---|---|---|
+| 2026-06-19 | Se documenta NetSuiteSB como herramienta oficial de consulta NetSuite Sandbox desde ChatGPT y se agrega procedimiento post-refresh de credenciales. | Evitar asumir estado real de SB después de refresh y distinguir objetos NetSuite que sobreviven de secretos que deben regenerarse. | Las validaciones SB deben hacerse con NetSuiteSB cuando esté conectado; si no responde, se requiere reconexión o evidencia visual. Después de refresh no se recrean apps/scripts si existen: se regeneran secretos, credenciales OAuth2 Client Credentials y certificate kid. | Herramientas de consulta, post-refresh Sandbox, OAuth2 M2M |
+| 2026-06-19 | Se corrige criterio de archivo para certificado OAuth2 Client Credentials en Sandbox. | En la reconstrucción post-refresh se verificó que el par operativo documentado es `MCV_Cronometro_M2M_private.pem` con `MCV_Cronometro_M2M_public.crt`; el `.cer` no debe usarse en este flujo. | Para próximos refresh, NetSuite debe recibir el certificado público `.crt` y EasyPanel debe conservar la private key `.pem` correspondiente. | Certificados OAuth2 M2M Sandbox |
+| 2026-06-19 | Se confirma recuperación completa de credenciales NetSuite Sandbox post-refresh. | Se corrigió la credencial de integración y se validó el flujo completo. | Pull OK y push OK; incidente de autenticación SB cerrado. | Validación post-refresh Sandbox |
 | 2026-04-29 | Se incorpora protocolo operativo correcto para configurar ambientes NetSuite, OAuth2 M2M, RESTlet IN, registro `Importación OT` y checklist de diagnóstico. | En productivo se detectaron errores por confusión de `NETSUITE_CERTIFICATE_ID`, por mover la M2M común a pull/push y por permisos efectivos del custom record `Importación OT`. | Queda documentado que pull y push comparten OAuth M2M, que el `kid` debe copiarse exactamente, y que `Importación OT` debe permitir acceso a roles internos para que RESTlet/REST API creen registros. | Configuración por ambiente, OAuth2 M2M, push, troubleshooting |
 | 2026-04-05 | Se ordena y consolida el documento de handoff NetSuite con estado final del proyecto. | El proyecto ya estaba estabilizado y había mezcla entre decisiones históricas y vigentes. | Se aclara qué quedó operativo, qué quedó histórico y qué no debe reabrirse. | Estado, decisiones cerradas, integración OUT/IN, resumen ejecutivo |
 | 2026-03-28 | Se consolida Saved Search como fuente OUT vigente. | Dataset no garantizaba la granularidad correcta. | Se corrige la fuente de extracción NetSuite -> Cronómetro. | Fuente OUT |
@@ -38,6 +41,37 @@ Arquitectura vigente:
 - Script RESTlet: `MCV_cronometro_restlet.js`.
 - Push vigente: crear staging en `Importación OT` (`customrecord_3k_importacion_ot`), ya sea vía RESTlet o vía REST Record API según `NETSUITE_PUSH_MODE`.
 - Flujo operativo: **Stop -> Push -> Pull**.
+
+---
+
+## Herramienta oficial de consulta NetSuite Sandbox desde ChatGPT
+
+La herramienta oficial para consultar NetSuite Sandbox en este proyecto es `NetSuiteSB`.
+
+Uso esperado:
+
+- Validar Saved Searches técnicas.
+- Consultar metadata de records.
+- Ejecutar SuiteQL no destructivo.
+- Verificar registros técnicos existentes cuando la herramienta exponga el record type correspondiente.
+
+Reglas operativas:
+
+1. Usar `NetSuiteSB` solo para consultas o validaciones no destructivas, salvo instrucción explícita de Miguel.
+2. Si la herramienta no conecta, no usarla como evidencia del estado real de NetSuite Sandbox.
+3. En ese caso, validar mediante reconexión del conector o evidencia visual entregada por Miguel.
+
+---
+
+## Procedimiento post-refresh Sandbox NetSuite
+
+Después de un refresh de sandbox, primero se deben verificar los objetos existentes antes de recrear cualquier configuración. Si las aplicaciones, scripts, deployments, roles, búsquedas guardadas e IDs técnicos siguen existiendo, el trabajo debe concentrarse en reemitir la autenticación del ambiente y actualizar EasyPanel.
+
+Regla principal: no recrear objetos funcionales si existen con los mismos IDs.
+
+La secuencia recomendada es verificar aplicación M2M, rol técnico, entidad técnica, credencial de cliente, certificado público, identificador de certificado, variables del backend, token, pull, dry run de push y push controlado.
+
+Criterio de cierre: el refresh se considera recuperado solo cuando pull y push terminan correctamente contra Sandbox.
 
 ---
 
@@ -145,6 +179,13 @@ La private key que va en el backend debe iniciar con:
 ```text
 BEGIN PRIVATE KEY
 ```
+
+Configuración operativa validada para Sandbox Cronómetro:
+
+- Subir a NetSuite: `MCV_Cronometro_M2M_public.crt`.
+- Guardar en EasyPanel como llave privada: `MCV_Cronometro_M2M_private.pem`.
+- No usar `MCV_Cronometro_M2M_public.cer` para este flujo si NetSuite no lo acepta correctamente.
+- No subir nunca la llave privada a NetSuite.
 
 Si el certificado público cargado en NetSuite no corresponde a la private key del backend, NetSuite rechazará el token.
 

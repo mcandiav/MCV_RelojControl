@@ -411,7 +411,7 @@ Al crear un nuevo servicio App desde GitHub, EasyPanel muestra "no actions found
 - Atributo de operario por área: `ME`, `ES`, `Both`.
 - Búsqueda manual por número de OT.
 - Filtrado de operaciones por área habilitada del operario.
-- Una sola operación activa por máquina (máquina = recurso).
+- **V5.1:** varias OT pueden cronometrarse en paralelo sobre el mismo `resource_code` (centro de trabajo); la unicidad del cronómetro es `operación + usuario + terminal`, no el recurso.
 - Tablero adaptativo de cronómetros activos como pantalla principal.
 
 ### 5) Datos y persistencia (Cronómetro v3)

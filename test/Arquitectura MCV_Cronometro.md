@@ -118,7 +118,7 @@ El pull trae la verdad completa de NetSuite en ese momento. Si la última data e
 ### 6.2 Reglas de datos
 
 - Unidad funcional: operación de OT, no cabecera OT
-- Una máquina/recurso no debe tener dos operaciones activas simultáneas
+- **V5.1:** el `resource_code` (centro de trabajo) no bloquea cronómetros paralelos entre OT distintas; unicidad: `work_order_operation_id + current_user_id + station_id`
 - Visibilidad por área de operario
 - Snapshot local WIP se puede reemplazar completo desde NetSuite
 - Para envíos parciales, se debe persistir cuánto ya fue enviado por operación/reloj desde el último pull.

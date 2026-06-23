@@ -8,7 +8,7 @@
         <div class="text-center mb-6">
           <img :src="atOnceLogo" alt="At-Once" class="login-atonce-logo mb-3">
           <div class="display-1 font-weight-bold login-hero-title">BIGNOTTI</div>
-          <div class="subtitle-1 white--text opacity-70">Cronómetro v3</div>
+          <div class="subtitle-1 white--text opacity-70">Cronómetro {{ appReleaseLabel }}</div>
         </div>
 
         <v-card class="rounded-xl elevation-10">
@@ -167,7 +167,7 @@
 <script>
 import axios from 'axios'
 import { mapActions } from 'vuex'
-import { isTestBuild } from '@/utils/buildMode'
+import { getAppReleaseLabel, isTestBuild } from '@/utils/buildMode'
 import atOnceLogo from '@/assets/at-once-logo.png'
 
 export default {
@@ -191,6 +191,12 @@ export default {
 
   created() {
     this.cargarOperarios()
+  },
+
+  computed: {
+    appReleaseLabel() {
+      return getAppReleaseLabel()
+    }
   },
 
   watch: {

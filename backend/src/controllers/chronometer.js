@@ -16,25 +16,6 @@ const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
 const { enqueueFromStop } = require('../services/netsuiteSyncQueue');
 const TIMER_LOCKED_SAME_STATION_CODE = 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER';
 const TIMER_TERMINAL_LOCK_CODE = 'TIMER_LOCKED_BY_OTHER_TERMINAL';
-const RESOURCE_BUSY_BY_OTHER_USER_CODE = 'RESOURCE_BUSY_BY_OTHER_USER';
-
-function buildResourceBusyMessage(ownerName, resourceCode, otNumber, operationSequence) {
-  const user = ownerName || 'otro usuario';
-  const resource = resourceCode ? String(resourceCode).trim() : 'este recurso';
-  const ot = otNumber ? String(otNumber).trim() : 'OT';
-  const seq =
-    operationSequence != null && String(operationSequence).trim() !== ''
-      ? String(operationSequence).trim()
-      : '?';
-  return `${user} está usando el recurso "${resource}" con la ${ot}/${seq}. "${resource}" debe estar libre para cargar tiempos en otra OT.`;
-}
-
-async function loadTimerLockOperation(timer) {
-  if (!timer || timer.work_order_operation_id == null) return null;
-  return WorkOrderOperation.findByPk(timer.work_order_operation_id, {
-    attributes: ['ot_number', 'operation_sequence', 'resource_code']
-  });
-}
 
 function formatUserDisplayName(user) {
   if (!user) return 'otro usuario';
@@ -58,29 +39,6 @@ function isSameTimerOwner(req, timer) {
 
 function isSameStation(req, timer) {
   return Boolean(req.stationId && timer && timer.station_id && timer.station_id === req.stationId);
-}
-
-async function respondResourceLockedByOtherUser(req, res, lockTimer, statusCode = 409) {
-  const owner = await loadTimerOwnerUser(lockTimer);
-  const ownerName = formatUserDisplayName(owner);
-  const lockOp = await loadTimerLockOperation(lockTimer);
-  const resourceCode =
-    (lockOp && lockOp.resource_code) ||
-    (lockTimer && lockTimer.resource_code ? String(lockTimer.resource_code).trim() : '');
-  const otNumber = lockOp && lockOp.ot_number ? String(lockOp.ot_number).trim() : null;
-  const operationSequence =
-    lockOp && lockOp.operation_sequence != null ? lockOp.operation_sequence : null;
-  const message = buildResourceBusyMessage(ownerName, resourceCode, otNumber, operationSequence);
-  return res.status(statusCode).json({
-    code: RESOURCE_BUSY_BY_OTHER_USER_CODE,
-    message,
-    locked_by_user_id: owner ? owner.id : null,
-    locked_by_username: owner && owner.username ? String(owner.username).trim() : null,
-    locked_by_display_name: ownerName,
-    resource_code: resourceCode || null,
-    locked_ot_number: otNumber,
-    locked_operation_sequence: operationSequence
-  });
 }
 
 async function respondTimerLockedByOtherUser(req, res, timer, statusCode = 403) {
@@ -822,20 +780,6 @@ exports.startTimer = async function startTimer(req, res) {
     return res.status(403).json({ message: 'Operation is outside your area.' });
   }
 
-  const lockTimer = await OperationTimer.findOne({
-    where: {
-      resource_code: operation.resource_code,
-      status: 'ACTIVE',
-      work_order_operation_id: { [Op.ne]: operation.id }
-    }
-  });
-  if (lockTimer) {
-    if (Number(lockTimer.current_user_id) !== Number(currentUser.id)) {
-      return respondResourceLockedByOtherUser(req, res, lockTimer, 409);
-    }
-    return res.status(409).json({ message: 'Machine/resource already has an active operation.' });
-  }
-
   const stationKey = stationIdForStorage(req);
   let timer = await findTimerByIdentity(operation.id, currentUser.id, stationKey);
 
@@ -915,20 +859,6 @@ exports.resumeTimer = async function resumeTimer(req, res) {
 
   const operation = await WorkOrderOperation.findByPk(timer.work_order_operation_id);
   if (!operation) return res.status(404).json({ message: 'Operation not found.' });
-
-  const lockTimer = await OperationTimer.findOne({
-    where: {
-      resource_code: operation.resource_code,
-      status: 'ACTIVE',
-      work_order_operation_id: { [Op.ne]: operation.id }
-    }
-  });
-  if (lockTimer) {
-    if (Number(lockTimer.current_user_id) !== Number(req.userId)) {
-      return respondResourceLockedByOtherUser(req, res, lockTimer, 409);
-    }
-    return res.status(409).json({ message: 'Machine/resource already has an active operation.' });
-  }
 
   timer.status = 'ACTIVE';
   timer.timer_mode = requestedMode;
@@ -1073,20 +1003,6 @@ exports.transitionSetupStop = async function transitionSetupStop(req, res) {
   if (userArea === 'UNKNOWN') return res.status(400).json({ message: 'User area is not configured.' });
   if (userArea !== 'BOTH' && userArea !== operation.area) {
     return res.status(403).json({ message: 'Operation is outside your area.' });
-  }
-
-  const lockTimer = await OperationTimer.findOne({
-    where: {
-      resource_code: operation.resource_code,
-      status: 'ACTIVE',
-      work_order_operation_id: { [Op.ne]: operation.id }
-    }
-  });
-  if (lockTimer) {
-    if (Number(lockTimer.current_user_id) !== Number(currentUser.id)) {
-      return respondResourceLockedByOtherUser(req, res, lockTimer, 409);
-    }
-    return res.status(409).json({ message: 'Machine/resource already has an active operation.' });
   }
 
   timer.resource_code = operation.resource_code;

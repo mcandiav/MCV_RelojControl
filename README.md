@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-06-23 | Se elimina el bloqueo cronometrico por recurso compartido (V5.1): varios operarios pueden cronometrar OT distintas sobre el mismo `resource_code` en paralelo. | En planta el mismo centro de trabajo NetSuite (ej. ES411) puede tener varias OT en curso; el bloqueo por recurso impedia cronometrar OT18584/2 mientras otro operario tenia ACTIVE otra OT en ES411. | La unicidad operativa queda solo en `work_order_operation_id + current_user_id + station_id`. Se elimina validacion `lockTimer` por `resource_code` en start/resume/transicion montaje. No cambia contrato NetSuite ni envio por STOP. | Requerimiento V5.1, chronometer.js, mensajes operativos |
 | 2026-06-21 | Se documenta de forma explicita la diferencia entre **Tablero Grande** (protector 2x2 por estacion) y **Operaciones Activas** (tabla con controles por rol). | Evitar confusion entre el screensaver de planta/terminal y la tabla operativa con play/pause/stop. | Tablero Grande: todos los cronometros ACTIVE/PAUSED de la estacion (`x-station-id`). Operaciones Activas sin cambio: operario ve solo los suyos; admin ve todos los terminales y usuarios. | Terminal compartida, Tableros operativos, V5 |
 | 2026-06-21 | Se crea estructura inicial QA del proyecto en `QA/README.md` y `QA/system-prompt.md`. | Implementar el proceso oficial definido en `QA Tester` para preparar rondas QA especificas de Cronometro sin adelantar pruebas aun no definidas. | Cronometro queda preparado para operar QA documentado por mejora, version o flujo, usando una futura ronda unica `QA-YYYY-MM-DD.md` cuando Miguel defina que validar. | Bitacora, Documentos QA |
 | 2026-06-19 | Se define requerimiento V5 de multioperario/multiterminal por operacion: una misma OT/operacion puede tener multiples cronometros simultaneos diferenciados por operacion, usuario y terminal. | Algunas operaciones, como pintura, pueden ser ejecutadas por varios operarios en paralelo y cada tiempo debe conservar trazabilidad individual para ZIM400. | La rama V5 debe eliminar el bloqueo global de cronometro unico por operacion y reemplazarlo por unicidad operacional `work_order_operation_id + current_user_id + station_id` para timers activos/pausados. No cambia contrato NetSuite ni logica vigente de envio; cada STOP debe seguir publicandose con la logica actual hacia `import_ot` y ZIM400. | Requisitos funcionales de UI y operacion, Terminal compartida, Integracion NetSuite IN, Poblar Reporte ZIM400, Ramas |
@@ -420,6 +421,60 @@ Criterios de aceptacion V5:
 8. La sincronizacion sigue usando la logica vigente sin modificar RESTlet, Saved Search, OAuth ni custom records NetSuite.
 9. No se duplica cantidad terminada por multioperario.
 10. V3 queda como baseline estable; V5 se desarrolla y valida en rama separada.
+
+### Requerimiento V5.1: multi-OT por mismo recurso (centro de trabajo)
+
+Este requerimiento extiende V5 y **revoca** la regla historica de **una sola operacion ACTIVE por recurso** (`resource_code` / centro de trabajo NetSuite).
+
+Situacion funcional:
+
+En planta, el mismo centro de trabajo puede aparecer en el ruteo de **varias OT en curso** (NetSuite WIP). Distintos operarios pueden trabajar **OT distintas** que comparten el mismo codigo de recurso (ej. `ES411 ARMADO`). Cada operario debe poder cronometrar **su** operacion sin que el sistema bloquee el play porque otro operario tiene ACTIVE otra OT en ese recurso.
+
+Decision arquitectonica V5.1:
+
+```text
+El resource_code identifica el centro de trabajo NetSuite de la operacion, pero NO es llave de exclusividad del cronometro.
+La unicidad del cronometro activo/pausado sigue siendo unicamente:
+  work_order_operation_id + current_user_id + station_id
+```
+
+Reglas obligatorias para Programador:
+
+1. **Eliminar** cualquier bloqueo en `startTimer`, `resumeTimer` o transiciones de montaje que impida iniciar/reanudar cuando exista otro `OperationTimer` ACTIVE con el mismo `resource_code` y distinta `work_order_operation_id`.
+2. **No** mostrar error `RESOURCE_BUSY_BY_OTHER_USER` ni equivalente por recurso compartido entre OT distintas.
+3. Permitir que el operario A cronometre `OT1 / secuencia 1` en recurso `ESXX` aunque el operario B tenga ACTIVE `OT2 / secuencia 1` en el mismo `ESXX`.
+4. Permitir tambien que el **mismo operario** cronometre dos OT distintas en el mismo recurso si corresponde operativamente (identidad distinta por `work_order_operation_id`).
+5. Mantener intactas las reglas V5 de control por terminal/usuario: un operario no controla el timer ajeno; admin puede liberar.
+6. `resource_code` se sigue persistiendo en `operation_timers` y eventos para trazabilidad y NetSuite; solo deja de usarse como candado global.
+7. No cambiar contrato NetSuite: cada STOP sigue enviando tiempos a **su** operacion de OT (`import_ot` / ZIM400 por operacion).
+
+Ejemplo esperado:
+
+```text
+Recurso: ES411 ARMADO
+
+Operario B / Terminal 2 -> OT17847 / operacion 4 -> ACTIVE (montaje)
+Operario A / Terminal 1 -> OT18584 / operacion 2 -> puede iniciar sin error
+
+Resultado esperado:
+- Dos timers independientes, misma resource_code, distintas work_order_operation_id.
+- Cada STOP acumula tiempo en su operacion NetSuite correspondiente.
+- No hay mensaje de recurso ocupado entre OT distintas.
+```
+
+Criterios de aceptacion V5.1:
+
+1. Operario A puede dar Play en `OT18584/2` aunque operario B tenga ACTIVE otra OT en `ES411 ARMADO`.
+2. Operario A y operario B conservan timers, eventos y tiempos independientes.
+3. El sistema no rechaza start/resume por `resource_code` compartido.
+4. Los bloqueos por terminal/usuario ajeno (V5) siguen vigentes al pausar/detener/cambiar modo.
+5. Sincronizacion NetSuite sin cambio de contrato.
+
+Regla historica revocada (no implementar):
+
+```text
+Una maquina/recurso no debe tener dos operaciones activas simultaneas en el cronometro.
+```
 
 ### Mensaje obligatorio para operacion tomada por otro terminal
 
