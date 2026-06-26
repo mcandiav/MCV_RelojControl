@@ -211,15 +211,15 @@
                             </div>
                             <div class="lane-time">
                               {{ formatMinutesAsHHMMSS(extractOperation(row).actual_run_time) }}
-                              / {{ formatMinutesAsHHMMSS(extractOperation(row).planned_operation_minutes) }}
+                              / {{ formatMinutesAsHHMMSS(runPlanMinutes(extractOperation(row))) }}
                             </div>
                             <div class="lane-live" v-if="isLaneCurrent(row, 'run')">
                               En curso: {{ formatElapsed(row) }}
                             </div>
                             <div class="time-bar-track">
-                              <div class="time-bar-fill" :style="timeBarStyle(extractOperation(row).actual_run_time, extractOperation(row).planned_operation_minutes)" />
+                              <div class="time-bar-fill" :style="timeBarStyle(extractOperation(row).actual_run_time, runPlanMinutes(extractOperation(row)))" />
                             </div>
-                            <div class="lane-percent">{{ formatPlanVsRealPercent(extractOperation(row).actual_run_time, extractOperation(row).planned_operation_minutes) }}</div>
+                            <div class="lane-percent">{{ formatPlanVsRealPercent(extractOperation(row).actual_run_time, runPlanMinutes(extractOperation(row))) }}</div>
                           </div>
                         </td>
                       </tr>
@@ -298,12 +298,12 @@
                               </v-btn>
                             </div>
                             <div class="lane-time">
-                              {{ formatMinutesAsHHMMSS(op.actual_run_time) }} / {{ formatMinutesAsHHMMSS(op.planned_operation_minutes) }}
+                              {{ formatMinutesAsHHMMSS(op.actual_run_time) }} / {{ formatMinutesAsHHMMSS(runPlanMinutes(op)) }}
                             </div>
                             <div class="time-bar-track">
-                              <div class="time-bar-fill" :style="timeBarStyle(op.actual_run_time, op.planned_operation_minutes)" />
+                              <div class="time-bar-fill" :style="timeBarStyle(op.actual_run_time, runPlanMinutes(op))" />
                             </div>
-                            <div class="lane-percent">{{ formatPlanVsRealPercent(op.actual_run_time, op.planned_operation_minutes) }}</div>
+                            <div class="lane-percent">{{ formatPlanVsRealPercent(op.actual_run_time, runPlanMinutes(op)) }}</div>
                           </div>
                         </td>
                       </tr>
@@ -995,6 +995,11 @@ import appbar from '@/components/navegation/appbar.vue'
 import logoCronometro from '@/assets/at-once-logo.png'
 import { mapGetters } from 'vuex'
 import { getAppReleaseLabel } from '@/utils/buildMode'
+import {
+  plannedRunDisplayMinutes,
+  plannedSetupDisplayMinutes,
+  planVsRealRatio
+} from '@/utils/plannedDisplay'
 
 /** Pull/push NetSuite suele tardar >20s; el timeout global de axios en main.js es corto. */
 const NETSUITE_AXIOS_TIMEOUT_MS = 180000
@@ -1851,12 +1856,15 @@ export default {
       const planned = op.planned_quantity != null ? op.planned_quantity : '-'
       return `${completed}/${planned}`
     },
+    runPlanMinutes(op) {
+      return plannedRunDisplayMinutes(op)
+    },
     quadrantProgressStyle(cell) {
       const op = this.quadrantLinkedOp(cell)
       const mode = this.extractTimerMode(cell)
       const real = Number(mode === 'SETUP' ? (op && op.actual_setup_time) : (op && op.actual_run_time)) || 0
-      const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
-      if (!Number.isFinite(plan) || plan <= 0) return { width: '0%', backgroundColor: '#9e9e9e' }
+      const plan = mode === 'SETUP' ? plannedSetupDisplayMinutes(op) : plannedRunDisplayMinutes(op)
+      if (plan == null || plan <= 0) return { width: '0%', backgroundColor: '#9e9e9e' }
       const ratio = Math.max(0, real) / plan
       const pct = Math.min(100, Math.round(ratio * 100))
       let color = '#4caf50'
@@ -1868,8 +1876,8 @@ export default {
       const op = this.quadrantLinkedOp(cell)
       const mode = this.extractTimerMode(cell)
       const real = Number(mode === 'SETUP' ? (op && op.actual_setup_time) : (op && op.actual_run_time)) || 0
-      const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
-      if (!Number.isFinite(plan) || plan <= 0) return '100%'
+      const plan = mode === 'SETUP' ? plannedSetupDisplayMinutes(op) : plannedRunDisplayMinutes(op)
+      if (plan == null || plan <= 0) return '100%'
       const pct = Math.max(0, Math.round((Math.max(0, real) / plan) * 100))
       return `${pct}%`
     },
@@ -1928,19 +1936,16 @@ export default {
       return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
     },
     formatPlanVsRealPercent(realMinutes, planMinutes) {
-      const real = Number(realMinutes || 0)
-      const plan = Number(planMinutes || 0)
-      if (!Number.isFinite(plan) || plan <= 0) return 'sin plan'
-      const pct = Math.max(0, Math.round((Math.max(0, real) / plan) * 100))
+      const ratio = planVsRealRatio(realMinutes, planMinutes)
+      if (ratio == null) return 'sin plan'
+      const pct = Math.max(0, Math.round(ratio * 100))
       return `${pct}%`
     },
     timeBarStyle(realMinutes, planMinutes) {
-      const real = Number(realMinutes || 0)
-      const plan = Number(planMinutes || 0)
-      if (!Number.isFinite(plan) || plan <= 0) {
+      const ratio = planVsRealRatio(realMinutes, planMinutes)
+      if (ratio == null) {
         return { width: '0%', backgroundColor: '#9e9e9e' }
       }
-      const ratio = Math.max(0, real) / plan
       const pct = Math.min(150, Math.round(ratio * 100))
       let color = '#4caf50'
       if (ratio >= 1) color = '#ef5350'
@@ -1951,8 +1956,8 @@ export default {
       const op = this.quadrantLinkedOp(timer)
       const mode = this.extractTimerMode(timer)
       const real = Number(mode === 'SETUP' ? (op && op.actual_setup_time) : (op && op.actual_run_time)) || 0
-      const plan = Number(mode === 'SETUP' ? (op && op.planned_setup_minutes) : (op && op.planned_operation_minutes)) || 0
-      if (!Number.isFinite(plan) || plan <= 0) return { color: '#e6edf3' }
+      const plan = mode === 'SETUP' ? plannedSetupDisplayMinutes(op) : plannedRunDisplayMinutes(op)
+      if (plan == null || plan <= 0) return { color: '#e6edf3' }
       const ratio = Math.max(0, real) / plan
       if (ratio >= 1) return { color: '#ef5350' }
       if (ratio >= 0.9) return { color: '#ffca28' }

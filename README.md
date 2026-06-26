@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-06-26 | Se define mejora visual no disruptiva para multiplicar el tiempo planificado visible de EJECUCION por la cantidad de entrada. | Evitar que la barra y el color del cronometro indiquen sobretiempo prematuro cuando NetSuite entrega `runRate` como tiempo por unidad y la OT tiene cantidad a fabricar mayor que 1. | Cambio solo de presentacion en frontend: no modifica NetSuite, Saved Search OUT, backend, base de datos, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Requisitos funcionales de UI y operacion, Tablero operativo V3, Integracion NetSuite OUT |
 | 2026-06-23 | Se elimina el bloqueo cronometrico por recurso compartido (V5.1): varios operarios pueden cronometrar OT distintas sobre el mismo `resource_code` en paralelo. | En planta el mismo centro de trabajo NetSuite (ej. ES411) puede tener varias OT en curso; el bloqueo por recurso impedia cronometrar OT18584/2 mientras otro operario tenia ACTIVE otra OT en ES411. | La unicidad operativa queda solo en `work_order_operation_id + current_user_id + station_id`. Se elimina validacion `lockTimer` por `resource_code` en start/resume/transicion montaje. No cambia contrato NetSuite ni envio por STOP. | Requerimiento V5.1, chronometer.js, mensajes operativos |
 | 2026-06-21 | Se documenta de forma explicita la diferencia entre **Tablero Grande** (protector 2x2 por estacion) y **Operaciones Activas** (tabla con controles por rol). | Evitar confusion entre el screensaver de planta/terminal y la tabla operativa con play/pause/stop. | Tablero Grande: todos los cronometros ACTIVE/PAUSED de la estacion (`x-station-id`). Operaciones Activas sin cambio: operario ve solo los suyos; admin ve todos los terminales y usuarios. | Terminal compartida, Tableros operativos, V5 |
 | 2026-06-21 | Se crea estructura inicial QA del proyecto en `QA/README.md` y `QA/system-prompt.md`. | Implementar el proceso oficial definido en `QA Tester` para preparar rondas QA especificas de Cronometro sin adelantar pruebas aun no definidas. | Cronometro queda preparado para operar QA documentado por mejora, version o flujo, usando una futura ronda unica `QA-YYYY-MM-DD.md` cuando Miguel defina que validar. | Bitacora, Documentos QA |
@@ -264,6 +265,59 @@ Criterio de aceptacion:
 - Leyenda de colores en una sola linea y centrada.
 - Al detener MONTAJE no se muestra popup de cantidad terminada.
 - Popup de cantidad terminada solo al detener EJECUCION.
+
+#### Tiempo planificado visible para el operador
+
+Decision arquitectonica V5.2:
+
+NetSuite entrega el tiempo de EJECUCION RUTA como `runRate`, es decir, tiempo por unidad/pieza. En Cronometro ese valor se persiste como `planned_operation_minutes` y la cantidad de entrada se persiste como `planned_quantity`.
+
+Para evitar una alerta visual prematura en operaciones con cantidad a fabricar mayor que 1, el frontend debe calcular un plan visible de EJECUCION multiplicado por cantidad:
+
+```text
+planned_run_display_minutes = planned_operation_minutes * planned_quantity
+```
+
+Reglas obligatorias para Programador:
+
+1. Esta regla es solo de presentacion visual para el operador.
+2. No modificar NetSuite, Saved Search OUT, RESTlet, `import_ot`, ZIM400, backend ni estructura de base de datos por esta mejora.
+3. No modificar el valor persistido `planned_operation_minutes`; debe seguir representando el `runRate` recibido desde NetSuite.
+4. Para EJECUCION/RUN, las barras, porcentajes, colores y textos de plan visible deben usar `planned_operation_minutes * planned_quantity`.
+5. Para MONTAJE/SETUP, mantener `planned_setup_minutes` sin multiplicar por cantidad, porque el montaje/configuracion es un tiempo fijo de preparacion.
+6. Si `planned_quantity` viene vacio, cero, negativo o no numerico, usar `planned_operation_minutes` sin multiplicar.
+7. Si `planned_operation_minutes` viene vacio o no numerico, mantener el comportamiento actual de `sin plan` o equivalente.
+8. Aplicar la regla en todas las vistas donde el operador compara real contra plan:
+   - Operaciones Activas.
+   - Operaciones de Tu Area.
+   - Tablero Grande 2x2.
+   - Porcentaje de barra.
+   - Color verde/amarillo/rojo.
+   - Texto del tiempo planificado mostrado al usuario.
+9. Mantener el payload de sincronizacion hacia NetSuite con los datos reales actuales: `actual_setup_time`, `actual_run_time` y `completed_quantity`.
+10. Si el reporte administrativo necesita mostrar ambos valores, se debe distinguir claramente entre `runRate NetSuite` y `plan visible total`, sin reemplazar semanticamente el dato original.
+
+Ejemplo funcional:
+
+```text
+planned_operation_minutes = 10
+planned_quantity = 10
+planned_run_display_minutes = 100
+
+Si el operario lleva 12 minutos reales de ejecucion:
+- porcentaje incorrecto historico: 12 / 10 = 120% rojo
+- porcentaje correcto visible: 12 / 100 = 12% verde
+```
+
+Criterio de aceptacion:
+
+1. Una operacion con 10 minutos por pieza y cantidad de entrada 10 muestra 100 minutos como plan visual de EJECUCION.
+2. La barra de EJECUCION no cambia a rojo hasta alcanzar el plan visual total.
+3. MONTAJE no multiplica su tiempo por cantidad.
+4. El push a NetSuite no cambia.
+5. El pull desde NetSuite no cambia.
+6. ZIM400 e `import_ot` no cambian.
+7. La mejora puede revertirse solo en frontend sin afectar datos historicos ni integraciones.
 
 #### Transicion asistida de MONTAJE a EJECUCION
 
