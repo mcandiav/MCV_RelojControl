@@ -758,6 +758,232 @@ exports.getReportBoard = async function getReportBoard(req, res) {
   });
 };
 
+const USER_LOG_EVENT_TYPES = ['START', 'RESUME', 'PAUSE', 'STOP'];
+
+function eventTypeToActionLabel(eventType) {
+  const t = String(eventType || '').toUpperCase();
+  if (t === 'START' || t === 'RESUME') return 'Play';
+  if (t === 'PAUSE') return 'Pause';
+  if (t === 'STOP') return 'Stop';
+  return t || '—';
+}
+
+function parseEventDetailsSummary(detailsJson) {
+  if (detailsJson == null || detailsJson === '') return null;
+  try {
+    const d = typeof detailsJson === 'string' ? JSON.parse(detailsJson) : detailsJson;
+    if (!d || typeof d !== 'object') return null;
+    const parts = [];
+    if (d.completed_quantity != null && d.completed_quantity !== '') {
+      parts.push(`cantidad +${d.completed_quantity}`);
+    }
+    if (d.resource_code) parts.push(String(d.resource_code));
+    if (d.timer_mode) parts.push(String(d.timer_mode));
+    if (d.from_mode && d.timer_mode) parts.push(`${d.from_mode}→${d.timer_mode}`);
+    return parts.length ? parts.join(' · ') : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function timerModeLabelFromEvent(eventRow, timerRow) {
+  let mode = null;
+  if (eventRow && eventRow.details_json) {
+    try {
+      const d =
+        typeof eventRow.details_json === 'string'
+          ? JSON.parse(eventRow.details_json)
+          : eventRow.details_json;
+      if (d && d.timer_mode) mode = d.timer_mode;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  if (!mode && timerRow && timerRow.timer_mode) mode = timerRow.timer_mode;
+  const normalized = normalizeTimerMode(mode, 'RUN');
+  return normalized === 'SETUP' ? 'MONTAJE' : 'EJECUCIÓN';
+}
+
+function parseYmdDate(value) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return raw;
+}
+
+function defaultUserLogDateRange() {
+  const to = new Date();
+  const from = new Date();
+  from.setUTCDate(from.getUTCDate() - 7);
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  return { from: fmt(from), to: fmt(to) };
+}
+
+function eventAtRangeFromDates(fromYmd, toYmd) {
+  const range = {};
+  if (fromYmd) range[Op.gte] = new Date(`${fromYmd}T00:00:00.000Z`);
+  if (toYmd) range[Op.lte] = new Date(`${toYmd}T23:59:59.999Z`);
+  return Object.keys(range).length ? range : null;
+}
+
+/**
+ * Reporte admin V5.3: log de acciones Play/Pause/Stop desde timer_events.
+ */
+exports.getUserLog = async function getUserLog(req, res) {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
+
+  const roleName =
+    currentUser.Role && currentUser.Role.name
+      ? String(currentUser.Role.name).trim().toLowerCase()
+      : '';
+  if (roleName !== 'admin') {
+    return res.status(403).json({ message: 'Solo administradores pueden ver el log de usuarios.' });
+  }
+
+  const defaults = defaultUserLogDateRange();
+  const fromYmd = parseYmdDate(req.query.from || req.query.date_from) || defaults.from;
+  const toYmd = parseYmdDate(req.query.to || req.query.date_to) || defaults.to;
+
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const pageSizeRaw = parseInt(String(req.query.page_size || req.query.pageSize || '50'), 10) || 50;
+  const pageSize = [25, 50, 100].includes(pageSizeRaw) ? pageSizeRaw : 50;
+
+  const sortByRaw = String(req.query.sort_by || req.query.sortBy || 'event_at').trim();
+  const sortDirRaw = String(req.query.sort_dir || req.query.sortDir || 'DESC').trim().toUpperCase();
+  const sortDir = sortDirRaw === 'ASC' ? 'ASC' : 'DESC';
+
+  const userIdRaw = String(req.query.user_id || req.query.userId || '').trim();
+  const userId = userIdRaw ? Number(userIdRaw) : null;
+
+  const workOrderFilter = String(req.query.work_order || req.query.ot || '').trim();
+  const resourceFilter = String(req.query.resource_code || req.query.resource || '').trim();
+  const operationFilter = String(req.query.operation || '').trim();
+  const actionFilter = String(req.query.action || '').trim();
+  const eventTypeFilter = String(req.query.event_type || req.query.eventType || '').trim().toUpperCase();
+
+  const where = {
+    event_type: { [Op.in]: USER_LOG_EVENT_TYPES }
+  };
+
+  const eventAtRange = eventAtRangeFromDates(fromYmd, toYmd);
+  if (eventAtRange) where.event_at = eventAtRange;
+
+  if (Number.isInteger(userId) && userId > 0) {
+    where.user_id = userId;
+  }
+
+  if (eventTypeFilter && USER_LOG_EVENT_TYPES.includes(eventTypeFilter)) {
+    where.event_type = eventTypeFilter;
+  }
+
+  const actionNorm = actionFilter.toLowerCase();
+  if (actionNorm === 'play') {
+    where.event_type = { [Op.in]: ['START', 'RESUME'] };
+  } else if (actionNorm === 'pause') {
+    where.event_type = 'PAUSE';
+  } else if (actionNorm === 'stop') {
+    where.event_type = 'STOP';
+  }
+
+  const opWhere = {};
+  if (workOrderFilter) {
+    opWhere.ot_number = { [Op.like]: `%${workOrderFilter}%` };
+  }
+  if (resourceFilter) {
+    opWhere.resource_code = { [Op.like]: `%${resourceFilter}%` };
+  }
+  if (operationFilter) {
+    const seq = parseInt(operationFilter, 10);
+    if (Number.isInteger(seq) && String(seq) === operationFilter.trim()) {
+      opWhere.operation_sequence = seq;
+    } else {
+      opWhere.operation_name = { [Op.like]: `%${operationFilter}%` };
+    }
+  }
+
+  const sortWhitelist = {
+    event_at: [['event_at', sortDir]],
+    user: [
+      [User, 'name', sortDir],
+      [User, 'lastname', sortDir]
+    ],
+    action: [['event_type', sortDir]],
+    ot_number: [[WorkOrderOperation, 'ot_number', sortDir]],
+    operation_sequence: [[WorkOrderOperation, 'operation_sequence', sortDir]],
+    resource_code: [[WorkOrderOperation, 'resource_code', sortDir]],
+    operation_name: [[WorkOrderOperation, 'operation_name', sortDir]]
+  };
+  const order = sortWhitelist[sortByRaw] || sortWhitelist.event_at;
+
+  const { rows, count } = await TimerEvent.findAndCountAll({
+    where,
+    include: [
+      {
+        model: User,
+        required: false,
+        attributes: ['id', 'name', 'lastname', 'username']
+      },
+      {
+        model: WorkOrderOperation,
+        required: Object.keys(opWhere).length > 0,
+        where: Object.keys(opWhere).length > 0 ? opWhere : undefined,
+        attributes: [
+          'id',
+          'ot_number',
+          'operation_sequence',
+          'operation_name',
+          'resource_code',
+          'area'
+        ]
+      },
+      {
+        model: OperationTimer,
+        required: false,
+        attributes: ['id', 'timer_mode', 'station_id']
+      }
+    ],
+    order,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+    distinct: true,
+    subQuery: false
+  });
+
+  const mapped = rows.map((ev) => {
+    const plain = ev.toJSON ? ev.toJSON() : ev;
+    const u = plain.User || null;
+    const op = plain.WorkOrderOperation || null;
+    const timer = plain.OperationTimer || null;
+    const userName = u ? formatUserDisplayName(u) : '—';
+    return {
+      id: plain.id,
+      event_at: plain.event_at,
+      user_id: plain.user_id,
+      user_name: userName,
+      action_label: eventTypeToActionLabel(plain.event_type),
+      event_type: plain.event_type,
+      ot_number: op && op.ot_number ? op.ot_number : '—',
+      operation_sequence: op && op.operation_sequence != null ? op.operation_sequence : null,
+      operation_name: op && op.operation_name ? op.operation_name : '—',
+      resource_code: (op && op.resource_code) || (timer && timer.resource_code) || '—',
+      timer_mode_label: timerModeLabelFromEvent(plain, timer),
+      operation_timer_id: plain.operation_timer_id,
+      details_summary: parseEventDetailsSummary(plain.details_json)
+    };
+  });
+
+  return res.status(200).json({
+    page,
+    page_size: pageSize,
+    total: count,
+    from: fromYmd,
+    to: toYmd,
+    sort_by: sortWhitelist[sortByRaw] ? sortByRaw : 'event_at',
+    sort_dir: sortDir,
+    rows: mapped
+  });
+};
+
 exports.startTimer = async function startTimer(req, res) {
   if (isNetsuiteSyncWindowActive()) {
     return res.status(409).json({

@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-06-26 | Se define nuevo reporte administrativo `Log Usuarios` V5.3 con filtros visibles, ordenamiento por columnas y paginacion para auditar acciones Play, Pause y Stop sobre OT's. | Dar trazabilidad operativa por usuario, OT, operacion, fecha/hora y accion ejecutada en el cronometro. | Cambio en frontend y backend de Cronometro; usa `timer_events` como fuente interna. Sin impacto en NetSuite, Saved Search OUT, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Reportes administrativos, Auditoria operativa, timer_events |
 | 2026-06-26 | Se define mejora visual no disruptiva para multiplicar el tiempo planificado visible de EJECUCION por la cantidad de entrada. | Evitar que la barra y el color del cronometro indiquen sobretiempo prematuro cuando NetSuite entrega `runRate` como tiempo por unidad y la OT tiene cantidad a fabricar mayor que 1. | Cambio solo de presentacion en frontend: no modifica NetSuite, Saved Search OUT, backend, base de datos, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Requisitos funcionales de UI y operacion, Tablero operativo V3, Integracion NetSuite OUT |
 | 2026-06-23 | Se elimina el bloqueo cronometrico por recurso compartido (V5.1): varios operarios pueden cronometrar OT distintas sobre el mismo `resource_code` en paralelo. | En planta el mismo centro de trabajo NetSuite (ej. ES411) puede tener varias OT en curso; el bloqueo por recurso impedia cronometrar OT18584/2 mientras otro operario tenia ACTIVE otra OT en ES411. | La unicidad operativa queda solo en `work_order_operation_id + current_user_id + station_id`. Se elimina validacion `lockTimer` por `resource_code` en start/resume/transicion montaje. No cambia contrato NetSuite ni envio por STOP. | Requerimiento V5.1, chronometer.js, mensajes operativos |
 | 2026-06-21 | Se documenta de forma explicita la diferencia entre **Tablero Grande** (protector 2x2 por estacion) y **Operaciones Activas** (tabla con controles por rol). | Evitar confusion entre el screensaver de planta/terminal y la tabla operativa con play/pause/stop. | Tablero Grande: todos los cronometros ACTIVE/PAUSED de la estacion (`x-station-id`). Operaciones Activas sin cambio: operario ve solo los suyos; admin ve todos los terminales y usuarios. | Terminal compartida, Tableros operativos, V5 |
@@ -318,6 +319,173 @@ Criterio de aceptacion:
 5. El pull desde NetSuite no cambia.
 6. ZIM400 e `import_ot` no cambian.
 7. La mejora puede revertirse solo en frontend sin afectar datos historicos ni integraciones.
+
+### Reporte Log Usuarios V5.3
+
+El sistema debe exponer una vista administrativa llamada `Log Usuarios` dentro de la pestaña `Reporte`. Esta vista debe permitir auditar las acciones ejecutadas por los usuarios sobre las OT's desde la tabla interna `timer_events`.
+
+La finalidad del reporte es trazabilidad operativa interna del Cronometro. No debe modificar ni enviar informacion a NetSuite.
+
+#### Fuente de datos
+
+Fuente principal:
+
+```text
+timer_events
+```
+
+Relaciones esperadas:
+
+```text
+timer_events.operation_timer_id -> operation_timers.id
+timer_events.work_order_operation_id -> work_order_operations.id
+timer_events.user_id -> users.id
+```
+
+#### Mapeo visual de acciones
+
+```text
+START  -> Play
+RESUME -> Play
+PAUSE  -> Pause
+STOP   -> Stop
+```
+
+Los eventos `AUTO_STOP_SHIFT_END` y `MODE_CHANGE` pueden quedar fuera de la primera version visible, salvo que Programador los necesite para diagnostico tecnico. Si se muestran, deben diferenciarse claramente de las acciones manuales del usuario.
+
+#### Columnas minimas
+
+El reporte debe incluir como minimo:
+
+1. Fecha/hora del evento.
+2. Usuario.
+3. Accion visual: Play, Pause o Stop.
+4. Evento tecnico: START, RESUME, PAUSE o STOP.
+5. OT.
+6. Operacion.
+7. Centro/recurso, si esta disponible en la operacion.
+8. Modo: MONTAJE o EJECUCION, si esta disponible.
+9. Timer ID.
+10. Detalle tecnico resumido desde `details_json`, si existe.
+
+#### Filtros obligatorios
+
+La vista debe tener una zona superior de filtros visibles. Los filtros minimos obligatorios son:
+
+1. Fecha desde.
+2. Fecha hasta.
+3. Usuario.
+4. OT.
+5. Accion: Play, Pause, Stop.
+6. Evento tecnico: START, RESUME, PAUSE, STOP.
+7. Operacion.
+8. Centro/recurso.
+
+Reglas de filtro:
+
+1. El rango de fechas debe ser obligatorio o tener un valor por defecto para evitar consultas historicas muy grandes.
+2. Valor por defecto recomendado: ultimos 7 dias.
+3. Debe existir boton `Buscar` o equivalente para aplicar filtros.
+4. Debe existir boton `Limpiar filtros` o equivalente.
+5. El filtro por OT debe aceptar busqueda parcial por numero visible de OT.
+6. El filtro por usuario debe permitir seleccionar por nombre visible, no solo por ID tecnico.
+7. El filtro por accion debe usar etiquetas operativas: Play, Pause, Stop.
+
+#### Ordenamiento por columnas
+
+La tabla debe permitir ordenar por columnas desde la interfaz.
+
+Columnas ordenables obligatorias:
+
+1. Fecha/hora.
+2. Usuario.
+3. Accion.
+4. OT.
+5. Operacion.
+6. Centro/recurso.
+
+Orden por defecto:
+
+```text
+Fecha/hora DESC
+```
+
+Esto significa que los eventos mas recientes aparecen arriba.
+
+#### Paginacion
+
+El reporte debe tener paginacion para evitar cargar todo el historial en una sola respuesta.
+
+Reglas recomendadas:
+
+1. Tamano de pagina por defecto: 50 registros.
+2. Opciones de tamano: 25, 50, 100.
+3. La paginacion debe ejecutarse en backend, no solo en frontend.
+4. El endpoint debe devolver total de registros filtrados para que la interfaz pueda mostrar cantidad total y paginas.
+
+#### Backend esperado
+
+Programador debe crear un endpoint de solo lectura para consultar el log de usuarios.
+
+Contrato funcional minimo:
+
+```text
+GET /api/chronometer/user-log
+```
+
+Parametros sugeridos:
+
+```text
+from
+to
+user_id
+work_order
+action
+event_type
+operation
+resource_code
+page
+page_size
+sort_by
+sort_dir
+```
+
+El backend debe validar `sort_by` contra una lista blanca de columnas permitidas para evitar ordenamientos inseguros o ambiguos.
+
+#### Frontend esperado
+
+En la pestaña `Reporte`, Programador debe agregar una subvista o pestaña interna llamada `Log Usuarios`.
+
+La interfaz debe incluir:
+
+1. Panel de filtros arriba.
+2. Tabla de resultados abajo.
+3. Ordenamiento por columnas.
+4. Paginacion.
+5. Indicador de carga.
+6. Mensaje claro cuando no existan registros.
+7. Etiquetas visuales claras para Play, Pause y Stop.
+
+#### Seguridad y permisos
+
+Este reporte es administrativo. Debe quedar visible solo para usuarios con permiso admin del Cronometro, igual que la pestaña `Reporte` actual.
+
+No debe exponer passwords, tokens, payloads sensibles ni informacion tecnica innecesaria en pantalla.
+
+#### Criterios de aceptacion
+
+1. Un administrador puede entrar a `Reporte > Log Usuarios`.
+2. Puede filtrar por rango de fecha.
+3. Puede filtrar por usuario.
+4. Puede filtrar por OT.
+5. Puede filtrar por accion Play, Pause o Stop.
+6. Puede ordenar por fecha, usuario, accion, OT y operacion.
+7. La tabla muestra los eventos mas recientes primero por defecto.
+8. La vista pagina los resultados.
+9. El reporte usa `timer_events` como fuente.
+10. No cambia NetSuite ni la sincronizacion hacia NetSuite.
+11. No cambia el comportamiento operativo del cronometro.
+12. El reporte es solo lectura.
 
 #### Transicion asistida de MONTAJE a EJECUCION
 

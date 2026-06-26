@@ -565,7 +565,7 @@
                     </p>
                   </div>
                   <div class="d-flex flex-wrap" style="gap:8px">
-                    <v-btn color="primary" outlined :loading="reportView === 0 ? loadingReport : (reportView === 1 ? loadingSyncRuns : loadingNsPushLog)" @click="refreshReportCurrent">
+                    <v-btn color="primary" outlined :loading="reportRefreshLoading" @click="refreshReportCurrent">
                       <v-icon left>mdi-refresh</v-icon>
                       Actualizar
                     </v-btn>
@@ -585,6 +585,7 @@
                   <v-tab>Sincronizaciones</v-tab>
                   <v-tab>Log NetSuite</v-tab>
                   <v-tab>Log ZIM400</v-tab>
+                  <v-tab>Log Usuarios</v-tab>
                 </v-tabs>
 
                 <div v-if="reportView === 0">
@@ -751,7 +752,7 @@
                     </template>
                   </v-data-table>
                 </div>
-                <div v-else>
+                <div v-else-if="reportView === 3">
                   <v-alert v-if="zim400LogError" type="error" dense outlined class="mb-3">{{ zim400LogError }}</v-alert>
                   <v-row dense class="mb-2">
                     <v-col cols="12" md="3">
@@ -792,9 +793,140 @@
                         {{ item.status || 'UNKNOWN' }}
                       </v-chip>
                     </template>
-                    <template v-slot:item.last_error="{ item }">{{ item.last_error || '?' }}</template>
+                    <template v-slot:item.last_error="{ item }">{{ item.last_error || '—' }}</template>
                     <template v-slot:no-data>
                       <div class="py-6 text-center grey--text">No hay filas ZIM400 registradas.</div>
+                    </template>
+                  </v-data-table>
+                </div>
+                <div v-else-if="reportView === 4">
+                  <v-alert v-if="userLogError" type="error" dense outlined class="mb-3">{{ userLogError }}</v-alert>
+                  <v-row dense class="mb-2">
+                    <v-col cols="12" md="2">
+                      <v-text-field
+                        v-model="userLogFilters.dateFrom"
+                        label="Desde"
+                        type="date"
+                        dense
+                        outlined
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-text-field
+                        v-model="userLogFilters.dateTo"
+                        label="Hasta"
+                        type="date"
+                        dense
+                        outlined
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-select
+                        v-model="userLogFilters.userId"
+                        :items="userLogUserOptions"
+                        item-text="label"
+                        item-value="id"
+                        label="Usuario"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-text-field
+                        v-model.trim="userLogFilters.workOrder"
+                        label="OT"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-select
+                        v-model="userLogFilters.action"
+                        :items="userLogActionOptions"
+                        item-text="label"
+                        item-value="value"
+                        label="Acción"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-select
+                        v-model="userLogFilters.eventType"
+                        :items="userLogEventTypeOptions"
+                        item-text="label"
+                        item-value="value"
+                        label="Evento técnico"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
+                      <v-text-field
+                        v-model.trim="userLogFilters.operation"
+                        label="Operación (seq o nombre)"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-text-field
+                        v-model.trim="userLogFilters.resourceCode"
+                        label="Centro / recurso"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="3" class="d-flex align-center" style="gap:8px">
+                      <v-btn small color="primary" :loading="loadingUserLog" @click="searchUserLog">Buscar</v-btn>
+                      <v-btn small text @click="clearUserLogFilters">Limpiar filtros</v-btn>
+                    </v-col>
+                  </v-row>
+                  <div v-if="userLogTotal != null" class="text-caption grey--text mb-2">
+                    {{ userLogTotal }} registro(s) · página {{ userLogTableOptions.page }} · {{ userLogFilters.dateFrom }} — {{ userLogFilters.dateTo }}
+                  </div>
+                  <v-data-table
+                    :headers="userLogHeaders"
+                    :items="userLogRows"
+                    item-key="id"
+                    dense
+                    class="compact-table elevation-0"
+                    :loading="loadingUserLog"
+                    :server-items-length="userLogTotal"
+                    :options.sync="userLogTableOptions"
+                    :footer-props="{ itemsPerPageOptions: [25, 50, 100] }"
+                    @update:options="onUserLogTableOptions"
+                  >
+                    <template v-slot:item.event_at="{ item }">
+                      {{ formatReportDate(item.event_at) }}
+                    </template>
+                    <template v-slot:item.action_label="{ item }">
+                      <v-chip x-small :color="userLogActionColor(item.action_label)" dark>
+                        {{ item.action_label }}
+                      </v-chip>
+                    </template>
+                    <template v-slot:item.operation_sequence="{ item }">
+                      {{ item.operation_sequence != null ? item.operation_sequence : '—' }}
+                    </template>
+                    <template v-slot:item.details_summary="{ item }">
+                      {{ item.details_summary || '—' }}
+                    </template>
+                    <template v-slot:no-data>
+                      <div class="py-6 text-center grey--text">No hay eventos para los filtros seleccionados.</div>
                     </template>
                   </v-data-table>
                 </div>
@@ -1134,6 +1266,53 @@ export default {
       zim400LogRows: [],
       loadingZim400Log: false,
       zim400LogError: '',
+      userLogRows: [],
+      userLogTotal: 0,
+      loadingUserLog: false,
+      userLogError: '',
+      userLogFilters: {
+        dateFrom: '',
+        dateTo: '',
+        userId: null,
+        workOrder: '',
+        action: '',
+        eventType: '',
+        operation: '',
+        resourceCode: ''
+      },
+      userLogTableOptions: {
+        page: 1,
+        itemsPerPage: 50,
+        sortBy: ['event_at'],
+        sortDesc: [true]
+      },
+      userLogOptionsReady: false,
+      userLogActionOptions: [
+        { label: 'Todas', value: '' },
+        { label: 'Play', value: 'Play' },
+        { label: 'Pause', value: 'Pause' },
+        { label: 'Stop', value: 'Stop' }
+      ],
+      userLogEventTypeOptions: [
+        { label: 'Todos', value: '' },
+        { label: 'START', value: 'START' },
+        { label: 'RESUME', value: 'RESUME' },
+        { label: 'PAUSE', value: 'PAUSE' },
+        { label: 'STOP', value: 'STOP' }
+      ],
+      userLogHeaders: [
+        { text: 'Fecha/hora', value: 'event_at', sortable: true },
+        { text: 'Usuario', value: 'user_name', sortable: true },
+        { text: 'Acción', value: 'action_label', sortable: true },
+        { text: 'Evento', value: 'event_type', sortable: false },
+        { text: 'OT', value: 'ot_number', sortable: true },
+        { text: 'Seq', value: 'operation_sequence', sortable: true },
+        { text: 'Operación', value: 'operation_name', sortable: true },
+        { text: 'Recurso', value: 'resource_code', sortable: true },
+        { text: 'Modo', value: 'timer_mode_label', sortable: false },
+        { text: 'Timer ID', value: 'operation_timer_id', sortable: false, align: 'end' },
+        { text: 'Detalle', value: 'details_summary', sortable: false }
+      ],
       zim400Filters: {
         ot: '',
         status: '',
@@ -1307,12 +1486,13 @@ export default {
       this.applyRouteTab()
     },
     reportView(val) {
-      // 0 = Operaciones, 1 = Sincronizaciones, 2 = Log NetSuite, 3 = Log ZIM400
+      // 0 = Operaciones, 1 = Sincronizaciones, 2 = Log NetSuite, 3 = Log ZIM400, 4 = Log Usuarios
       if (!this.isAdmin) return
       if (val === 0) this.loadReportBoard()
       else if (val === 1) this.loadSyncRuns()
       else if (val === 2) this.loadNsPushLog()
       else if (val === 3) this.loadZim400Log()
+      else if (val === 4) this.openUserLogTab()
     },
     activeTab() {
       this.syncRouteTab()
@@ -1326,6 +1506,21 @@ export default {
     }),
     appReleaseLabel() {
       return getAppReleaseLabel()
+    },
+    reportRefreshLoading() {
+      if (this.reportView === 0) return this.loadingReport
+      if (this.reportView === 1) return this.loadingSyncRuns
+      if (this.reportView === 2) return this.loadingNsPushLog
+      if (this.reportView === 3) return this.loadingZim400Log
+      if (this.reportView === 4) return this.loadingUserLog
+      return false
+    },
+    userLogUserOptions() {
+      const rows = Array.isArray(this.users) ? this.users : []
+      return rows.map((u) => ({
+        id: u.id,
+        label: [u.name, u.lastname].filter(Boolean).join(' ').trim() || u.username || `#${u.id}`
+      }))
     },
     workplacesUi() {
       const rows = Array.isArray(this.workplaces) ? this.workplaces : []
@@ -2361,7 +2556,121 @@ export default {
       if (this.reportView === 0) this.loadReportBoard()
       else if (this.reportView === 1) this.loadSyncRuns()
       else if (this.reportView === 2) this.loadNsPushLog()
-      else this.loadZim400Log()
+      else if (this.reportView === 3) this.loadZim400Log()
+      else if (this.reportView === 4) this.loadUserLog()
+    },
+    formatDateInputValue(date) {
+      if (!(date instanceof Date) || !Number.isFinite(date.getTime())) return ''
+      return date.toISOString().slice(0, 10)
+    },
+    initUserLogDefaultDates() {
+      const to = new Date()
+      const from = new Date()
+      from.setDate(from.getDate() - 7)
+      this.userLogFilters.dateTo = this.formatDateInputValue(to)
+      this.userLogFilters.dateFrom = this.formatDateInputValue(from)
+    },
+    userLogActionColor(actionLabel) {
+      const a = String(actionLabel || '').toLowerCase()
+      if (a === 'play') return 'success'
+      if (a === 'pause') return 'warning'
+      if (a === 'stop') return 'error'
+      return 'grey'
+    },
+    userLogSortParam() {
+      const opts = this.userLogTableOptions || {}
+      const sortBy = Array.isArray(opts.sortBy) && opts.sortBy.length ? opts.sortBy[0] : 'event_at'
+      const sortMap = {
+        event_at: 'event_at',
+        user_name: 'user',
+        action_label: 'action',
+        ot_number: 'ot_number',
+        operation_sequence: 'operation_sequence',
+        operation_name: 'operation_name',
+        resource_code: 'resource_code'
+      }
+      const sortDesc = Array.isArray(opts.sortDesc) && opts.sortDesc.length ? opts.sortDesc[0] : true
+      return {
+        sort_by: sortMap[sortBy] || 'event_at',
+        sort_dir: sortDesc ? 'DESC' : 'ASC'
+      }
+    },
+    openUserLogTab() {
+      if (!this.userLogFilters.dateFrom || !this.userLogFilters.dateTo) {
+        this.initUserLogDefaultDates()
+      }
+      if (!this.userLogRows.length && !this.loadingUserLog) {
+        this.loadUserLog()
+      }
+    },
+    searchUserLog() {
+      this.userLogTableOptions = {
+        ...this.userLogTableOptions,
+        page: 1
+      }
+      this.loadUserLog()
+    },
+    clearUserLogFilters() {
+      this.initUserLogDefaultDates()
+      this.userLogFilters.userId = null
+      this.userLogFilters.workOrder = ''
+      this.userLogFilters.action = ''
+      this.userLogFilters.eventType = ''
+      this.userLogFilters.operation = ''
+      this.userLogFilters.resourceCode = ''
+      this.userLogTableOptions = {
+        page: 1,
+        itemsPerPage: 50,
+        sortBy: ['event_at'],
+        sortDesc: [true]
+      }
+      this.loadUserLog()
+    },
+    onUserLogTableOptions(options) {
+      if (!this.userLogOptionsReady) {
+        this.userLogOptionsReady = true
+        return
+      }
+      if (this.reportView !== 4) return
+      this.loadUserLog(options)
+    },
+    async loadUserLog(optionsOverride) {
+      if (!this.isAdmin) return
+      const opts = optionsOverride || this.userLogTableOptions || {}
+      if (!this.userLogFilters.dateFrom || !this.userLogFilters.dateTo) {
+        this.initUserLogDefaultDates()
+      }
+      this.loadingUserLog = true
+      this.userLogError = ''
+      const sort = this.userLogSortParam()
+      try {
+        const params = {
+          from: this.userLogFilters.dateFrom,
+          to: this.userLogFilters.dateTo,
+          page: opts.page || 1,
+          page_size: opts.itemsPerPage || 50,
+          sort_by: sort.sort_by,
+          sort_dir: sort.sort_dir
+        }
+        if (this.userLogFilters.userId) params.user_id = this.userLogFilters.userId
+        if (this.userLogFilters.workOrder) params.work_order = this.userLogFilters.workOrder
+        if (this.userLogFilters.action) params.action = this.userLogFilters.action
+        if (this.userLogFilters.eventType) params.event_type = this.userLogFilters.eventType
+        if (this.userLogFilters.operation) params.operation = this.userLogFilters.operation
+        if (this.userLogFilters.resourceCode) params.resource_code = this.userLogFilters.resourceCode
+        const res = await axios.get('/chronometer/user-log', { params, timeout: NETSUITE_AXIOS_TIMEOUT_MS })
+        const data = res.data || {}
+        this.userLogRows = Array.isArray(data.rows) ? data.rows : []
+        this.userLogTotal = Number.isFinite(Number(data.total)) ? Number(data.total) : 0
+      } catch (e) {
+        this.userLogRows = []
+        this.userLogTotal = 0
+        this.userLogError =
+          (e.response && e.response.data && (e.response.data.message || e.response.data.text)) ||
+          'No fue posible cargar el log de usuarios.'
+      } finally {
+        this.loadingUserLog = false
+      }
     },
     async loadSyncRuns() {
       if (!this.isAdmin) return
