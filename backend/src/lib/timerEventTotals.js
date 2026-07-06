@@ -27,7 +27,11 @@ function readTimerModeFromEvent(event, fallback = 'RUN') {
   }
 }
 
-function computeTotalsFromEvents(events) {
+function computeTotalsFromEvents(events, options = {}) {
+  const asOfRaw = options && options.asOf != null ? options.asOf : null;
+  const asOfMs = asOfRaw != null ? new Date(asOfRaw).getTime() : null;
+  const closeOpenIntervals = Number.isFinite(asOfMs);
+
   let totalActiveMs = 0;
   let totalRunMs = 0;
   let totalSetupMs = 0;
@@ -83,6 +87,14 @@ function computeTotalsFromEvents(events) {
     }
   }
 
+  if (closeOpenIntervals) {
+    if (activeStart) pushActiveDuration(asOfMs);
+    if (pauseStart) {
+      totalPauseMs += Math.max(0, asOfMs - pauseStart);
+      pauseStart = null;
+    }
+  }
+
   return {
     total_active_seconds: Math.max(0, Math.floor(totalActiveMs / 1000)),
     total_run_seconds: Math.max(0, Math.floor(totalRunMs / 1000)),
@@ -93,5 +105,6 @@ function computeTotalsFromEvents(events) {
 
 module.exports = {
   getShiftDateString,
-  computeTotalsFromEvents
+  computeTotalsFromEvents,
+  normalizeTimerMode
 };

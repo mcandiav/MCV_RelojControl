@@ -849,32 +849,6 @@
                       />
                     </v-col>
                     <v-col cols="12" md="3">
-                      <v-select
-                        v-model="userLogFilters.action"
-                        :items="userLogActionOptions"
-                        item-text="label"
-                        item-value="value"
-                        label="Acción"
-                        dense
-                        outlined
-                        clearable
-                        hide-details
-                      />
-                    </v-col>
-                    <v-col cols="12" md="2">
-                      <v-select
-                        v-model="userLogFilters.eventType"
-                        :items="userLogEventTypeOptions"
-                        item-text="label"
-                        item-value="value"
-                        label="Evento técnico"
-                        dense
-                        outlined
-                        clearable
-                        hide-details
-                      />
-                    </v-col>
-                    <v-col cols="12" md="2">
                       <v-text-field
                         v-model.trim="userLogFilters.operation"
                         label="Operación (seq o nombre)"
@@ -894,14 +868,15 @@
                         hide-details
                       />
                     </v-col>
-                    <v-col cols="12" md="3" class="d-flex align-center" style="gap:8px">
+                    <v-col cols="12" md="2" class="d-flex align-center" style="gap:8px">
                       <v-btn small color="primary" :loading="loadingUserLog" @click="searchUserLog">Buscar</v-btn>
                       <v-btn small text @click="clearUserLogFilters">Limpiar filtros</v-btn>
                     </v-col>
                   </v-row>
                   <div v-if="userLogTotal != null" class="text-caption grey--text mb-2">
-                    {{ userLogTotal }} registro(s) · página {{ userLogTableOptions.page }} · {{ userLogFilters.dateFrom }} — {{ userLogFilters.dateTo }}
+                    {{ userLogTotal }} sesión(es) de cronómetro · página {{ userLogTableOptions.page }} · {{ userLogFilters.dateFrom }} — {{ userLogFilters.dateTo }}
                   </div>
+                  <div class="table-scroll-wrap user-log-wrap">
                   <v-data-table
                     :headers="userLogHeaders"
                     :items="userLogRows"
@@ -914,24 +889,25 @@
                     :footer-props="{ itemsPerPageOptions: [25, 50, 100] }"
                     @update:options="onUserLogTableOptions"
                   >
-                    <template v-slot:item.event_at="{ item }">
-                      {{ formatReportDate(item.event_at) }}
+                    <template v-slot:item.started_at="{ item }">
+                      {{ formatReportDate(item.started_at) }}
                     </template>
-                    <template v-slot:item.action_label="{ item }">
-                      <v-chip x-small :color="userLogActionColor(item.action_label)" dark>
-                        {{ item.action_label }}
+                    <template v-slot:item.ended_at="{ item }">
+                      {{ item.ended_at ? formatReportDate(item.ended_at) : 'Sin registro' }}
+                    </template>
+                    <template v-slot:item.clock_status="{ item }">
+                      <v-chip x-small :color="userLogClockStatusColor(item)" dark>
+                        {{ item.clock_status || '—' }}
                       </v-chip>
                     </template>
-                    <template v-slot:item.operation_sequence="{ item }">
-                      {{ item.operation_sequence != null ? item.operation_sequence : '—' }}
-                    </template>
-                    <template v-slot:item.details_summary="{ item }">
-                      {{ item.details_summary || '—' }}
+                    <template v-slot:item.quantity="{ item }">
+                      {{ item.quantity != null ? item.quantity : 0 }}
                     </template>
                     <template v-slot:no-data>
-                      <div class="py-6 text-center grey--text">No hay eventos para los filtros seleccionados.</div>
+                      <div class="py-6 text-center grey--text">No hay actividad de usuarios para los filtros seleccionados.</div>
                     </template>
                   </v-data-table>
+                  </div>
                 </div>
               </v-card>
             </v-col>
@@ -1289,43 +1265,27 @@ export default {
         dateTo: '',
         userId: null,
         workOrder: '',
-        action: '',
-        eventType: '',
         operation: '',
         resourceCode: ''
       },
       userLogTableOptions: {
         page: 1,
         itemsPerPage: 50,
-        sortBy: ['event_at'],
+        sortBy: ['started_at'],
         sortDesc: [true]
       },
       userLogOptionsReady: false,
-      userLogActionOptions: [
-        { label: 'Todas', value: '' },
-        { label: 'Play', value: 'Play' },
-        { label: 'Pause', value: 'Pause' },
-        { label: 'Stop', value: 'Stop' }
-      ],
-      userLogEventTypeOptions: [
-        { label: 'Todos', value: '' },
-        { label: 'START', value: 'START' },
-        { label: 'RESUME', value: 'RESUME' },
-        { label: 'PAUSE', value: 'PAUSE' },
-        { label: 'STOP', value: 'STOP' }
-      ],
       userLogHeaders: [
-        { text: 'Fecha/hora', value: 'event_at', sortable: true },
-        { text: 'Usuario', value: 'user_name', sortable: true },
-        { text: 'Acción', value: 'action_label', sortable: true },
-        { text: 'Evento', value: 'event_type', sortable: false },
+        { text: 'Nombre', value: 'user_name', sortable: true },
         { text: 'OT', value: 'ot_number', sortable: true },
-        { text: 'Seq', value: 'operation_sequence', sortable: true },
-        { text: 'Operación', value: 'operation_name', sortable: true },
-        { text: 'Recurso', value: 'resource_code', sortable: true },
-        { text: 'Modo', value: 'timer_mode_label', sortable: false },
-        { text: 'Timer ID', value: 'operation_timer_id', sortable: false, align: 'end' },
-        { text: 'Detalle', value: 'details_summary', sortable: false }
+        { text: 'Operación', value: 'operation_label', sortable: true },
+        { text: 'Cantidad', value: 'quantity', sortable: true, align: 'end' },
+        { text: 'Tiempo montaje (min)', value: 'setup_minutes', sortable: true, align: 'end' },
+        { text: 'Tiempo ejecución (min)', value: 'run_minutes', sortable: true, align: 'end' },
+        { text: 'Tiempo en pausa (min)', value: 'pause_minutes', sortable: true, align: 'end' },
+        { text: 'Reloj inicio', value: 'started_at', sortable: true },
+        { text: 'Reloj fin', value: 'ended_at', sortable: true },
+        { text: 'Reloj estado', value: 'clock_status', sortable: true }
       ],
       zim400Filters: {
         ot: '',
@@ -2602,28 +2562,31 @@ export default {
       this.userLogFilters.dateTo = this.formatDateInputValue(to)
       this.userLogFilters.dateFrom = this.formatDateInputValue(from)
     },
-    userLogActionColor(actionLabel) {
-      const a = String(actionLabel || '').toLowerCase()
-      if (a === 'play') return 'success'
-      if (a === 'pause') return 'warning'
-      if (a === 'stop') return 'error'
+    userLogClockStatusColor(item) {
+      const code = String((item && item.clock_status_code) || '').toUpperCase()
+      if (code === 'SETUP') return 'info'
+      if (code === 'RUN') return 'success'
+      if (code === 'STOPPED') return 'grey'
       return 'grey'
     },
     userLogSortParam() {
       const opts = this.userLogTableOptions || {}
-      const sortBy = Array.isArray(opts.sortBy) && opts.sortBy.length ? opts.sortBy[0] : 'event_at'
-      const sortMap = {
-        event_at: 'event_at',
-        user_name: 'user',
-        action_label: 'action',
-        ot_number: 'ot_number',
-        operation_sequence: 'operation_sequence',
-        operation_name: 'operation_name',
-        resource_code: 'resource_code'
-      }
+      const sortBy = Array.isArray(opts.sortBy) && opts.sortBy.length ? opts.sortBy[0] : 'started_at'
+      const allowed = new Set([
+        'started_at',
+        'ended_at',
+        'user_name',
+        'ot_number',
+        'operation_label',
+        'quantity',
+        'setup_minutes',
+        'run_minutes',
+        'pause_minutes',
+        'clock_status'
+      ])
       const sortDesc = Array.isArray(opts.sortDesc) && opts.sortDesc.length ? opts.sortDesc[0] : true
       return {
-        sort_by: sortMap[sortBy] || 'event_at',
+        sort_by: allowed.has(sortBy) ? sortBy : 'started_at',
         sort_dir: sortDesc ? 'DESC' : 'ASC'
       }
     },
@@ -2646,14 +2609,12 @@ export default {
       this.initUserLogDefaultDates()
       this.userLogFilters.userId = null
       this.userLogFilters.workOrder = ''
-      this.userLogFilters.action = ''
-      this.userLogFilters.eventType = ''
       this.userLogFilters.operation = ''
       this.userLogFilters.resourceCode = ''
       this.userLogTableOptions = {
         page: 1,
         itemsPerPage: 50,
-        sortBy: ['event_at'],
+        sortBy: ['started_at'],
         sortDesc: [true]
       }
       this.loadUserLog()
@@ -2686,8 +2647,6 @@ export default {
         }
         if (this.userLogFilters.userId) params.user_id = this.userLogFilters.userId
         if (this.userLogFilters.workOrder) params.work_order = this.userLogFilters.workOrder
-        if (this.userLogFilters.action) params.action = this.userLogFilters.action
-        if (this.userLogFilters.eventType) params.event_type = this.userLogFilters.eventType
         if (this.userLogFilters.operation) params.operation = this.userLogFilters.operation
         if (this.userLogFilters.resourceCode) params.resource_code = this.userLogFilters.resourceCode
         const res = await axios.get('/chronometer/user-log', { params, timeout: NETSUITE_AXIOS_TIMEOUT_MS })
@@ -3521,6 +3480,14 @@ export default {
   overflow: auto;
   border: 1px solid #e0e0e0;
   border-radius: 10px;
+}
+
+.user-log-wrap {
+  max-height: 62vh;
+}
+
+.user-log-wrap table {
+  min-width: 1280px;
 }
 
 .active-wrap {

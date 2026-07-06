@@ -12,6 +12,7 @@ const TimerEvent = require('../models/timer_event');
 const OperationTimeTotal = require('../models/operation_time_total');
 const config = require('../config/config');
 const { getShiftDateString, computeTotalsFromEvents } = require('../lib/timerEventTotals');
+const { fetchUserLogSessions } = require('../lib/userLogSessions');
 const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
 const { enqueueFromStop } = require('../services/netsuiteSyncQueue');
 const TIMER_LOCKED_SAME_STATION_CODE = 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER';
@@ -826,7 +827,7 @@ function eventAtRangeFromDates(fromYmd, toYmd) {
 }
 
 /**
- * Reporte admin V5.3: log de acciones Play/Pause/Stop desde timer_events.
+ * Reporte admin: log de actividad por sesión de cronómetro (START → STOP o abierta).
  */
 exports.getUserLog = async function getUserLog(req, res) {
   const currentUser = await getCurrentUser(req);
@@ -848,7 +849,7 @@ exports.getUserLog = async function getUserLog(req, res) {
   const pageSizeRaw = parseInt(String(req.query.page_size || req.query.pageSize || '50'), 10) || 50;
   const pageSize = [25, 50, 100].includes(pageSizeRaw) ? pageSizeRaw : 50;
 
-  const sortByRaw = String(req.query.sort_by || req.query.sortBy || 'event_at').trim();
+  const sortByRaw = String(req.query.sort_by || req.query.sortBy || 'started_at').trim();
   const sortDirRaw = String(req.query.sort_dir || req.query.sortDir || 'DESC').trim().toUpperCase();
   const sortDir = sortDirRaw === 'ASC' ? 'ASC' : 'DESC';
 
@@ -858,129 +859,44 @@ exports.getUserLog = async function getUserLog(req, res) {
   const workOrderFilter = String(req.query.work_order || req.query.ot || '').trim();
   const resourceFilter = String(req.query.resource_code || req.query.resource || '').trim();
   const operationFilter = String(req.query.operation || '').trim();
-  const actionFilter = String(req.query.action || '').trim();
-  const eventTypeFilter = String(req.query.event_type || req.query.eventType || '').trim().toUpperCase();
 
-  const where = {
-    event_type: { [Op.in]: USER_LOG_EVENT_TYPES }
-  };
+  const sortWhitelist = [
+    'started_at',
+    'ended_at',
+    'user_name',
+    'ot_number',
+    'operation_label',
+    'quantity',
+    'setup_minutes',
+    'run_minutes',
+    'pause_minutes',
+    'clock_status'
+  ];
+  const sortBy = sortWhitelist.includes(sortByRaw) ? sortByRaw : 'started_at';
 
-  const eventAtRange = eventAtRangeFromDates(fromYmd, toYmd);
-  if (eventAtRange) where.event_at = eventAtRange;
-
-  if (Number.isInteger(userId) && userId > 0) {
-    where.user_id = userId;
-  }
-
-  if (eventTypeFilter && USER_LOG_EVENT_TYPES.includes(eventTypeFilter)) {
-    where.event_type = eventTypeFilter;
-  }
-
-  const actionNorm = actionFilter.toLowerCase();
-  if (actionNorm === 'play') {
-    where.event_type = { [Op.in]: ['START', 'RESUME'] };
-  } else if (actionNorm === 'pause') {
-    where.event_type = 'PAUSE';
-  } else if (actionNorm === 'stop') {
-    where.event_type = 'STOP';
-  }
-
-  const opWhere = {};
-  if (workOrderFilter) {
-    opWhere.ot_number = { [Op.like]: `%${workOrderFilter}%` };
-  }
-  if (resourceFilter) {
-    opWhere.resource_code = { [Op.like]: `%${resourceFilter}%` };
-  }
-  if (operationFilter) {
-    const seq = parseInt(operationFilter, 10);
-    if (Number.isInteger(seq) && String(seq) === operationFilter.trim()) {
-      opWhere.operation_sequence = seq;
-    } else {
-      opWhere.operation_name = { [Op.like]: `%${operationFilter}%` };
-    }
-  }
-
-  const sortWhitelist = {
-    event_at: [['event_at', sortDir]],
-    user: [
-      [User, 'name', sortDir],
-      [User, 'lastname', sortDir]
-    ],
-    action: [['event_type', sortDir]],
-    ot_number: [[WorkOrderOperation, 'ot_number', sortDir]],
-    operation_sequence: [[WorkOrderOperation, 'operation_sequence', sortDir]],
-    resource_code: [[WorkOrderOperation, 'resource_code', sortDir]],
-    operation_name: [[WorkOrderOperation, 'operation_name', sortDir]]
-  };
-  const order = sortWhitelist[sortByRaw] || sortWhitelist.event_at;
-
-  const { rows, count } = await TimerEvent.findAndCountAll({
-    where,
-    include: [
-      {
-        model: User,
-        required: false,
-        attributes: ['id', 'name', 'lastname', 'username']
-      },
-      {
-        model: WorkOrderOperation,
-        required: Object.keys(opWhere).length > 0,
-        where: Object.keys(opWhere).length > 0 ? opWhere : undefined,
-        attributes: [
-          'id',
-          'ot_number',
-          'operation_sequence',
-          'operation_name',
-          'resource_code',
-          'area'
-        ]
-      },
-      {
-        model: OperationTimer,
-        required: false,
-        attributes: ['id', 'timer_mode', 'station_id']
-      }
-    ],
-    order,
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
-    distinct: true,
-    subQuery: false
-  });
-
-  const mapped = rows.map((ev) => {
-    const plain = ev.toJSON ? ev.toJSON() : ev;
-    const u = plain.User || null;
-    const op = plain.WorkOrderOperation || null;
-    const timer = plain.OperationTimer || null;
-    const userName = u ? formatUserDisplayName(u) : '—';
-    return {
-      id: plain.id,
-      event_at: plain.event_at,
-      user_id: plain.user_id,
-      user_name: userName,
-      action_label: eventTypeToActionLabel(plain.event_type),
-      event_type: plain.event_type,
-      ot_number: op && op.ot_number ? op.ot_number : '—',
-      operation_sequence: op && op.operation_sequence != null ? op.operation_sequence : null,
-      operation_name: op && op.operation_name ? op.operation_name : '—',
-      resource_code: (op && op.resource_code) || (timer && timer.resource_code) || '—',
-      timer_mode_label: timerModeLabelFromEvent(plain, timer),
-      operation_timer_id: plain.operation_timer_id,
-      details_summary: parseEventDetailsSummary(plain.details_json)
-    };
+  const { rows, total } = await fetchUserLogSessions({
+    fromYmd,
+    toYmd,
+    userId: Number.isInteger(userId) && userId > 0 ? userId : null,
+    workOrderFilter,
+    resourceFilter,
+    operationFilter,
+    sortBy,
+    sortDir,
+    page,
+    pageSize
   });
 
   return res.status(200).json({
     page,
     page_size: pageSize,
-    total: count,
+    total,
     from: fromYmd,
     to: toYmd,
-    sort_by: sortWhitelist[sortByRaw] ? sortByRaw : 'event_at',
+    sort_by: sortBy,
     sort_dir: sortDir,
-    rows: mapped
+    view: 'sessions',
+    rows
   });
 };
 
