@@ -990,6 +990,15 @@
       <v-card>
         <v-card-title class="text-h6">Detener cronómetro</v-card-title>
         <v-card-text>
+          <v-alert
+            v-if="stopQtySummaryText"
+            type="info"
+            dense
+            outlined
+            class="mb-3"
+          >
+            {{ stopQtySummaryText }}
+          </v-alert>
           <p class="body-2 mb-3">
             Puedes registrar la <strong>cantidad terminada</strong> de esta operación al cerrar. Si no cargas nada, solo se detiene el cronómetro y no se cambia el valor en base.
           </p>
@@ -1208,6 +1217,8 @@ export default {
       stopQtyTimerId: null,
       stopQtyValue: '',
       stopQtyPlanned: null,
+      stopQtyChronoCompleted: 0,
+      stopQtyNetsuiteCompleted: 0,
       stopQtyLoading: false,
       setupTransitionDialog: false,
       setupTransitionOpId: null,
@@ -1664,12 +1675,30 @@ export default {
         return bag.includes(q)
       })
     },
+    stopQtySummaryText() {
+      const planned = Number(this.stopQtyPlanned)
+      const ns = Math.max(0, Math.floor(Number(this.stopQtyNetsuiteCompleted) || 0))
+      let chrono = Math.max(0, Math.floor(Number(this.stopQtyChronoCompleted) || 0))
+      const raw = String(this.stopQtyValue || '').trim()
+      if (raw && /^\d+$/.test(raw)) {
+        chrono += Math.max(0, parseInt(raw, 10))
+      }
+      const total = chrono + ns
+      if (total <= 0 && (!Number.isFinite(planned) || planned <= 0)) return ''
+      if (!Number.isFinite(planned) || planned <= 0) {
+        return `Hay (${chrono}+${ns}) terminadas.`
+      }
+      return `Hay (${chrono}+${ns})/${Math.floor(planned)} terminadas.`
+    },
     stopQtyWarningText() {
       const raw = String(this.stopQtyValue || '').trim()
       if (!raw || !/^\d+$/.test(raw)) return ''
       const planned = Number(this.stopQtyPlanned)
       if (!Number.isFinite(planned) || planned < 0) return ''
-      if (Number(raw) > planned) return 'Esta cantidad supera lo requerido'
+      const ns = Math.max(0, Math.floor(Number(this.stopQtyNetsuiteCompleted) || 0))
+      const chrono = Math.max(0, Math.floor(Number(this.stopQtyChronoCompleted) || 0))
+      const remaining = Math.max(0, Math.floor(planned) - ns - chrono)
+      if (Number(raw) > remaining) return 'Esta cantidad supera lo requerido'
       return ''
     },
     opsTableCols() {
@@ -2855,12 +2884,21 @@ export default {
         alert(msg)
       }
     },
+    splitCompletedQuantities(op) {
+      const total = Math.max(0, Math.floor(Number(op && op.completed_quantity) || 0))
+      const netsuite = Math.max(0, Math.floor(Number(op && op.last_pushed_completed_quantity) || 0))
+      const chrono = Math.max(0, total - netsuite)
+      return { chrono, netsuite, total }
+    },
     openStopQuantityDialog(item) {
       const op = this.extractOperation(item)
+      const qty = this.splitCompletedQuantities(op)
       this.stopQtyOpId = op.id
       this.stopQtyTimerId = this.extractTimerId(item)
       this.stopQtyPlanned = op && op.planned_quantity != null ? Number(op.planned_quantity) : null
-      // Delta por cierre: iniciar vacÃ­o para no reenviar el acumulado por error.
+      this.stopQtyChronoCompleted = qty.chrono
+      this.stopQtyNetsuiteCompleted = qty.netsuite
+      // Delta por cierre: iniciar vacío para no reenviar el acumulado por error.
       this.stopQtyValue = ''
       this.stopQtyDialog = true
     },
@@ -2871,6 +2909,8 @@ export default {
       this.stopQtyTimerId = null
       this.stopQtyValue = ''
       this.stopQtyPlanned = null
+      this.stopQtyChronoCompleted = 0
+      this.stopQtyNetsuiteCompleted = 0
     },
     openSetupTransitionDialog(item) {
       const op = this.extractOperation(item)
