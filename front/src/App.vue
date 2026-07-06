@@ -6,7 +6,7 @@
 
 <script>
 import { mapGetters } from 'vuex'
-import { getUiVersion, isTestBuild } from '@/utils/buildMode'
+import { getReleaseStamp, isTestBuild } from '@/utils/buildMode'
 
 export default {
   name: 'App',
@@ -37,7 +37,7 @@ export default {
       const who = this.user
         ? String(this.user.username || [this.user.name, this.user.lastname].filter(Boolean).join(' ') || 'Usuario').trim()
         : 'Usuario'
-      const base = `Cronometro - ${getUiVersion()}`
+      const base = `Cronometro ${getReleaseStamp()}`
       document.title = isTestBuild() ? `${who} - ${base} [TEST]` : `${who} - ${base}`
     }
   },
@@ -46,6 +46,14 @@ export default {
       user: 'auth/user'
     })
   }
-
 }
 </script>
+
+<style>
+.release-stamp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+</style>

@@ -7,6 +7,11 @@ export function getAppReleaseLabel() {
   return APP_RELEASE
 }
 
+/** Sello de versión visible: release de producto + hash de build (ej. V5.3.1@1841fce). */
+export function getReleaseStamp() {
+  return `${APP_RELEASE}@${getUiVersion()}`
+}
+
 function readWindowBuildPath() {
   if (typeof window === 'undefined') return ''
   if (window.__CRONOMETRO_BUILD_PATH == null) return ''

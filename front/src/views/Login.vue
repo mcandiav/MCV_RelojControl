@@ -8,7 +8,10 @@
         <div class="text-center mb-6">
           <img :src="atOnceLogo" alt="At-Once" class="login-atonce-logo mb-3">
           <div class="display-1 font-weight-bold login-hero-title">BIGNOTTI</div>
-          <div class="subtitle-1 white--text opacity-70">Cronómetro {{ appReleaseLabel }}</div>
+          <div class="login-product-subtitle">
+            <span class="login-product-label">Cronómetro</span>
+            <span class="release-stamp login-release-stamp">{{ releaseStamp }}</span>
+          </div>
         </div>
 
         <v-card class="rounded-xl elevation-10">
@@ -167,7 +170,7 @@
 <script>
 import axios from 'axios'
 import { mapActions } from 'vuex'
-import { getAppReleaseLabel, isTestBuild } from '@/utils/buildMode'
+import { getReleaseStamp, isTestBuild } from '@/utils/buildMode'
 import atOnceLogo from '@/assets/at-once-logo.png'
 
 export default {
@@ -194,8 +197,9 @@ export default {
   },
 
   computed: {
-    appReleaseLabel() {
-      return getAppReleaseLabel()
+    releaseStamp() {
+      const stamp = getReleaseStamp()
+      return isTestBuild() ? `${stamp} [TEST]` : stamp
     }
   },
 
@@ -317,6 +321,32 @@ export default {
   margin: 12px auto 0;
   background: linear-gradient(90deg, #ff6b35, #ffa726);
   border-radius: 2px;
+}
+
+.login-product-subtitle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.login-product-label {
+  font-size: 1rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.login-release-stamp.release-stamp {
+  font-size: 1.35rem;
+  color: #fff;
+  padding: 5px 14px;
+  border-radius: 8px;
+  background: rgba(255, 107, 53, 0.22);
+  border: 1px solid rgba(255, 167, 38, 0.55);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 
 .login-corner-logo {
