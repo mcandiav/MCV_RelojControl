@@ -3,7 +3,7 @@ const TimerEvent = require('../models/timer_event');
 const OperationTimer = require('../models/operation_timer');
 const User = require('../models/user');
 const WorkOrderOperation = require('../models/work_order_operation');
-const { computeTotalsFromEvents, normalizeTimerMode } = require('./timerEventTotals');
+const { normalizeTimerMode } = require('./timerEventTotals');
 
 const SESSION_EVENT_TYPES = ['START', 'RESUME', 'PAUSE', 'STOP', 'AUTO_STOP_SHIFT_END', 'MODE_CHANGE'];
 
@@ -15,65 +15,119 @@ function formatUserDisplayName(user) {
   return username || '—';
 }
 
-function parseStopQuantity(detailsJson) {
-  if (detailsJson == null || detailsJson === '') return 0;
+function toNonNegIntOrNull(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Del evento STOP: delta que cargó el usuario y snapshot del total de la OT al cerrar.
+ */
+function parseStopDetails(detailsJson) {
+  if (detailsJson == null || detailsJson === '') return { user_finished: null, operation_total: null };
   try {
     const d = typeof detailsJson === 'string' ? JSON.parse(detailsJson) : detailsJson;
-    const n = Number(d && d.completed_quantity);
-    return Number.isInteger(n) && n >= 0 ? n : 0;
+    return {
+      user_finished: toNonNegIntOrNull(d && d.completed_quantity),
+      operation_total: toNonNegIntOrNull(d && d.operation_completed_total)
+    };
   } catch (_) {
-    return 0;
+    return { user_finished: null, operation_total: null };
   }
 }
 
-function splitSessionsFromEvents(events) {
-  const sessions = [];
+function readTimerModeFromEvent(event, fallback = 'RUN') {
+  try {
+    const raw = event && event.details_json;
+    if (!raw) return fallback;
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return normalizeTimerMode(parsed && parsed.timer_mode, fallback);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+/**
+ * Construye tramos de estado (un renglón por estado) recorriendo la línea de
+ * tiempo continua del cronómetro. Estados: SETUP (play montaje), RUN (play
+ * ejecución), PAUSED (pausa), STOPPED (detenido). Cada cambio de estado cierra
+ * el tramo anterior (le pone término) y abre uno nuevo. El último tramo queda
+ * abierto (sin término) porque representa el estado actual.
+ *
+ * La cantidad cargada en un STOP se atribuye al tramo que se está cerrando
+ * (el play/pausa previo), tal como lo pidió el usuario.
+ */
+function buildSegmentsFromEvents(events) {
+  const segments = [];
   let current = null;
+  let currentMode = 'RUN';
+
+  const openSegment = (state, atIso) => {
+    current = { state, start_at: atIso, end_at: null, stop_details: null };
+  };
+  const closeSegment = (atIso, stopDetails) => {
+    if (!current) return;
+    current.end_at = atIso;
+    if (stopDetails) current.stop_details = stopDetails;
+    segments.push(current);
+    current = null;
+  };
 
   for (const ev of events || []) {
     const type = String(ev.event_type || '').toUpperCase();
-    if (type === 'START') {
-      if (current) sessions.push(current);
-      current = { events: [ev], started_at: ev.event_at, ended_at: null, stop_event: null };
+    const atIso = ev.event_at;
+
+    if (type === 'START' || type === 'RESUME') {
+      currentMode = readTimerModeFromEvent(ev, currentMode);
+      closeSegment(atIso);
+      openSegment(currentMode === 'SETUP' ? 'SETUP' : 'RUN', atIso);
       continue;
     }
-    if (!current) {
-      if (type === 'RESUME') {
-        current = { events: [ev], started_at: ev.event_at, ended_at: null, stop_event: null };
-      }
+    if (type === 'MODE_CHANGE') {
+      currentMode = readTimerModeFromEvent(ev, currentMode);
+      closeSegment(atIso);
+      openSegment(currentMode === 'SETUP' ? 'SETUP' : 'RUN', atIso);
       continue;
     }
-    current.events.push(ev);
+    if (type === 'PAUSE') {
+      closeSegment(atIso);
+      openSegment('PAUSED', atIso);
+      continue;
+    }
     if (type === 'STOP' || type === 'AUTO_STOP_SHIFT_END') {
-      current.ended_at = ev.event_at;
-      current.stop_event = ev;
-      sessions.push(current);
-      current = null;
+      const stopDetails = parseStopDetails(ev.details_json);
+      if (current) {
+        closeSegment(atIso, stopDetails);
+      } else {
+        // Stop sin tramo activo previo: registra el propio stop con su detalle.
+        openSegment('STOPPED', atIso);
+        current.stop_details = stopDetails;
+        closeSegment(atIso);
+        continue;
+      }
+      openSegment('STOPPED', atIso);
+      continue;
     }
   }
 
-  if (current) sessions.push(current);
-  return sessions;
+  if (current) segments.push(current);
+  return segments;
 }
 
-function resolveClockStatus(session, timer) {
-  if (session.ended_at) {
-    return { code: 'STOPPED', label: 'Detenido' };
-  }
-  const status = timer && timer.status ? String(timer.status).toUpperCase() : 'STOPPED';
-  const mode = normalizeTimerMode(timer && timer.timer_mode, 'RUN');
-  if (status === 'ACTIVE' || status === 'PAUSED') {
-    return mode === 'SETUP'
-      ? { code: 'SETUP', label: 'En montaje' }
-      : { code: 'RUN', label: 'En curso' };
-  }
-  return { code: 'STOPPED', label: 'Detenido' };
+const SEGMENT_STATUS = {
+  SETUP: { code: 'SETUP', label: 'Play montaje' },
+  RUN: { code: 'RUN', label: 'Play ejecución' },
+  PAUSED: { code: 'PAUSED', label: 'Pausa' },
+  STOPPED: { code: 'STOPPED', label: 'Stop' }
+};
+
+function resolveSegmentStatus(segment) {
+  return SEGMENT_STATUS[segment.state] || SEGMENT_STATUS.STOPPED;
 }
 
-function formatOperationLabel(op, timer) {
+function resolveResourceCode(op, timer) {
   const rc = (op && op.resource_code) || (timer && timer.resource_code) || '';
-  const name = (op && op.operation_name) || '';
-  return `${String(rc).trim()} ${String(name).trim()}`.trim().toUpperCase() || '—';
+  return String(rc).trim().toUpperCase() || '—';
 }
 
 function secondsToMinutes(sec) {
@@ -109,27 +163,43 @@ function buildOpWhere({ workOrderFilter, resourceFilter, operationFilter }) {
   return opWhere;
 }
 
-function mapSessionToRow(session, timer, user, op, sessionIndex) {
-  const isOpen = !session.ended_at;
-  const asOf = isOpen ? new Date() : session.ended_at;
-  const totals = computeTotalsFromEvents(session.events, { asOf });
-  const status = resolveClockStatus(session, timer);
-  const qty = session.stop_event ? parseStopQuantity(session.stop_event.details_json) : 0;
-  const startedMs = new Date(session.started_at).getTime();
+function mapSegmentToRow(segment, timer, user, op, segmentIndex) {
+  const isOpen = !segment.end_at;
+  const status = resolveSegmentStatus(segment);
+  const stopInfo = segment.stop_details || { user_finished: null, operation_total: null };
+  const startedMs = new Date(segment.start_at).getTime();
+  const endMs = segment.end_at ? new Date(segment.end_at).getTime() : Date.now();
+  const durationMinutes = secondsToMinutes(Math.max(0, (endMs - startedMs) / 1000));
+
+  const plannedQty = op ? toNonNegIntOrNull(op.planned_quantity) : null;
+  // Cantidad completada (total OT): snapshot del STOP si existe; si no, total actual de la OT.
+  let completedTotal = stopInfo.operation_total;
+  if (completedTotal == null && op) {
+    completedTotal = toNonNegIntOrNull(op.completed_quantity);
+  }
+
+  // Con un renglón por estado, cada tramo llena solo la columna de tiempo que
+  // corresponde a su estado. STOP no llena ninguna (su duración es tiempo detenido).
+  const setupMinutes = segment.state === 'SETUP' ? durationMinutes : null;
+  const runMinutes = segment.state === 'RUN' ? durationMinutes : null;
+  const pauseMinutes = segment.state === 'PAUSED' ? durationMinutes : null;
 
   return {
-    id: `${timer.id}-${sessionIndex}-${startedMs}`,
+    id: `${timer.id}-${segmentIndex}-${startedMs}`,
     operation_timer_id: timer.id,
     user_id: user ? user.id : null,
     user_name: formatUserDisplayName(user),
     ot_number: op && op.ot_number ? op.ot_number : '—',
-    operation_label: formatOperationLabel(op, timer),
-    quantity: qty,
-    setup_minutes: secondsToMinutes(totals.total_setup_seconds),
-    run_minutes: secondsToMinutes(totals.total_run_seconds),
-    pause_minutes: secondsToMinutes(totals.total_pause_seconds),
-    started_at: session.started_at,
-    ended_at: session.ended_at,
+    operation_sequence: op && op.operation_sequence != null ? op.operation_sequence : null,
+    resource_code: resolveResourceCode(op, timer),
+    planned_quantity: plannedQty,
+    completed_quantity: completedTotal,
+    user_finished_quantity: stopInfo.user_finished,
+    setup_minutes: setupMinutes,
+    run_minutes: runMinutes,
+    pause_minutes: pauseMinutes,
+    started_at: segment.start_at,
+    ended_at: segment.end_at,
     clock_status: status.label,
     clock_status_code: status.code,
     is_open: isOpen
@@ -156,11 +226,20 @@ function compareRows(a, b, sortBy, sortDir) {
     case 'ot_number':
       cmp = text(a.ot_number).localeCompare(text(b.ot_number));
       break;
-    case 'operation_label':
-      cmp = text(a.operation_label).localeCompare(text(b.operation_label));
+    case 'operation_sequence':
+      cmp = num(a.operation_sequence) - num(b.operation_sequence);
       break;
-    case 'quantity':
-      cmp = num(a.quantity) - num(b.quantity);
+    case 'resource_code':
+      cmp = text(a.resource_code).localeCompare(text(b.resource_code));
+      break;
+    case 'planned_quantity':
+      cmp = num(a.planned_quantity) - num(b.planned_quantity);
+      break;
+    case 'completed_quantity':
+      cmp = num(a.completed_quantity) - num(b.completed_quantity);
+      break;
+    case 'user_finished_quantity':
+      cmp = num(a.user_finished_quantity) - num(b.user_finished_quantity);
       break;
     case 'setup_minutes':
       cmp = num(a.setup_minutes) - num(b.setup_minutes);
@@ -262,7 +341,15 @@ async function fetchUserLogSessions({
         model: WorkOrderOperation,
         required: opFilterActive,
         where: opFilterActive ? opWhere : undefined,
-        attributes: ['id', 'ot_number', 'operation_sequence', 'operation_name', 'resource_code']
+        attributes: [
+          'id',
+          'ot_number',
+          'operation_sequence',
+          'operation_name',
+          'resource_code',
+          'planned_quantity',
+          'completed_quantity'
+        ]
       }
     ]
   });
@@ -295,10 +382,10 @@ async function fetchUserLogSessions({
     if (opFilterActive && !timer.WorkOrderOperation) continue;
     const events = eventsByTimer.get(timer.id) || [];
     if (!events.length) continue;
-    const sessions = splitSessionsFromEvents(events);
-    sessions.forEach((session, idx) => {
-      if (!sessionOverlapsRange(session.started_at, session.ended_at, fromYmd, toYmd)) return;
-      rows.push(mapSessionToRow(session, timer, timer.User, timer.WorkOrderOperation, idx));
+    const segments = buildSegmentsFromEvents(events);
+    segments.forEach((segment, idx) => {
+      if (!sessionOverlapsRange(segment.start_at, segment.end_at, fromYmd, toYmd)) return;
+      rows.push(mapSegmentToRow(segment, timer, timer.User, timer.WorkOrderOperation, idx));
     });
   }
 
@@ -316,7 +403,6 @@ async function fetchUserLogSessions({
 module.exports = {
   SESSION_EVENT_TYPES,
   fetchUserLogSessions,
-  splitSessionsFromEvents,
-  formatOperationLabel,
-  resolveClockStatus
+  buildSegmentsFromEvents,
+  resolveSegmentStatus
 };

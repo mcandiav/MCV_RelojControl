@@ -874,7 +874,7 @@
                     </v-col>
                   </v-row>
                   <div v-if="userLogTotal != null" class="text-caption grey--text mb-2">
-                    {{ userLogTotal }} sesión(es) de cronómetro · página {{ userLogTableOptions.page }} · {{ userLogFilters.dateFrom }} — {{ userLogFilters.dateTo }}
+                    {{ userLogTotal }} tramo(s) de estado (play/pausa/stop) · página {{ userLogTableOptions.page }} · {{ userLogFilters.dateFrom }} — {{ userLogFilters.dateTo }}
                   </div>
                   <div class="table-scroll-wrap user-log-wrap">
                   <v-data-table
@@ -900,8 +900,26 @@
                         {{ item.clock_status || '—' }}
                       </v-chip>
                     </template>
-                    <template v-slot:item.quantity="{ item }">
-                      {{ item.quantity != null ? item.quantity : 0 }}
+                    <template v-slot:item.operation_sequence="{ item }">
+                      {{ item.operation_sequence != null ? item.operation_sequence : '—' }}
+                    </template>
+                    <template v-slot:item.planned_quantity="{ item }">
+                      {{ item.planned_quantity != null ? item.planned_quantity : '—' }}
+                    </template>
+                    <template v-slot:item.completed_quantity="{ item }">
+                      {{ item.completed_quantity != null ? item.completed_quantity : '—' }}
+                    </template>
+                    <template v-slot:item.user_finished_quantity="{ item }">
+                      {{ item.user_finished_quantity != null ? item.user_finished_quantity : '—' }}
+                    </template>
+                    <template v-slot:item.setup_minutes="{ item }">
+                      {{ item.setup_minutes != null ? item.setup_minutes : '—' }}
+                    </template>
+                    <template v-slot:item.run_minutes="{ item }">
+                      {{ item.run_minutes != null ? item.run_minutes : '—' }}
+                    </template>
+                    <template v-slot:item.pause_minutes="{ item }">
+                      {{ item.pause_minutes != null ? item.pause_minutes : '—' }}
                     </template>
                     <template v-slot:no-data>
                       <div class="py-6 text-center grey--text">No hay actividad de usuarios para los filtros seleccionados.</div>
@@ -1278,8 +1296,11 @@ export default {
       userLogHeaders: [
         { text: 'Nombre', value: 'user_name', sortable: true },
         { text: 'OT', value: 'ot_number', sortable: true },
-        { text: 'Operación', value: 'operation_label', sortable: true },
-        { text: 'Cantidad', value: 'quantity', sortable: true, align: 'end' },
+        { text: 'Secuencia', value: 'operation_sequence', sortable: true, align: 'end' },
+        { text: 'Recurso', value: 'resource_code', sortable: true },
+        { text: 'Cant. planificada', value: 'planned_quantity', sortable: true, align: 'end' },
+        { text: 'Cant. completada', value: 'completed_quantity', sortable: true, align: 'end' },
+        { text: 'Cant. finalizada usuario', value: 'user_finished_quantity', sortable: true, align: 'end' },
         { text: 'Tiempo montaje (min)', value: 'setup_minutes', sortable: true, align: 'end' },
         { text: 'Tiempo ejecución (min)', value: 'run_minutes', sortable: true, align: 'end' },
         { text: 'Tiempo en pausa (min)', value: 'pause_minutes', sortable: true, align: 'end' },
@@ -2566,6 +2587,7 @@ export default {
       const code = String((item && item.clock_status_code) || '').toUpperCase()
       if (code === 'SETUP') return 'info'
       if (code === 'RUN') return 'success'
+      if (code === 'PAUSED') return 'warning'
       if (code === 'STOPPED') return 'grey'
       return 'grey'
     },
@@ -2577,8 +2599,11 @@ export default {
         'ended_at',
         'user_name',
         'ot_number',
-        'operation_label',
-        'quantity',
+        'operation_sequence',
+        'resource_code',
+        'planned_quantity',
+        'completed_quantity',
+        'user_finished_quantity',
         'setup_minutes',
         'run_minutes',
         'pause_minutes',

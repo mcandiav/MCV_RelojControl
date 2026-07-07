@@ -827,7 +827,9 @@ function eventAtRangeFromDates(fromYmd, toYmd) {
 }
 
 /**
- * Reporte admin: log de actividad por sesión de cronómetro (START → STOP o abierta).
+ * Reporte admin: log de actividad por tramo de estado del cronómetro.
+ * Un renglón por cada estado (Play montaje / Play ejecución / Pausa / Stop),
+ * delimitado por los cambios de estado (play/pausa/stop).
  */
 exports.getUserLog = async function getUserLog(req, res) {
   const currentUser = await getCurrentUser(req);
@@ -865,8 +867,11 @@ exports.getUserLog = async function getUserLog(req, res) {
     'ended_at',
     'user_name',
     'ot_number',
-    'operation_label',
-    'quantity',
+    'operation_sequence',
+    'resource_code',
+    'planned_quantity',
+    'completed_quantity',
+    'user_finished_quantity',
     'setup_minutes',
     'run_minutes',
     'pause_minutes',
@@ -895,7 +900,7 @@ exports.getUserLog = async function getUserLog(req, res) {
     to: toYmd,
     sort_by: sortBy,
     sort_dir: sortDir,
-    view: 'sessions',
+    view: 'segments',
     rows
   });
 };
@@ -1047,26 +1052,31 @@ exports.stopTimer = async function stopTimer(req, res) {
   timer.last_event_at = new Date();
   await timer.save();
 
-  if (completedQtyToStore !== null) {
-    const operation = await WorkOrderOperation.findByPk(timer.work_order_operation_id);
-    if (operation) {
-      const previous = Number.isFinite(Number(operation.completed_quantity))
-        ? Math.max(0, Math.floor(Number(operation.completed_quantity)))
-        : 0;
-      operation.completed_quantity = previous + completedQtyToStore;
-      await operation.save();
-    }
+  const operation = await WorkOrderOperation.findByPk(timer.work_order_operation_id);
+  if (operation && completedQtyToStore !== null) {
+    const previous = Number.isFinite(Number(operation.completed_quantity))
+      ? Math.max(0, Math.floor(Number(operation.completed_quantity)))
+      : 0;
+    operation.completed_quantity = previous + completedQtyToStore;
+    await operation.save();
   }
+
+  // Snapshot de cantidad total de la OT al cerrar, para el reporte Log Usuarios.
+  const operationCompletedTotal =
+    operation && Number.isFinite(Number(operation.completed_quantity))
+      ? Math.max(0, Math.floor(Number(operation.completed_quantity)))
+      : null;
+
+  const stopDetails = {};
+  if (completedQtyToStore !== null) stopDetails.completed_quantity = completedQtyToStore;
+  if (operationCompletedTotal !== null) stopDetails.operation_completed_total = operationCompletedTotal;
 
   const stopEvent = await appendEvent({
     timerId: timer.id,
     operationId: timer.work_order_operation_id,
     userId: req.userId,
     eventType: 'STOP',
-    details:
-      completedQtyToStore !== null
-        ? { completed_quantity: completedQtyToStore }
-        : undefined
+    details: Object.keys(stopDetails).length ? stopDetails : undefined
   });
 
   if (config.V4_SYNC_ENABLED) {
