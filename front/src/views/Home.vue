@@ -888,6 +888,10 @@
                     <v-col cols="12" md="2" class="d-flex align-center" style="gap:8px">
                       <v-btn small color="primary" :loading="loadingUserLog" @click="searchUserLog">Buscar</v-btn>
                       <v-btn small text @click="clearUserLogFilters">Limpiar filtros</v-btn>
+                      <v-btn small color="secondary" outlined :loading="loadingUserLogExport" @click="exportUserLogExcel">
+                        <v-icon left>mdi-microsoft-excel</v-icon>
+                        Excel
+                      </v-btn>
                     </v-col>
                   </v-row>
                   <div v-if="userLogTotal != null" class="text-caption grey--text mb-2">
@@ -1337,6 +1341,7 @@ export default {
       userLogRows: [],
       userLogTotal: 0,
       loadingUserLog: false,
+      loadingUserLogExport: false,
       userLogError: '',
       userLogFilters: {
         dateFrom: '',
@@ -2818,6 +2823,100 @@ export default {
           'No fue posible cargar el log de usuarios.'
       } finally {
         this.loadingUserLog = false
+      }
+    },
+    buildUserLogRequestParams(page, pageSize) {
+      const sort = this.userLogSortParam()
+      const params = {
+        from: this.userLogFilters.dateFrom,
+        to: this.userLogFilters.dateTo,
+        page,
+        page_size: pageSize,
+        sort_by: sort.sort_by,
+        sort_dir: sort.sort_dir
+      }
+      if (this.userLogFilters.userId) params.user_id = this.userLogFilters.userId
+      if (this.userLogFilters.workOrder) params.work_order = this.userLogFilters.workOrder
+      if (this.userLogFilters.operation) params.operation = this.userLogFilters.operation
+      if (this.userLogFilters.resourceCode) params.resource_code = this.userLogFilters.resourceCode
+      if (this.userLogFilters.warningIgnored !== '') params.warning_ignored = this.userLogFilters.warningIgnored
+      return params
+    },
+    async exportUserLogExcel() {
+      if (!this.isAdmin || this.loadingUserLogExport) return
+      if (!this.userLogFilters.dateFrom || !this.userLogFilters.dateTo) {
+        this.initUserLogDefaultDates()
+      }
+      this.loadingUserLogExport = true
+      try {
+        const pageSize = 100
+        const firstPageParams = this.buildUserLogRequestParams(1, pageSize)
+        const firstRes = await axios.get('/chronometer/user-log', {
+          params: firstPageParams,
+          timeout: NETSUITE_AXIOS_TIMEOUT_MS
+        })
+        const firstData = firstRes.data || {}
+        const total = Number.isFinite(Number(firstData.total)) ? Number(firstData.total) : 0
+        const rows = Array.isArray(firstData.rows) ? [...firstData.rows] : []
+        const totalPages = Math.max(1, Math.ceil(Math.max(0, total) / pageSize))
+        for (let page = 2; page <= totalPages; page += 1) {
+          const res = await axios.get('/chronometer/user-log', {
+            params: this.buildUserLogRequestParams(page, pageSize),
+            timeout: NETSUITE_AXIOS_TIMEOUT_MS
+          })
+          const data = res.data || {}
+          if (Array.isArray(data.rows) && data.rows.length) {
+            rows.push(...data.rows)
+          }
+        }
+
+        const wb = new ExcelJS.Workbook()
+        const ws = wb.addWorksheet('Log Usuarios')
+        ws.addRow([
+          'Fecha/hora',
+          'Usuario',
+          'Accion',
+          'Evento tecnico',
+          'OT',
+          'Operacion',
+          'Recurso',
+          'Modo',
+          'Timer ID',
+          'Advertencia ignorada',
+          'Detalle tecnico'
+        ])
+        for (const row of rows) {
+          ws.addRow([
+            row.started_at ? this.formatReportDate(row.started_at) : '',
+            row.user_name || '',
+            row.clock_status || '',
+            row.clock_status_code || '',
+            row.ot_number || '',
+            row.operation_sequence != null ? row.operation_sequence : '',
+            row.resource_code || '',
+            row.clock_status_code === 'SETUP' ? 'MONTAJE' : (row.clock_status_code === 'RUN' ? 'EJECUCIÓN' : ''),
+            row.operation_timer_id != null ? row.operation_timer_id : '',
+            row.warning_ignored ? 'Sí' : 'No',
+            row.warning_ignored && row.warning_details ? JSON.stringify(row.warning_details) : ''
+          ])
+        }
+
+        const wbName = `log-usuarios-${this.userLogFilters.dateFrom}_${this.userLogFilters.dateTo}`
+        const buf = await wb.xlsx.writeBuffer()
+        const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${wbName}.xlsx`
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch (error) {
+        const msg =
+          (error.response && error.response.data && (error.response.data.message || error.response.data.text)) ||
+          'No fue posible exportar el log de usuarios.'
+        alert(msg)
+      } finally {
+        this.loadingUserLogExport = false
       }
     },
     async loadSyncRuns() {
