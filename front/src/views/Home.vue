@@ -2279,13 +2279,18 @@ export default {
     async confirmPreviousOperationsWarning() {
       if (!this.previousOperationsWarningContinue || this.previousOperationsWarningLoading) return
       this.previousOperationsWarningLoading = true
+      const continueAction = this.previousOperationsWarningContinue
+      this.previousOperationsWarningDialog = false
       try {
-        const started = await this.previousOperationsWarningContinue()
-        if (started) this.closePreviousOperationsWarning()
+        await continueAction()
       } catch (error) {
         const msg = this.timerTerminalLockMessage(error, 'No fue posible continuar con la operación.')
         alert(msg)
       } finally {
+        this.previousOperationsWarningTitle = ''
+        this.previousOperationsWarningText = ''
+        this.previousOperationsWarningRows = []
+        this.previousOperationsWarningContinue = null
         this.previousOperationsWarningLoading = false
       }
     },
