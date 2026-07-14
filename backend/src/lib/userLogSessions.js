@@ -20,6 +20,16 @@ function toNonNegIntOrNull(value) {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
+function parseDetails(detailsJson) {
+  if (detailsJson == null || detailsJson === '') return null;
+  try {
+    const d = typeof detailsJson === 'string' ? JSON.parse(detailsJson) : detailsJson;
+    return d && typeof d === 'object' ? d : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
  * Del evento STOP: delta que cargó el usuario y snapshot del total de la OT al cerrar.
  */
@@ -62,8 +72,15 @@ function buildSegmentsFromEvents(events) {
   let current = null;
   let currentMode = 'RUN';
 
-  const openSegment = (state, atIso) => {
-    current = { state, start_at: atIso, end_at: null, stop_details: null };
+  const openSegment = (state, atIso, startEvent) => {
+    current = {
+      state,
+      start_at: atIso,
+      end_at: null,
+      stop_details: null,
+      start_event_type: startEvent ? String(startEvent.event_type || '').toUpperCase() : null,
+      start_event_details: startEvent ? startEvent.details_json || null : null
+    };
   };
   const closeSegment = (atIso, stopDetails) => {
     if (!current) return;
@@ -80,13 +97,13 @@ function buildSegmentsFromEvents(events) {
     if (type === 'START' || type === 'RESUME') {
       currentMode = readTimerModeFromEvent(ev, currentMode);
       closeSegment(atIso);
-      openSegment(currentMode === 'SETUP' ? 'SETUP' : 'RUN', atIso);
+      openSegment(currentMode === 'SETUP' ? 'SETUP' : 'RUN', atIso, ev);
       continue;
     }
     if (type === 'MODE_CHANGE') {
       currentMode = readTimerModeFromEvent(ev, currentMode);
       closeSegment(atIso);
-      openSegment(currentMode === 'SETUP' ? 'SETUP' : 'RUN', atIso);
+      openSegment(currentMode === 'SETUP' ? 'SETUP' : 'RUN', atIso, ev);
       continue;
     }
     if (type === 'PAUSE') {
@@ -100,7 +117,7 @@ function buildSegmentsFromEvents(events) {
         closeSegment(atIso, stopDetails);
       } else {
         // Stop sin tramo activo previo: registra el propio stop con su detalle.
-        openSegment('STOPPED', atIso);
+        openSegment('STOPPED', atIso, ev);
         current.stop_details = stopDetails;
         closeSegment(atIso);
         continue;
@@ -167,9 +184,11 @@ function mapSegmentToRow(segment, timer, user, op, segmentIndex) {
   const isOpen = !segment.end_at;
   const status = resolveSegmentStatus(segment);
   const stopInfo = segment.stop_details || { user_finished: null, operation_total: null };
+  const startDetails = parseDetails(segment.start_event_details);
   const startedMs = new Date(segment.start_at).getTime();
   const endMs = segment.end_at ? new Date(segment.end_at).getTime() : Date.now();
   const durationMinutes = secondsToMinutes(Math.max(0, (endMs - startedMs) / 1000));
+  const warningIgnored = Boolean(startDetails && startDetails.warning_ignored === true);
 
   const plannedQty = op ? toNonNegIntOrNull(op.planned_quantity) : null;
   // Cantidad completada (total OT): snapshot del STOP si existe; si no, total actual de la OT.
@@ -202,7 +221,10 @@ function mapSegmentToRow(segment, timer, user, op, segmentIndex) {
     ended_at: segment.end_at,
     clock_status: status.label,
     clock_status_code: status.code,
-    is_open: isOpen
+    is_open: isOpen,
+    warning_ignored: warningIgnored,
+    warning_precedence: Boolean(startDetails && startDetails.precedence_warning === true),
+    warning_details: warningIgnored ? startDetails : null
   };
 }
 
@@ -272,6 +294,7 @@ async function fetchUserLogSessions({
   workOrderFilter,
   resourceFilter,
   operationFilter,
+  warningIgnoredFilter,
   sortBy,
   sortDir,
   page,
@@ -385,7 +408,11 @@ async function fetchUserLogSessions({
     const segments = buildSegmentsFromEvents(events);
     segments.forEach((segment, idx) => {
       if (!sessionOverlapsRange(segment.start_at, segment.end_at, fromYmd, toYmd)) return;
-      rows.push(mapSegmentToRow(segment, timer, timer.User, timer.WorkOrderOperation, idx));
+      const row = mapSegmentToRow(segment, timer, timer.User, timer.WorkOrderOperation, idx);
+      if (warningIgnoredFilter !== null && Boolean(row.warning_ignored) !== Boolean(warningIgnoredFilter)) {
+        return;
+      }
+      rows.push(row);
     });
   }
 

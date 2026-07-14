@@ -839,6 +839,23 @@
                       />
                     </v-col>
                     <v-col cols="12" md="2">
+                      <v-select
+                        v-model="userLogFilters.warningIgnored"
+                        :items="[
+                          { text: 'Todos', value: '' },
+                          { text: 'Con advertencia', value: 'true' },
+                          { text: 'Sin advertencia', value: 'false' }
+                        ]"
+                        item-text="text"
+                        item-value="value"
+                        label="Advertencia"
+                        dense
+                        outlined
+                        clearable
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="2">
                       <v-text-field
                         v-model.trim="userLogFilters.workOrder"
                         label="OT"
@@ -902,6 +919,11 @@
                     </template>
                     <template v-slot:item.operation_sequence="{ item }">
                       {{ item.operation_sequence != null ? item.operation_sequence : '—' }}
+                    </template>
+                    <template v-slot:item.warning_ignored="{ item }">
+                      <v-chip x-small :color="item.warning_ignored ? 'warning' : 'grey'" dark>
+                        {{ item.warning_ignored ? 'Sí' : 'No' }}
+                      </v-chip>
                     </template>
                     <template v-slot:item.planned_quantity="{ item }">
                       {{ item.planned_quantity != null ? item.planned_quantity : '—' }}
@@ -1040,6 +1062,38 @@
           <v-spacer />
           <v-btn text :disabled="setupTransitionLoading" @click="dismissSetupTransitionWithoutRun">No iniciar ahora</v-btn>
           <v-btn color="primary" :loading="setupTransitionLoading" @click="confirmStartExecutionFromSetup">Iniciar ejecución</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="previousOperationsWarningDialog" max-width="640" persistent>
+      <v-card>
+        <v-card-title class="text-h6">{{ previousOperationsWarningTitle || 'Advertencia' }}</v-card-title>
+        <v-card-text>
+          <p class="body-2 mb-3">{{ previousOperationsWarningText || 'Ojo, hay operaciones previas sin finalizar.' }}</p>
+          <v-simple-table dense class="compact-table elevation-0">
+            <thead>
+              <tr>
+                <th class="text-left">Seq</th>
+                <th class="text-left">Operación</th>
+                <th class="text-left">Recurso</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in previousOperationsWarningRows" :key="row.work_order_operation_id">
+                <td>{{ row.operation_sequence != null ? row.operation_sequence : 'â€”' }}</td>
+                <td>{{ row.operation_name || 'â€”' }}</td>
+                <td>{{ row.resource_code || 'â€”' }}</td>
+              </tr>
+            </tbody>
+          </v-simple-table>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text :disabled="previousOperationsWarningLoading" @click="closePreviousOperationsWarning">Cancelar</v-btn>
+          <v-btn color="primary" :loading="previousOperationsWarningLoading" @click="confirmPreviousOperationsWarning">
+            Continuar de todas formas
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1221,6 +1275,12 @@ export default {
       setupTransitionOpId: null,
       setupTransitionTimerId: null,
       setupTransitionLoading: false,
+      previousOperationsWarningDialog: false,
+      previousOperationsWarningTitle: '',
+      previousOperationsWarningText: '',
+      previousOperationsWarningRows: [],
+      previousOperationsWarningLoading: false,
+      previousOperationsWarningContinue: null,
       shiftSlotsDraft: [
         { sequence: 1, hhmm: '08:00', enabled: true },
         { sequence: 2, hhmm: '17:00', enabled: true },
@@ -1284,7 +1344,8 @@ export default {
         userId: null,
         workOrder: '',
         operation: '',
-        resourceCode: ''
+        resourceCode: '',
+        warningIgnored: ''
       },
       userLogTableOptions: {
         page: 1,
@@ -1298,6 +1359,7 @@ export default {
         { text: 'OT', value: 'ot_number', sortable: true },
         { text: 'Secuencia', value: 'operation_sequence', sortable: true, align: 'end' },
         { text: 'Recurso', value: 'resource_code', sortable: true },
+        { text: 'Advertencia', value: 'warning_ignored', sortable: false },
         { text: 'Cant. planificada', value: 'planned_quantity', sortable: true, align: 'end' },
         { text: 'Cant. completada', value: 'completed_quantity', sortable: true, align: 'end' },
         { text: 'Cant. finalizada usuario', value: 'user_finished_quantity', sortable: true, align: 'end' },
@@ -2194,6 +2256,39 @@ export default {
       if (timerId) body.timer_id = timerId
       return body
     },
+    isPreviousOperationsWarningError(error) {
+      const d = error && error.response && error.response.data ? error.response.data : null
+      return d && String(d.code || '').trim() === 'PREVIOUS_OPERATIONS_PENDING'
+    },
+    openPreviousOperationsWarningDialog({ title, text, rows, onContinue }) {
+      this.previousOperationsWarningTitle = title || 'Advertencia'
+      this.previousOperationsWarningText = text || 'Ojo, hay operaciones previas sin finalizar.'
+      this.previousOperationsWarningRows = Array.isArray(rows) ? rows : []
+      this.previousOperationsWarningContinue = typeof onContinue === 'function' ? onContinue : null
+      this.previousOperationsWarningDialog = true
+      this.previousOperationsWarningLoading = false
+    },
+    closePreviousOperationsWarning() {
+      if (this.previousOperationsWarningLoading) return
+      this.previousOperationsWarningDialog = false
+      this.previousOperationsWarningTitle = ''
+      this.previousOperationsWarningText = ''
+      this.previousOperationsWarningRows = []
+      this.previousOperationsWarningContinue = null
+    },
+    async confirmPreviousOperationsWarning() {
+      if (!this.previousOperationsWarningContinue || this.previousOperationsWarningLoading) return
+      this.previousOperationsWarningLoading = true
+      try {
+        const started = await this.previousOperationsWarningContinue()
+        if (started) this.closePreviousOperationsWarning()
+      } catch (error) {
+        const msg = this.timerTerminalLockMessage(error, 'No fue posible continuar con la operación.')
+        alert(msg)
+      } finally {
+        this.previousOperationsWarningLoading = false
+      }
+    },
     parallelActiveHint(item) {
       const n = Number(item && item.parallel_active_count)
       if (!Number.isFinite(n) || n <= 0) return ''
@@ -2241,6 +2336,9 @@ export default {
       const code = d && d.code ? String(d.code).trim() : ''
       const message = d && (d.message || d.text) ? String(d.message || d.text) : ''
       const normalized = message.toLowerCase()
+      if (code === 'PREVIOUS_OPERATIONS_PENDING') {
+        return message || fallback
+      }
       if (
         code === 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER' ||
         code === 'TIMER_LOCKED_BY_OTHER_TERMINAL'
@@ -2291,21 +2389,16 @@ export default {
         return
       }
 
-      const mode = lane === 'setup' ? 'SETUP' : 'RUN'
       const status = this.extractStatus(item)
-      const timerBody = () => ({ ...this.timerRequestBody(item), timer_mode: mode })
       try {
         if (action === 'play') {
-          if (status === 'ACTIVE') {
-            await axios.post('/chronometer/timers/mode', timerBody())
-          } else if (status === 'PAUSED') {
-            await axios.post('/chronometer/timers/mode', timerBody())
-            await axios.post('/chronometer/timers/resume', timerBody())
-          } else {
-            await axios.post('/chronometer/timers/start', timerBody())
-          }
+          const started = await this.performPlayAction(lane, item)
+          if (!started) return
         } else if (action === 'pause') {
+          const mode = lane === 'setup' ? 'SETUP' : 'RUN'
+          const timerBody = () => ({ ...this.timerRequestBody(item), timer_mode: mode })
           if (status === 'PAUSED') {
+            await axios.post('/chronometer/timers/mode', timerBody())
             await axios.post('/chronometer/timers/resume', timerBody())
           } else {
             await axios.post('/chronometer/timers/pause', this.timerRequestBody(item))
@@ -2316,6 +2409,38 @@ export default {
       } catch (error) {
         const msg = this.timerTerminalLockMessage(error, `No fue posible ejecutar ${action}.`)
         alert(msg)
+      }
+    },
+    async performPlayAction(lane, item, ignorePreviousOperationsWarning = false) {
+      const mode = lane === 'setup' ? 'SETUP' : 'RUN'
+      const status = this.extractStatus(item)
+      const timerBody = { ...this.timerRequestBody(item), timer_mode: mode }
+      if (ignorePreviousOperationsWarning) {
+        timerBody.ignore_previous_operations_warning = true
+      }
+
+      try {
+        if (status === 'ACTIVE') {
+          await axios.post('/chronometer/timers/mode', timerBody)
+        } else if (status === 'PAUSED') {
+          await axios.post('/chronometer/timers/mode', timerBody)
+          await axios.post('/chronometer/timers/resume', timerBody)
+        } else {
+          await axios.post('/chronometer/timers/start', timerBody)
+        }
+        return true
+      } catch (error) {
+        if (this.isPreviousOperationsWarningError(error)) {
+          const d = error.response && error.response.data ? error.response.data : {}
+          this.openPreviousOperationsWarningDialog({
+            title: 'Operaciones previas pendientes',
+            text: d.message || 'Ojo, hay operaciones previas sin finalizar.',
+            rows: Array.isArray(d.pending_previous_operations) ? d.pending_previous_operations : [],
+            onContinue: () => this.performPlayAction(lane, item, true)
+          })
+          return false
+        }
+        throw error
       }
     },
     async loadAdminCatalogs() {
@@ -2636,6 +2761,7 @@ export default {
       this.userLogFilters.workOrder = ''
       this.userLogFilters.operation = ''
       this.userLogFilters.resourceCode = ''
+      this.userLogFilters.warningIgnored = ''
       this.userLogTableOptions = {
         page: 1,
         itemsPerPage: 50,
@@ -2674,6 +2800,7 @@ export default {
         if (this.userLogFilters.workOrder) params.work_order = this.userLogFilters.workOrder
         if (this.userLogFilters.operation) params.operation = this.userLogFilters.operation
         if (this.userLogFilters.resourceCode) params.resource_code = this.userLogFilters.resourceCode
+        if (this.userLogFilters.warningIgnored !== '') params.warning_ignored = this.userLogFilters.warningIgnored
         const res = await axios.get('/chronometer/user-log', { params, timeout: NETSUITE_AXIOS_TIMEOUT_MS })
         const data = res.data || {}
         this.userLogRows = Array.isArray(data.rows) ? data.rows : []
@@ -2911,6 +3038,36 @@ export default {
       this.setupTransitionOpId = null
       this.setupTransitionTimerId = null
     },
+    async performSetupTransition(ignorePreviousOperationsWarning = false) {
+      if (!this.setupTransitionOpId) return false
+      const body = {
+        work_order_operation_id: this.setupTransitionOpId,
+        timer_id: this.setupTransitionTimerId || undefined,
+        start_run: true
+      }
+      if (ignorePreviousOperationsWarning) {
+        body.ignore_previous_operations_warning = true
+      }
+      try {
+        await axios.post('/chronometer/timers/setup-transition', body)
+        await this.refreshBoard()
+        await this.refreshOperationsForCurrentRole()
+        this.closeSetupTransitionDialog()
+        return true
+      } catch (error) {
+        if (this.isPreviousOperationsWarningError(error)) {
+          const d = error.response && error.response.data ? error.response.data : {}
+          this.openPreviousOperationsWarningDialog({
+            title: 'Operaciones previas pendientes',
+            text: d.message || 'Ojo, hay operaciones previas sin finalizar.',
+            rows: Array.isArray(d.pending_previous_operations) ? d.pending_previous_operations : [],
+            onContinue: () => this.performSetupTransition(true)
+          })
+          return false
+        }
+        throw error
+      }
+    },
     async dismissSetupTransitionWithoutRun() {
       if (!this.setupTransitionOpId || this.setupTransitionLoading) return
       this.setupTransitionLoading = true
@@ -2931,17 +3088,11 @@ export default {
       }
     },
     async confirmStartExecutionFromSetup() {
-      if (!this.setupTransitionOpId) return
+      if (!this.setupTransitionOpId || this.setupTransitionLoading) return
       this.setupTransitionLoading = true
       try {
-        await axios.post('/chronometer/timers/setup-transition', {
-          work_order_operation_id: this.setupTransitionOpId,
-          timer_id: this.setupTransitionTimerId || undefined,
-          start_run: true
-        })
-        await this.refreshBoard()
-        await this.refreshOperationsForCurrentRole()
-        this.closeSetupTransitionDialog()
+        const started = await this.performSetupTransition(false)
+        if (!started) return
       } catch (error) {
         const msg = this.timerTerminalLockMessage(error, 'No fue posible detener montaje e iniciar ejecución.')
         alert(msg)

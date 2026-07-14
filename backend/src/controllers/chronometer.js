@@ -17,6 +17,7 @@ const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
 const { enqueueFromStop } = require('../services/netsuiteSyncQueue');
 const TIMER_LOCKED_SAME_STATION_CODE = 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER';
 const TIMER_TERMINAL_LOCK_CODE = 'TIMER_LOCKED_BY_OTHER_TERMINAL';
+const PREVIOUS_OPERATIONS_PENDING_CODE = 'PREVIOUS_OPERATIONS_PENDING';
 
 function formatUserDisplayName(user) {
   if (!user) return 'otro usuario';
@@ -128,10 +129,81 @@ function timerIdentityWhere(operationId, userId, stationKey) {
   };
 }
 
+function parseBooleanFlag(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
 async function findTimerByIdentity(operationId, userId, stationKey) {
   const where = timerIdentityWhere(operationId, userId, stationKey);
   if (!where) return null;
   return OperationTimer.findOne({ where });
+}
+
+function serializePreviousOperationWarning(operation, pendingOperations) {
+  return {
+    code: PREVIOUS_OPERATIONS_PENDING_CODE,
+    message: 'Ojo, hay operaciones previas sin finalizar. ¿Deseas continuar?',
+    selected_operation_sequence: operation ? Number(operation.operation_sequence) : null,
+    pending_previous_operations: (pendingOperations || []).map((op) => ({
+      work_order_operation_id: op.work_order_operation_id,
+      operation_sequence: op.operation_sequence,
+      operation_name: op.operation_name,
+      resource_code: op.resource_code || null
+    }))
+  };
+}
+
+async function findPendingPreviousOperations(operation) {
+  const otNumber = operation && operation.ot_number ? String(operation.ot_number).trim() : '';
+  const operationSequence = Number(operation && operation.operation_sequence);
+  if (!otNumber || !Number.isInteger(operationSequence)) return [];
+
+  const previousOperations = await WorkOrderOperation.findAll({
+    where: {
+      ot_number: otNumber,
+      operation_sequence: { [Op.lt]: operationSequence }
+    },
+    attributes: ['id', 'operation_sequence', 'operation_name', 'resource_code'],
+    order: [['operation_sequence', 'ASC']]
+  });
+
+  if (!previousOperations.length) return [];
+
+  const previousOperationIds = previousOperations.map((op) => op.id);
+  const pendingTimers = await OperationTimer.findAll({
+    where: {
+      work_order_operation_id: { [Op.in]: previousOperationIds },
+      status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
+    },
+    attributes: ['work_order_operation_id', 'status', 'timer_mode', 'current_user_id', 'station_id']
+  });
+
+  if (!pendingTimers.length) return [];
+
+  const timerByOperationId = new Map();
+  for (const timer of pendingTimers) {
+    const opId = Number(timer.work_order_operation_id);
+    if (!timerByOperationId.has(opId)) timerByOperationId.set(opId, timer);
+  }
+
+  return previousOperations
+    .filter((op) => timerByOperationId.has(op.id))
+    .map((op) => {
+      const timer = timerByOperationId.get(op.id);
+      return {
+        work_order_operation_id: op.id,
+        operation_sequence: op.operation_sequence,
+        operation_name: op.operation_name,
+        resource_code: op.resource_code || null,
+        status: timer.status,
+        timer_mode: normalizeTimerMode(timer.timer_mode, 'RUN'),
+        current_user_id: timer.current_user_id,
+        station_id: timer.station_id || ''
+      };
+    });
 }
 
 async function resolveTimerFromRequest(req, res, { required = true } = {}) {
@@ -861,6 +933,10 @@ exports.getUserLog = async function getUserLog(req, res) {
   const workOrderFilter = String(req.query.work_order || req.query.ot || '').trim();
   const resourceFilter = String(req.query.resource_code || req.query.resource || '').trim();
   const operationFilter = String(req.query.operation || '').trim();
+  const warningIgnoredRaw = String(req.query.warning_ignored || req.query.warningIgnored || '').trim();
+  const warningIgnoredFilter = warningIgnoredRaw
+    ? (parseBooleanFlag(warningIgnoredRaw) ? true : false)
+    : null;
 
   const sortWhitelist = [
     'started_at',
@@ -886,6 +962,7 @@ exports.getUserLog = async function getUserLog(req, res) {
     workOrderFilter,
     resourceFilter,
     operationFilter,
+    warningIgnoredFilter,
     sortBy,
     sortDir,
     page,
@@ -918,13 +995,29 @@ exports.startTimer = async function startTimer(req, res) {
   const operation = await WorkOrderOperation.findByPk(work_order_operation_id);
   if (!operation) return res.status(404).json({ message: 'Operation not found.' });
 
-  const currentUser = await getCurrentUser(req);
+    const currentUser = await getCurrentUser(req);
   if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
 
   const userArea = resolveEffectiveUserArea(currentUser);
   if (userArea === 'UNKNOWN') return res.status(400).json({ message: 'User area is not configured.' });
   if (userArea !== 'BOTH' && userArea !== operation.area) {
     return res.status(403).json({ message: 'Operation is outside your area.' });
+  }
+
+  const ignorePreviousOperationsWarning = parseBooleanFlag(
+    req.body && req.body.ignore_previous_operations_warning
+  );
+  const pendingPreviousOperations = await findPendingPreviousOperations(operation);
+  if (pendingPreviousOperations.length > 0 && !ignorePreviousOperationsWarning) {
+    return res.status(409).json(serializePreviousOperationWarning(operation, pendingPreviousOperations));
+  }
+
+  let warningDetails = null;
+  if (ignorePreviousOperationsWarning) {
+    const freshPendingPreviousOperations = await findPendingPreviousOperations(operation);
+    if (freshPendingPreviousOperations.length > 0) {
+      warningDetails = freshPendingPreviousOperations;
+    }
   }
 
   const stationKey = stationIdForStorage(req);
@@ -964,7 +1057,16 @@ exports.startTimer = async function startTimer(req, res) {
     operationId: operation.id,
     userId: currentUser.id,
     eventType: 'START',
-    details: { resource_code: operation.resource_code, timer_mode: timer.timer_mode }
+    details: warningDetails && warningDetails.length
+      ? {
+          resource_code: operation.resource_code,
+          timer_mode: timer.timer_mode,
+          precedence_warning: true,
+          warning_ignored: true,
+          selected_operation_sequence: operation.operation_sequence,
+          pending_previous_operations: warningDetails
+        }
+      : { resource_code: operation.resource_code, timer_mode: timer.timer_mode }
   });
 
   return res.status(200).json(timer);
@@ -1100,6 +1202,9 @@ exports.stopTimer = async function stopTimer(req, res) {
  */
 exports.transitionSetupStop = async function transitionSetupStop(req, res) {
   const startRun = req.body && (req.body.start_run === true || req.body.start_run === 'true');
+  const ignorePreviousOperationsWarning = parseBooleanFlag(
+    req.body && req.body.ignore_previous_operations_warning
+  );
 
   const timer = await resolveTimerFromRequest(req, res);
   if (!timer) return;
@@ -1113,6 +1218,21 @@ exports.transitionSetupStop = async function transitionSetupStop(req, res) {
 
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return res.status(401).json({ message: 'Invalid user.' });
+
+  const operation = await WorkOrderOperation.findByPk(timer.work_order_operation_id);
+  if (!operation) return res.status(404).json({ message: 'Operation not found.' });
+
+  const pendingPreviousOperations = await findPendingPreviousOperations(operation);
+  if (startRun && pendingPreviousOperations.length > 0 && !ignorePreviousOperationsWarning) {
+    return res.status(409).json(serializePreviousOperationWarning(operation, pendingPreviousOperations));
+  }
+  let warningDetails = null;
+  if (startRun && ignorePreviousOperationsWarning) {
+    const freshPendingPreviousOperations = await findPendingPreviousOperations(operation);
+    if (freshPendingPreviousOperations.length > 0) {
+      warningDetails = freshPendingPreviousOperations;
+    }
+  }
 
   if (timer.status === 'ACTIVE') {
     timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
@@ -1148,9 +1268,6 @@ exports.transitionSetupStop = async function transitionSetupStop(req, res) {
     return res.status(200).json(timer);
   }
 
-  const operation = await WorkOrderOperation.findByPk(timer.work_order_operation_id);
-  if (!operation) return res.status(404).json({ message: 'Operation not found.' });
-
   const userArea = resolveEffectiveUserArea(currentUser);
   if (userArea === 'UNKNOWN') return res.status(400).json({ message: 'User area is not configured.' });
   if (userArea !== 'BOTH' && userArea !== operation.area) {
@@ -1169,11 +1286,21 @@ exports.transitionSetupStop = async function transitionSetupStop(req, res) {
     operationId: operation.id,
     userId: currentUser.id,
     eventType: 'START',
-    details: {
-      resource_code: operation.resource_code,
-      timer_mode: 'RUN',
-      setup_transition: 'stop_and_run'
-    }
+    details: warningDetails && warningDetails.length
+      ? {
+          resource_code: operation.resource_code,
+          timer_mode: 'RUN',
+          setup_transition: 'stop_and_run',
+          precedence_warning: true,
+          warning_ignored: true,
+          selected_operation_sequence: operation.operation_sequence,
+          pending_previous_operations: warningDetails
+        }
+      : {
+          resource_code: operation.resource_code,
+          timer_mode: 'RUN',
+          setup_transition: 'stop_and_run'
+        }
   });
 
   if (config.V4_SYNC_ENABLED) {
