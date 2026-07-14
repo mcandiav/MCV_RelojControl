@@ -170,40 +170,12 @@ async function findPendingPreviousOperations(operation) {
     order: [['operation_sequence', 'ASC']]
   });
 
-  if (!previousOperations.length) return [];
-
-  const previousOperationIds = previousOperations.map((op) => op.id);
-  const pendingTimers = await OperationTimer.findAll({
-    where: {
-      work_order_operation_id: { [Op.in]: previousOperationIds },
-      status: { [Op.in]: ['ACTIVE', 'PAUSED'] }
-    },
-    attributes: ['work_order_operation_id', 'status', 'timer_mode', 'current_user_id', 'station_id']
-  });
-
-  if (!pendingTimers.length) return [];
-
-  const timerByOperationId = new Map();
-  for (const timer of pendingTimers) {
-    const opId = Number(timer.work_order_operation_id);
-    if (!timerByOperationId.has(opId)) timerByOperationId.set(opId, timer);
-  }
-
-  return previousOperations
-    .filter((op) => timerByOperationId.has(op.id))
-    .map((op) => {
-      const timer = timerByOperationId.get(op.id);
-      return {
-        work_order_operation_id: op.id,
-        operation_sequence: op.operation_sequence,
-        operation_name: op.operation_name,
-        resource_code: op.resource_code || null,
-        status: timer.status,
-        timer_mode: normalizeTimerMode(timer.timer_mode, 'RUN'),
-        current_user_id: timer.current_user_id,
-        station_id: timer.station_id || ''
-      };
-    });
+  return previousOperations.map((op) => ({
+    work_order_operation_id: op.id,
+    operation_sequence: op.operation_sequence,
+    operation_name: op.operation_name,
+    resource_code: op.resource_code || null
+  }));
 }
 
 async function resolveTimerFromRequest(req, res, { required = true } = {}) {
