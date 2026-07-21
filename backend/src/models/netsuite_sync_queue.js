@@ -11,8 +11,8 @@ const NetsuiteSyncQueue = sequelize.define(
     },
     idempotency_key: {
       type: DataTypes.STRING(160),
-      allowNull: false,
-      unique: true
+      allowNull: false
+      // Unique vía índice nombrado (evita que sync(alter) acumule UNIQUE anónimos).
     },
     work_order_operation_id: {
       type: DataTypes.INTEGER,
@@ -68,11 +68,12 @@ const NetsuiteSyncQueue = sequelize.define(
     tableName: 'netsuite_sync_queue',
     modelName: 'NetsuiteSyncQueue',
     indexes: [
-      { fields: ['status'] },
-      { fields: ['work_order_operation_id'] },
-      { fields: ['trigger_event_id'] },
-      { fields: ['next_retry_at'] },
-      { fields: ['locked_at'] }
+      { unique: true, name: 'uk_netsuite_sync_queue_idempotency', fields: ['idempotency_key'] },
+      { name: 'idx_netsuite_sync_queue_status', fields: ['status'] },
+      { name: 'idx_netsuite_sync_queue_operation', fields: ['work_order_operation_id'] },
+      { name: 'idx_netsuite_sync_queue_trigger_event', fields: ['trigger_event_id'] },
+      { name: 'idx_netsuite_sync_queue_next_retry', fields: ['next_retry_at'] },
+      { name: 'idx_netsuite_sync_queue_locked_at', fields: ['locked_at'] }
     ]
   }
 );

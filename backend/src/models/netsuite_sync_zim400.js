@@ -5,7 +5,8 @@ const NetsuiteSyncZim400 = sequelize.define(
   'NetsuiteSyncZim400',
   {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-    stop_event_id: { type: DataTypes.INTEGER, allowNull: false, unique: true },
+    // Unique vía índice nombrado (evita acumulación por sync(alter)).
+    stop_event_id: { type: DataTypes.INTEGER, allowNull: false },
     queue_item_id: { type: DataTypes.INTEGER, allowNull: true },
     work_order_operation_id: { type: DataTypes.INTEGER, allowNull: false },
     ot_number: { type: DataTypes.STRING(64), allowNull: true },
@@ -29,10 +30,11 @@ const NetsuiteSyncZim400 = sequelize.define(
     tableName: 'netsuite_sync_zim400',
     modelName: 'NetsuiteSyncZim400',
     indexes: [
-      { fields: ['status'] },
-      { fields: ['queue_item_id'] },
-      { fields: ['work_order_operation_id'] },
-      { fields: ['sent_at'] }
+      { unique: true, name: 'uk_netsuite_sync_zim400_stop_event', fields: ['stop_event_id'] },
+      { name: 'idx_netsuite_sync_zim400_status', fields: ['status'] },
+      { name: 'idx_netsuite_sync_zim400_queue_item', fields: ['queue_item_id'] },
+      { name: 'idx_netsuite_sync_zim400_operation', fields: ['work_order_operation_id'] },
+      { name: 'idx_netsuite_sync_zim400_sent_at', fields: ['sent_at'] }
     ]
   }
 );

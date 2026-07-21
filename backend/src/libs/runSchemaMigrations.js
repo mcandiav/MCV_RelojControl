@@ -137,7 +137,156 @@ async function runV5MultioperarioTimerMigration(sequelize) {
   }
 }
 
+/**
+ * MariaDB/MySQL: Sequelize sync({ alter: true }) con unique en columna puede
+ * agregar un índice UNIQUE nuevo en cada arranque (CHANGE ... UNIQUE) sin
+ * borrar el anterior. Al llegar a 64 índices: ER_TOO_MANY_KEYS.
+ * Deja un solo índice por firma (unique + columnas); prioriza keepName.
+ */
+async function tableExists(sequelize, tableName) {
+  const dialect = sequelize.getDialect();
+  if (dialect !== 'mariadb' && dialect !== 'mysql') return false;
+  const [rows] = await sequelize.query(
+    `
+    SELECT 1 AS found
+    FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = :tableName
+    LIMIT 1
+    `,
+    { replacements: { tableName } }
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+function groupIndexesBySignature(indexRows) {
+  const byKey = new Map();
+  for (const row of indexRows || []) {
+    const key = row.Key_name;
+    if (!key || key === 'PRIMARY') continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(row);
+  }
+
+  const bySignature = new Map();
+  for (const [key, cols] of byKey.entries()) {
+    const sorted = [...cols].sort((a, b) => Number(a.Seq_in_index) - Number(b.Seq_in_index));
+    const isUnique = sorted.length > 0 && Number(sorted[0].Non_unique) === 0;
+    const colSig = sorted.map((c) => String(c.Column_name)).join(',');
+    const signature = `${isUnique ? 'U' : 'N'}:${colSig}`;
+    if (!bySignature.has(signature)) bySignature.set(signature, []);
+    bySignature.get(signature).push(key);
+  }
+  return bySignature;
+}
+
+async function dedupeIndexesOnTable(sequelize, tableName, preferredNames = []) {
+  const dialect = sequelize.getDialect();
+  if (dialect !== 'mariadb' && dialect !== 'mysql') return;
+  if (!(await tableExists(sequelize, tableName))) return;
+
+  const [rows] = await sequelize.query(`SHOW INDEX FROM \`${tableName}\``);
+  const bySignature = groupIndexesBySignature(rows);
+  const preferred = new Set(preferredNames.filter(Boolean));
+  let dropped = 0;
+
+  for (const [, names] of bySignature.entries()) {
+    if (names.length <= 1) continue;
+    const keep = names.find((n) => preferred.has(n)) || names[0];
+    for (const name of names) {
+      if (name === keep) continue;
+      console.log(`[migrate] ${tableName}: eliminando índice duplicado ${name} (se conserva ${keep})`);
+      await sequelize.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${name}\``);
+      dropped += 1;
+    }
+  }
+
+  if (dropped > 0) {
+    console.log(`[migrate] ${tableName}: se eliminaron ${dropped} índice(s) duplicado(s).`);
+  }
+}
+
+async function consolidateUniqueColumnIndex(sequelize, tableName, preferredName, columnName) {
+  const dialect = sequelize.getDialect();
+  if (dialect !== 'mariadb' && dialect !== 'mysql') return;
+  if (!(await tableExists(sequelize, tableName))) return;
+
+  const [rows] = await sequelize.query(`SHOW INDEX FROM \`${tableName}\``);
+  const byKey = new Map();
+  for (const row of rows || []) {
+    const key = row.Key_name;
+    if (!key || key === 'PRIMARY') continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(row);
+  }
+
+  const uniqueOnColumn = [];
+  for (const [key, cols] of byKey.entries()) {
+    const sorted = [...cols].sort((a, b) => Number(a.Seq_in_index) - Number(b.Seq_in_index));
+    const isUnique = sorted.length > 0 && Number(sorted[0].Non_unique) === 0;
+    const onlyCol =
+      sorted.length === 1 && String(sorted[0].Column_name) === columnName;
+    if (isUnique && onlyCol) uniqueOnColumn.push(key);
+  }
+
+  if (uniqueOnColumn.includes(preferredName)) {
+    for (const name of uniqueOnColumn) {
+      if (name === preferredName) continue;
+      console.log(
+        `[migrate] ${tableName}: eliminando UNIQUE duplicado ${name} (se conserva ${preferredName})`
+      );
+      await sequelize.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${name}\``);
+    }
+    return;
+  }
+
+  for (const name of uniqueOnColumn) {
+    console.log(
+      `[migrate] ${tableName}: eliminando UNIQUE legacy ${name} para consolidar en ${preferredName}`
+    );
+    await sequelize.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${name}\``);
+  }
+
+  console.log(`[migrate] ${tableName}: creando índice único ${preferredName}...`);
+  await sequelize.query(
+    `CREATE UNIQUE INDEX \`${preferredName}\` ON \`${tableName}\` (\`${columnName}\`)`
+  );
+}
+
+async function runDedupeSequelizeAlterIndexes(sequelize) {
+  console.log('[migrate] limpiando índices duplicados por sync(alter)...');
+  // Primero colapsar UNIQUE de columnas críticas al nombre fijo del modelo.
+  await consolidateUniqueColumnIndex(
+    sequelize,
+    'netsuite_sync_queue',
+    'uk_netsuite_sync_queue_idempotency',
+    'idempotency_key'
+  );
+  await consolidateUniqueColumnIndex(
+    sequelize,
+    'netsuite_sync_zim400',
+    'uk_netsuite_sync_zim400_stop_event',
+    'stop_event_id'
+  );
+  // Luego cualquier otro índice duplicado (status, FKs, etc.).
+  await dedupeIndexesOnTable(sequelize, 'netsuite_sync_queue', [
+    'uk_netsuite_sync_queue_idempotency',
+    'idx_netsuite_sync_queue_status',
+    'idx_netsuite_sync_queue_operation',
+    'idx_netsuite_sync_queue_trigger_event',
+    'idx_netsuite_sync_queue_next_retry',
+    'idx_netsuite_sync_queue_locked_at'
+  ]);
+  await dedupeIndexesOnTable(sequelize, 'netsuite_sync_zim400', [
+    'uk_netsuite_sync_zim400_stop_event',
+    'idx_netsuite_sync_zim400_status',
+    'idx_netsuite_sync_zim400_queue_item',
+    'idx_netsuite_sync_zim400_operation',
+    'idx_netsuite_sync_zim400_sent_at'
+  ]);
+}
+
 async function runSchemaMigrations(sequelize) {
+  await runDedupeSequelizeAlterIndexes(sequelize);
   await runV5MultioperarioTimerMigration(sequelize);
 }
 
