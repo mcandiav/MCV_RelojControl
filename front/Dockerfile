@@ -1,7 +1,8 @@
 # EasyPanel: contexto = carpeta front/, Dockerfile = front/Dockerfile.
 # EasyPanel inyecta build-arg GIT_SHA con el commit desplegado.
 
-FROM node:16-alpine AS build
+# ECR Public evita rate limit 429 de Docker Hub (sin credenciales).
+FROM public.ecr.aws/docker/library/node:16-alpine AS build
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
@@ -43,7 +44,7 @@ RUN set -e; \
     echo ">>> npm run build VUE_APP_BUILD_VERSION=${BUILD_VERSION}"; \
     npm run build
 
-FROM nginx:alpine
+FROM public.ecr.aws/docker/library/nginx:alpine
 
 ARG VUE_APP_API_URL
 ARG VUE_APP_BUILD_PATH=default

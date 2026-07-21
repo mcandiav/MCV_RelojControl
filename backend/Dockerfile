@@ -1,4 +1,5 @@
-FROM node:16-alpine
+# ECR Public evita rate limit 429 de Docker Hub (sin credenciales).
+FROM public.ecr.aws/docker/library/node:16-alpine
 
 ARG GIT_SHA=unknown
 ARG GIT_BRANCH=unknown
