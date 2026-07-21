@@ -2356,8 +2356,6 @@ export default {
         return message || fallback
       }
       const isLegacyLockMessage =
-        normalized.includes('only active timers can change mode') ||
-        normalized.includes('only paused timers can be resumed') ||
         normalized.includes('cronómetro pertenece a otra terminal') ||
         normalized.includes('cronometro pertenece a otra terminal') ||
         normalized.includes('timer is already active')
@@ -2408,7 +2406,7 @@ export default {
           const mode = lane === 'setup' ? 'SETUP' : 'RUN'
           const timerBody = () => ({ ...this.timerRequestBody(item), timer_mode: mode })
           if (status === 'PAUSED') {
-            await axios.post('/chronometer/timers/mode', timerBody())
+            // /mode solo acepta ACTIVE; resume ya aplica timer_mode (SETUP|RUN).
             await axios.post('/chronometer/timers/resume', timerBody())
           } else {
             await axios.post('/chronometer/timers/pause', this.timerRequestBody(item))
@@ -2433,7 +2431,7 @@ export default {
         if (status === 'ACTIVE') {
           await axios.post('/chronometer/timers/mode', timerBody)
         } else if (status === 'PAUSED') {
-          await axios.post('/chronometer/timers/mode', timerBody)
+          // /mode solo acepta ACTIVE; resume ya aplica timer_mode (SETUP|RUN).
           await axios.post('/chronometer/timers/resume', timerBody)
         } else {
           await axios.post('/chronometer/timers/start', timerBody)
