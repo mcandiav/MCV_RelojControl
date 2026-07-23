@@ -2870,32 +2870,40 @@ export default {
 
         const wb = new ExcelJS.Workbook()
         const ws = wb.addWorksheet('Log Usuarios')
+        // Mismas columnas y formatos que la tabla en pantalla (userLogHeaders).
         ws.addRow([
-          'Fecha/hora',
-          'Usuario',
-          'Accion',
-          'Evento tecnico',
+          'Nombre',
           'OT',
-          'Operacion',
+          'Secuencia',
           'Recurso',
-          'Modo',
-          'Timer ID',
-          'Advertencia ignorada',
-          'Detalle tecnico'
+          'Advertencia',
+          'Cant. planificada',
+          'Cant. completada',
+          'Cant. finalizada usuario',
+          'Tiempo montaje (min)',
+          'Tiempo ejecución (min)',
+          'Tiempo en pausa (min)',
+          'Reloj inicio',
+          'Reloj fin',
+          'Reloj estado'
         ])
+        const cellOrBlank = (v) => (v != null && v !== '' ? v : '')
         for (const row of rows) {
           ws.addRow([
-            row.started_at ? this.formatReportDate(row.started_at) : '',
             row.user_name || '',
-            row.clock_status || '',
-            row.clock_status_code || '',
             row.ot_number || '',
-            row.operation_sequence != null ? row.operation_sequence : '',
+            cellOrBlank(row.operation_sequence),
             row.resource_code || '',
-            row.clock_status_code === 'SETUP' ? 'MONTAJE' : (row.clock_status_code === 'RUN' ? 'EJECUCIÓN' : ''),
-            row.operation_timer_id != null ? row.operation_timer_id : '',
             row.warning_ignored ? 'Sí' : 'No',
-            row.warning_ignored && row.warning_details ? JSON.stringify(row.warning_details) : ''
+            cellOrBlank(row.planned_quantity),
+            cellOrBlank(row.completed_quantity),
+            cellOrBlank(row.user_finished_quantity),
+            cellOrBlank(row.setup_minutes),
+            cellOrBlank(row.run_minutes),
+            cellOrBlank(row.pause_minutes),
+            row.started_at ? this.formatReportDate(row.started_at) : '',
+            row.ended_at ? this.formatReportDate(row.ended_at) : 'Sin registro',
+            row.clock_status || ''
           ])
         }
 
