@@ -7,7 +7,7 @@ export function getAppReleaseLabel() {
   return APP_RELEASE
 }
 
-/** Sello de versión visible: release de producto + hash de build (ej. V5.3.1@1841fce). */
+/** Sello de versión visible: release de producto + hash de build (ej. V6.0.0@abc1234). */
 export function getReleaseStamp() {
   return `${APP_RELEASE}@${getUiVersion()}`
 }

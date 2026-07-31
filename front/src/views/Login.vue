@@ -309,7 +309,7 @@ export default {
 }
 
 .login-hero-title {
-  color: #fff;
+  color: var(--atonce-blue, #08a8e0);
   letter-spacing: 0.04em;
 }
 
@@ -319,7 +319,7 @@ export default {
   width: 72px;
   height: 3px;
   margin: 12px auto 0;
-  background: linear-gradient(90deg, #ff6b35, #ffa726);
+  background: linear-gradient(90deg, var(--atonce-blue, #08a8e0), var(--atonce-cyan, #10f8f8));
   border-radius: 2px;
 }
 
@@ -334,7 +334,7 @@ export default {
 .login-product-label {
   font-size: 1rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--atonce-blue, #08a8e0);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -344,9 +344,9 @@ export default {
   color: #fff;
   padding: 5px 14px;
   border-radius: 8px;
-  background: rgba(255, 107, 53, 0.22);
-  border: 1px solid rgba(255, 167, 38, 0.55);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  background: rgba(8, 168, 224, 0.28);
+  border: 1px solid rgba(16, 248, 248, 0.55);
+  box-shadow: 0 2px 10px rgba(8, 168, 224, 0.35);
 }
 
 .login-corner-logo {

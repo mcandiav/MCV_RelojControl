@@ -79,7 +79,7 @@
               <div class="chrono-brand">
                 <img :src="logoSrc" alt="Logo Cronometro" class="chrono-logo" />
                 <div class="chrono-brand-text">
-                  <div class="chrono-title primary--text">
+                  <div class="chrono-title">
                     <span class="chrono-product-label">CRONÓMETRO</span>
                     <span class="release-stamp chrono-release-stamp">{{ releaseStamp }}</span>
                   </div>
@@ -3626,20 +3626,22 @@ export default {
   font-size: 1.25rem;
   font-weight: 800;
   letter-spacing: 0.03em;
+  color: var(--atonce-blue, #08a8e0);
 }
 
 .chrono-product-label {
   line-height: 1.2;
+  color: var(--atonce-blue, #08a8e0);
 }
 
 .chrono-release-stamp.release-stamp {
   font-size: 1.05rem;
   padding: 3px 10px;
   border-radius: 8px;
-  background: #e3f2fd;
-  color: #0d47a1;
-  border: 1px solid #90caf9;
-  box-shadow: 0 1px 4px rgba(13, 71, 161, 0.12);
+  background: rgba(8, 168, 224, 0.12);
+  color: var(--atonce-blue-deep, #0077a8);
+  border: 1px solid rgba(8, 168, 224, 0.45);
+  box-shadow: 0 1px 4px rgba(8, 168, 224, 0.18);
 }
 
 .chrono-subtitle {

@@ -5,6 +5,10 @@
   --bignotti-warm-border: #e0ddd8;
   /* V5: celeste claro (V4 usaba #f5f5f5 gris casi blanco) */
   --bignotti-light-bg: #e3f2fd;
+  /* Azul identidad visual At-Once (logo at-once-logo.png) */
+  --atonce-blue: #08a8e0;
+  --atonce-blue-deep: #0077a8;
+  --atonce-cyan: #10f8f8;
 }
 
 .theme--light.v-application {
