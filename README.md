@@ -72,7 +72,8 @@ Siguiente accion recomendada: crear primero una revision de gobernanza documenta
 
 ## Estado actual final
 
-- Proyecto en baseline funcional `V3`.
+- Producto visible vigente: **V6.0.0** (`front/src/constants/appRelease.js` / `front/scripts/app-release.js`).
+- Rama de trabajo sandbox: `V5` (incluye el fix de delta por STOP publicado como V6.0.0).
 - Debe existir una sola version cerrada del programa para sandbox y productivo.
 - Las diferencias entre SB y PROD deben vivir solo en configuracion de entorno, secretos, dominios, credenciales y parametros operativos.
 - Fuente OUT oficial: Saved Search `customsearch_mcv_cronometro_out`.
@@ -80,6 +81,7 @@ Siguiente accion recomendada: crear primero una revision de gobernanza documenta
 - Modo real vigente de push: backend `NETSUITE_PUSH_MODE=restlet` + NetSuite `import_ot_via_restlet`.
 - Staging record vigente: `customrecord_3k_importacion_ot`.
 - Procesamiento posterior vigente: Map/Reduce `customscript_3k_procesar_imp_ot_mr`, deployment `customdeploy_3k_procesar_imp_ot_mr_prog`.
+- **Regla IN por STOP (cerrada 2026-07-31):** cada STOP publica solo el tramo desde el STOP anterior del mismo `operation_timer_id`; TEK suma cada aporte. No reenviar acumulado historico del timer.
 - Fuente de verdad operativa: NetSuite.
 - Flujo operativo final base: `Stop -> Push -> Gate Import OT -> Pull(+replace)`.
 - Cierre programado operational: debe usar un unico `sync_run` con `STOP_BATCH -> PUSH_IMPORT_OT -> PUSH_ZIM400 -> GATE_IMPORT_OT -> GATE_ZIM400_STATUS -> PULL`, evitando cualquier doble publicacion de actuals hacia `import_ot`.
@@ -1071,6 +1073,76 @@ Reglas vigentes (flujo V4/V5 por STOP + RESTlet/`import_ot`):
 - Tras el push, Cronometro debe hacer pull para recalzar estado local (`last_pushed_*` / actuals).
 
 Nota historica (batch previo a V4): existia documentacion de "valor vigente, no delta" y envio por batch agrupado por OT. Eso **no** aplica al worker V4 por `stop_event_id`.
+
+### Incidente y correccion V6.0.0: reenvio acumulado por STOP
+
+**Estado:** corregido y validado en Sandbox (2026-07-31). Producto visible `V6.0.0`.
+
+#### Sintoma
+
+Al cerrar ejecucion despues de una transicion montaje → ejecucion (o tras varios STOP del mismo cronometro), Cronometro reenviaba a `import_ot` el acumulado historico del timer. NetSuite TEK suma cada `Importacion OT`, por lo que setup y/o run quedaban sobreestimados.
+
+Caso productivo de referencia: **OT18905** / tarea NetSuite **118493** (DENTADO). Ejemplo:
+
+| Evento | Setup enviado | Run enviado |
+|---|---:|---:|
+| Transicion setup → run | 29 | 0 |
+| STOP final de run | **29** (repetido) | 15 |
+
+TEK aplico setup 29+29. El mismo patron se vio en run con forma escalera (p. ej. 142 → 312 → 420) cuando habia varios STOP del mismo timer.
+
+#### Causa
+
+En `backend/src/services/netsuite/buildActualsPayload.js`, la funcion `buildActualsPayloadForStopEvent()` tomaba **todos** los `timer_events` del mismo `operation_timer_id` con `event_at <= STOP actual` y llamaba `computeTotalsFromEvents()` sobre ese historial completo. Las variables `pendingSetupDelta` / `pendingRunDelta` no eran un delta real de tramo.
+
+`transitionSetupStop()` reutiliza el mismo `OperationTimer` al pasar de SETUP a RUN: eso es correcto. El defecto era solo el builder del payload.
+
+Nota: un “bajon” de minutos entre jornadas (p. ej. 60 → 19) no indica reset de NetSuite; suele ser otro `operation_timer_id` (otro ciclo/usuario/estacion). El bug duplicaba **dentro** del mismo timer.
+
+#### Correccion
+
+1. `selectEventsForStopSegment()` en `backend/src/lib/timerEventTotals.js`: selecciona eventos del mismo timer entre el STOP anterior (exclusivo) y el STOP actual (inclusivo); si no hay STOP anterior, desde el inicio del timer.
+2. `buildActualsPayloadForStopEvent()` usa esa ventana antes de `computeTotalsFromEvents()`.
+3. ZIM400 hereda el `actual_run_time` del mismo `pushItem` (minutos del tramo).
+4. Prueba local: `backend/scripts/test-stop-segment-delta.js`.
+
+#### Resultado esperado por STOP
+
+| Escenario | STOP 1 | STOP 2 | STOP 3 |
+|---|---|---|---|
+| Setup luego run (29 + 15) | setup 29 / run 0 | setup **0** / run 15 | — |
+| Varios STOP solo run (100, 50, 20) | run 100 | run 50 | run 20 |
+| Setup + run + setup + run | 30/0 · 0/100 · 20/0 · 0/50 | | |
+
+#### Validacion Sandbox (OT16955 seq 5 — CONTROL DIMENSIONAL, tarea 107295)
+
+Antes del fix (`[V5@…]` previo):
+
+| Import OT | JSON | Efecto TEK |
+|---|---|---|
+| 124002 | setup 3 / run 0 | |
+| 124102 | setup **3** / run 2 | tarea: setup **6**, run **2** |
+
+Despues del fix (build `4c99098` / `[V5@f4f5e7e]`):
+
+| Import OT | JSON | ROT | Efecto TEK |
+|---|---|---|---|
+| 124202 | setup **2** / run 0 | ROT79875 | |
+| 124302 | setup **0** / run **2** | ROT79876 | tarea: setup **8** (+2), run **4** (+2) |
+
+Conclusión: TEK suma solo el tramo nuevo; el setup ya no se reenvia en el segundo STOP.
+
+#### Commits de referencia
+
+| Asunto EasyPanel | Contenido |
+|---|---|
+| `[V5@f4f5e7e] fix: delta por STOP evita reenvio acumulado de setup/run a import_ot` | Correccion del builder |
+| `[V5@c4508e2] feat: V6.0.0 titulos azul At-Once tras fix delta STOP` | Version visible V6.0.0 + azul `#08a8e0` en titulos |
+
+#### Fuera de alcance de esta correccion
+
+- No recalcular ni corregir automaticamente los actuals ya aplicados en NetSuite PROD (p. ej. tarea 118493). Eso requiere decision operativa aparte.
+- No cambia RESTlet, Saved Search OUT ni esquema MariaDB.
 
 ### Modo vigente: RESTlet + Importacion OT
 
@@ -2146,6 +2218,10 @@ Vigente. No mantener forks funcionales por entorno.
 ### Carga automatica de usuarios
 
 Prohibida en SB y PROD operativo. `usuarios.txt`, `load_users()` o cualquier mecanismo equivalente no debe crear usuarios al arrancar la API. Los usuarios deben ser exclusivamente los administrados desde Cronometro.
+
+### Delta por STOP hacia import_ot / TEK (V6.0.0)
+
+Decision cerrada 2026-07-31. Cada STOP del worker V4/V5 debe publicar unicamente el tramo de tiempo generado desde el STOP anterior del mismo `operation_timer_id` (setup y run). TEK/`Importacion OT` suma cada aporte; reenviar el acumulado historico del timer duplica tiempos. Validado en SB con OT16955 seq 5 (payloads 2/0 luego 0/2; TEK +2/+2). Correccion en `selectEventsForStopSegment` + `buildActualsPayloadForStopEvent`. La correccion de actuals ya aplicados en PROD (p. ej. OT18905 / tarea 118493) queda fuera de alcance y requiere decision operativa aparte.
 
 ## Documentos sueltos consolidados en este README
 
