@@ -27,6 +27,63 @@ function readTimerModeFromEvent(event, fallback = 'RUN') {
   }
 }
 
+function isStopLikeEventType(eventType) {
+  const t = String(eventType || '').toUpperCase();
+  return t === 'STOP' || t === 'AUTO_STOP_SHIFT_END';
+}
+
+function eventAtMs(event) {
+  const at = new Date(event && event.event_at).getTime();
+  return Number.isFinite(at) ? at : NaN;
+}
+
+/**
+ * Eventos del mismo operation_timer_id que pertenecen al tramo del STOP actual.
+ * - Sin STOP anterior en el timer: desde el inicio del timer hasta el STOP actual (inclusive).
+ * - Con STOP anterior: desde ese STOP (exclusivo) hasta el STOP actual (inclusive).
+ * Asi cada STOP publica solo el intervalo nuevo; TEK/import_ot suma cada aporte.
+ */
+function selectEventsForStopSegment(allEvents, stopEvent) {
+  if (!stopEvent) return [];
+  const timerId = stopEvent.operation_timer_id;
+  const stopId = Number(stopEvent.id);
+  const stopAt = eventAtMs(stopEvent);
+  if (timerId == null || timerId === '' || !Number.isInteger(stopId) || stopId <= 0 || !Number.isFinite(stopAt)) {
+    return [];
+  }
+
+  const sameTimer = (allEvents || [])
+    .filter((ev) => {
+      if (Number(ev.operation_timer_id) !== Number(timerId)) return false;
+      const at = eventAtMs(ev);
+      if (!Number.isFinite(at)) return false;
+      if (at < stopAt) return true;
+      if (at > stopAt) return false;
+      return Number(ev.id) <= stopId;
+    })
+    .slice()
+    .sort((a, b) => {
+      const da = eventAtMs(a) - eventAtMs(b);
+      if (da !== 0) return da;
+      return Number(a.id) - Number(b.id);
+    });
+
+  const priorStops = sameTimer.filter(
+    (ev) => isStopLikeEventType(ev.event_type) && Number(ev.id) !== stopId
+  );
+  const prevStop = priorStops.length ? priorStops[priorStops.length - 1] : null;
+  if (!prevStop) return sameTimer;
+
+  const prevAt = eventAtMs(prevStop);
+  const prevId = Number(prevStop.id);
+  return sameTimer.filter((ev) => {
+    const at = eventAtMs(ev);
+    if (at > prevAt) return true;
+    if (at === prevAt && Number(ev.id) > prevId) return true;
+    return false;
+  });
+}
+
 function computeTotalsFromEvents(events, options = {}) {
   const asOfRaw = options && options.asOf != null ? options.asOf : null;
   const asOfMs = asOfRaw != null ? new Date(asOfRaw).getTime() : null;
@@ -106,5 +163,7 @@ function computeTotalsFromEvents(events, options = {}) {
 module.exports = {
   getShiftDateString,
   computeTotalsFromEvents,
-  normalizeTimerMode
+  normalizeTimerMode,
+  isStopLikeEventType,
+  selectEventsForStopSegment
 };

@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const WorkOrderOperation = require('../../models/work_order_operation');
 const TimerEvent = require('../../models/timer_event');
-const { computeTotalsFromEvents } = require('../../lib/timerEventTotals');
+const { computeTotalsFromEvents, selectEventsForStopSegment } = require('../../lib/timerEventTotals');
 const { getNetsuiteConfig } = require('./config');
 
 /**
@@ -139,8 +139,11 @@ async function buildActualsPayload({ operationIds } = {}) {
 }
 
 /**
- * V5: delta de import_ot por STOP concreto (mismo criterio que ZIM400 por cronómetro).
- * Evita pushSkipped cuando otro operario ya procesó su cola y last_pushed refleja el acumulado global.
+ * V4/V5: delta de import_ot por STOP concreto (mismo criterio que ZIM400 por cronometro).
+ * Cada STOP publica solo el tramo desde el STOP anterior del mismo operation_timer_id
+ * (o desde el inicio del timer si es el primer STOP). TEK suma cada aporte; no reenviar
+ * el acumulado historico del timer.
+ * Evita pushSkipped cuando otro operario ya proceso su cola y last_pushed refleja el acumulado global.
  */
 async function buildActualsPayloadForStopEvent({ operationId, stopEventId } = {}) {
   const secondsToRoundedMinutes = (seconds) => {
@@ -178,14 +181,13 @@ async function buildActualsPayloadForStopEvent({ operationId, stopEventId } = {}
 
   const allEvents = await TimerEvent.findAll({
     where: { work_order_operation_id: opId },
-    order: [['event_at', 'ASC']]
+    order: [
+      ['event_at', 'ASC'],
+      ['id', 'ASC']
+    ]
   });
 
-  const timerEvents = allEvents.filter((ev) => {
-    if (Number(ev.operation_timer_id) !== Number(timerId)) return false;
-    const at = new Date(ev.event_at).getTime();
-    return Number.isFinite(at) && at <= stopAtMs;
-  });
+  const timerEvents = selectEventsForStopSegment(allEvents, stopEvent);
 
   const totals = computeTotalsFromEvents(timerEvents);
   const pendingRunDelta = secondsToRoundedMinutes(totals.total_run_seconds || 0);

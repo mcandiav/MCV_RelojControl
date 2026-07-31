@@ -8,6 +8,9 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-07-31 | Se corrige el payload V4/V5 por STOP: cada STOP publica solo el tramo desde el STOP anterior del mismo `operation_timer_id` (setup/run), no el acumulado historico del timer. | En SB/PROD TEK suma cada `Importacion OT`; reenviar setup/run acumulado duplicaba tiempos (caso OT18905 y reproduccion OT16955 seq 5: setup 3+3=6). | `buildActualsPayloadForStopEvent` + `selectEventsForStopSegment`; ZIM400 hereda el delta correcto via `pushItem`. Sin cambio de contrato RESTlet ni de campos NetSuite. | Integracion NetSuite IN, Flujo V4, timer_events, Poblar Reporte ZIM400 |
+| 2026-07-31 | Se evalua la incorporacion de Spec Kit como capa de gobernanza y se define no instalarlo directamente sobre la raiz del proyecto. | Cronometro ya esta avanzado, sin `.specify`, con `specs/` manual y reglas de agente que requieren saneamiento previo. | No afecta NetSuite ni runtime; evita introducir estructura generada antes de ordenar la documentacion y reglas vigentes. | Gobernanza documental / Spec Kit |
+| 2026-07-14 | Se cierra la definicion de la advertencia por operaciones anteriores pendientes: regla de finalizacion, alcance completo de la OT, contrato HTTP `409 PREVIOUS_OPERATIONS_PENDING`, override auditado y prioridad de entrega. | Reducir errores de seleccion de operacion y eliminar ambiguedades para la implementacion. | Validacion obligatoria en backend sobre todas las secuencias anteriores de la OT, confirmacion en frontend y trazabilidad en `timer_events.details_json`. Sin tabla nueva ni cambios en NetSuite, Saved Search OUT, RESTlet, import_ot, ZIM400 o payload de sincronizacion. | Requisitos funcionales de UI y operacion, Auditoria operativa, timer_events |
 | 2026-06-26 | Se define nuevo reporte administrativo `Log Usuarios` V5.3 con filtros visibles, ordenamiento por columnas y paginacion para auditar acciones Play, Pause y Stop sobre OT's. | Dar trazabilidad operativa por usuario, OT, operacion, fecha/hora y accion ejecutada en el cronometro. | Cambio en frontend y backend de Cronometro; usa `timer_events` como fuente interna. Sin impacto en NetSuite, Saved Search OUT, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Reportes administrativos, Auditoria operativa, timer_events |
 | 2026-06-26 | Se define mejora visual no disruptiva para multiplicar el tiempo planificado visible de EJECUCION por la cantidad de entrada. | Evitar que la barra y el color del cronometro indiquen sobretiempo prematuro cuando NetSuite entrega `runRate` como tiempo por unidad y la OT tiene cantidad a fabricar mayor que 1. | Cambio solo de presentacion en frontend: no modifica NetSuite, Saved Search OUT, backend, base de datos, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Requisitos funcionales de UI y operacion, Tablero operativo V3, Integracion NetSuite OUT |
 | 2026-06-23 | Se elimina el bloqueo cronometrico por recurso compartido (V5.1): varios operarios pueden cronometrar OT distintas sobre el mismo `resource_code` en paralelo. | En planta el mismo centro de trabajo NetSuite (ej. ES411) puede tener varias OT en curso; el bloqueo por recurso impedia cronometrar OT18584/2 mientras otro operario tenia ACTIVE otra OT en ES411. | La unicidad operativa queda solo en `work_order_operation_id + current_user_id + station_id`. Se elimina validacion `lockTimer` por `resource_code` en start/resume/transicion montaje. No cambia contrato NetSuite ni envio por STOP. | Requerimiento V5.1, chronometer.js, mensajes operativos |
@@ -39,6 +42,32 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 | 2026-03-31 | Se consolida el flujo operativo oficial Stop -> Push -> Pull(+replace). | Alinear operacion real con documentacion. | Define el orden recomendado. | Sincronizacion operativa |
 | 2026-03-28 | Se cambia fuente OUT oficial de Dataset a Saved Search. | Dataset no reproducia correctamente la granularidad requerida. | Extraccion NetSuite -> Cronometro queda alineada con 1 operacion logica = 1 fila. | Integracion NetSuite OUT |
 | 2026-03-25 | Se corrige contrato de retorno hacia NetSuite a 3 datos reales por operacion. | Evitar simplificacion incorrecta de un tiempo consolidado unico. | Define correctamente el push funcional hacia NetSuite. | Regla de negocio clave |
+
+## Evaluacion arquitectonica: Spec Kit
+
+Spec Kit no queda incorporado directamente en la raiz de Cronometro en esta etapa.
+
+Criterio vigente:
+
+1. Cronometro es una aplicacion productiva/operativa ya avanzada, con arquitectura, QA, reglas de agente y documentacion tecnica existentes.
+2. La instalacion directa de Spec Kit agregaria `.specify`, plantillas, workflows y skills generadas que pueden convivir tecnicamente con la app, pero aumentan el ruido documental si no se ordena antes la gobernanza actual.
+3. La carpeta `specs/` ya existe como practica documental manual, por lo que no debe asumirse que Spec Kit es la fuente oficial hasta hacer una migracion controlada.
+4. Antes de cualquier instalacion se debe sanear la capa de agentes: `AGENTS.md`, `.cursor/rules/`, ramas reales de trabajo, versionado y reglas de deploy deben quedar consistentes con Cronometro.
+5. Si se decide probar Spec Kit, debe hacerse en rama o copia experimental, con comparacion posterior contra este README, QA y reglas vigentes. Solo despues de esa validacion se podra declarar como herramienta oficial del proyecto.
+
+Decision actual: usar Spec Kit solo como evaluacion experimental futura, no como cambio inmediato sobre la linea principal de Cronometro.
+
+Impacto por area:
+
+| Area | Impacto |
+|---|---|
+| NetSuite | Ninguno directo. No cambia Saved Search, RESTlet, Import OT ni ZIM400. |
+| Configuracion | Ninguno directo. No requiere cambios en NetSuite ni EasyPanel. |
+| Desarrollo | Potencial beneficio futuro para ordenar nuevas mejoras, pero riesgo de friccion si se instala antes de sanear reglas y documentacion. |
+| Operacion | Ninguno directo para operarios. La app sigue funcionando igual. |
+| Documentacion | Alto impacto potencial; por eso la adopcion debe ser controlada y documentada. |
+
+Siguiente accion recomendada: crear primero una revision de gobernanza documental de agentes para Cronometro y corregir inconsistencias visibles antes de evaluar una instalacion experimental de Spec Kit.
 
 ## Estado actual final
 
@@ -319,6 +348,168 @@ Criterio de aceptacion:
 5. El pull desde NetSuite no cambia.
 6. ZIM400 e `import_ot` no cambian.
 7. La mejora puede revertirse solo en frontend sin afectar datos historicos ni integraciones.
+
+### Advertencia por operaciones anteriores pendientes
+
+Al presionar **Montar** o **Ejecutar**, el sistema debe comprobar si la misma OT contiene operaciones con `operation_sequence` menor que la operacion seleccionada y que todavia no esten finalizadas.
+
+La validacion debe ejecutarse en backend usando `work_order_operations` y el estado operativo local vigente. El frontend no debe decidir por si solo si existen pendientes, porque la advertencia y su auditoria deben conservarse aunque cambie la interfaz.
+
+#### Regla cerrada de operacion finalizada
+
+Para esta validacion, una operacion anterior se considera **pendiente** cuando cumple cualquiera de estas condiciones:
+
+1. Tiene al menos un cronometro `ACTIVE` o `PAUSED`.
+2. Su `source_status` continua indicando operacion abierta o WIP.
+3. `completed_quantity < planned_quantity`, cuando ambas cantidades existen, son numericas y la cantidad planificada es mayor que cero.
+
+Una operacion anterior se considera **finalizada** solamente cuando:
+
+1. No tiene cronometros `ACTIVE` ni `PAUSED`; y
+2. NetSuite ya no la informa como WIP despues del ultimo pull, **o** `completed_quantity >= planned_quantity` cuando ambas cantidades existen y son validas.
+
+Prioridad de interpretacion:
+
+```text
+ACTIVE o PAUSED siempre significa pendiente.
+Luego se evalua source_status.
+completed_quantity sirve como evidencia adicional de termino.
+```
+
+No se debe considerar finalizada una operacion solo porque tenga cantidad completa si todavia existe un cronometro activo o pausado sobre ella.
+
+#### Ambito de validacion
+
+El backend debe revisar **todas las operaciones con secuencia menor de la misma OT**, aunque pertenezcan a otra area `ME` o `ES` distinta del usuario que intenta iniciar.
+
+La secuencia productiva pertenece a la OT completa. Limitar la validacion al area del usuario permitiria iniciar una operacion posterior mientras una operacion anterior de otra area continua pendiente.
+
+Cada operacion pendiente devuelta al frontend debe incluir, cuando este disponible:
+
+- `work_order_operation_id`;
+- `operation_sequence`;
+- `operation_name`;
+- `resource_code`;
+- `area`;
+- estado funcional detectado.
+
+#### Contrato HTTP
+
+Cuando existan operaciones anteriores pendientes y la solicitud no incluya override confirmado, el backend debe responder:
+
+```text
+HTTP 409 Conflict
+code: PREVIOUS_OPERATIONS_PENDING
+```
+
+Contrato minimo esperado:
+
+```json
+{
+  "code": "PREVIOUS_OPERATIONS_PENDING",
+  "message": "Existen operaciones anteriores pendientes para esta OT.",
+  "pending_operations": [
+    {
+      "work_order_operation_id": 123,
+      "operation_sequence": 10,
+      "operation_name": "CORTE",
+      "resource_code": "ES101",
+      "area": "ES",
+      "status": "ACTIVE"
+    }
+  ]
+}
+```
+
+El reintento confirmado debe incluir un campo explicito:
+
+```json
+{
+  "work_order_operation_id": 456,
+  "timer_mode": "RUN",
+  "ignore_previous_operations_warning": true
+}
+```
+
+El backend debe volver a consultar el estado real antes de aceptar el override. No debe confiar en el listado de pendientes enviado por el frontend.
+
+#### Prioridad de entrega
+
+Primera entrega obligatoria:
+
+1. Validacion de operaciones anteriores.
+2. Warning con opcion de cancelar o continuar.
+3. Reintento confirmado mediante override explicito.
+4. Registro de `warning_ignored=true` en `timer_events.details_json`.
+
+El filtro especifico `warning_ignored` dentro de `Log Usuarios` queda fuera de esta primera entrega y se implementara como mejora posterior. Los datos deben quedar almacenados desde la primera version para no perder historial.
+
+Flujo esperado:
+
+```text
+Usuario intenta iniciar operacion N
+  -> backend busca operaciones anteriores de la misma OT
+  -> si no existen pendientes: inicia normalmente
+  -> si existen pendientes y no hay confirmacion: responde warning con listado
+  -> frontend muestra popup no bloqueante
+  -> usuario cancela o confirma "Continuar de todas formas"
+  -> si confirma: frontend repite la solicitud con override explicito
+  -> backend vuelve a validar, inicia y registra la excepcion en el evento START
+```
+
+Decision de persistencia:
+
+No crear una tabla nueva en la primera version. Reutilizar `timer_events`, porque el modelo vigente ya registra el usuario, la operacion, la fecha/hora y dispone de `details_json`.
+
+Cuando el usuario ignore la advertencia, el evento `START` debe guardar como minimo:
+
+```json
+{
+  "resource_code": "ES411",
+  "timer_mode": "RUN",
+  "precedence_warning": true,
+  "warning_ignored": true,
+  "selected_operation_sequence": 30,
+  "pending_previous_operations": [
+    {
+      "work_order_operation_id": 123,
+      "operation_sequence": 10,
+      "operation_name": "CORTE",
+      "status": "PENDING"
+    },
+    {
+      "work_order_operation_id": 124,
+      "operation_sequence": 20,
+      "operation_name": "ARMADO",
+      "status": "ACTIVE"
+    }
+  ]
+}
+```
+
+Reglas obligatorias para Programador:
+
+1. La deteccion de pendientes debe ocurrir en backend dentro del flujo de `startTimer` y en cualquier transicion que inicie EJECUCION automaticamente.
+2. El backend debe responder `HTTP 409 Conflict` con el codigo funcional estable `PREVIOUS_OPERATIONS_PENDING` y el listado de operaciones pendientes.
+3. La primera solicitud no debe iniciar el cronometro cuando existan pendientes.
+4. Solo una segunda solicitud con confirmacion explicita, por ejemplo `ignore_previous_operations_warning=true`, puede continuar.
+5. Antes de aceptar el override, el backend debe volver a consultar las operaciones pendientes; no debe confiar en el listado enviado por frontend.
+6. Al continuar, la excepcion debe guardarse dentro del mismo evento `START` mediante `details_json`.
+7. El usuario que ignoro la advertencia queda identificado por `timer_events.user_id`; la terminal queda trazada mediante el `OperationTimer.station_id` asociado.
+8. El snapshot debe incluir las operaciones que seguian pendientes en el momento real del inicio.
+9. Cancelar el popup no debe crear timer ni evento.
+10. Esta mejora no debe bloquear permanentemente la operacion ni modificar NetSuite.
+11. La primera entrega solo debe persistir `warning_ignored=true`; el filtro especifico en `Log Usuarios` queda como mejora posterior.
+12. No agregar un nuevo `event_type` para esta primera version; mantener `START` y distinguir la excepcion mediante `details_json`, evitando migracion de esquema y cambios en los calculos de tiempo.
+
+Criterios de aceptacion:
+
+1. Al intentar iniciar operacion 3 con operaciones 1 o 2 pendientes, aparece el warning antes del inicio.
+2. Al cancelar, no se inicia cronometro y no se registra `START`.
+3. Al continuar, el cronometro inicia normalmente.
+4. El evento `START` conserva usuario, OT/operacion, fecha/hora y snapshot de las operaciones pendientes ignoradas.
+5. Si las operaciones anteriores dejan de estar pendientes antes de confirmar, el backend inicia sin marcar una advertencia ignorada falsa.
+6. La mejora no crea registros ni campos en NetSuite y no cambia los payloads actuales.
 
 ### Reporte Log Usuarios V5.3
 
@@ -869,12 +1060,16 @@ Cronometro publica tres datos reales por operacion:
 2. `actual_run_time`
 3. `completed_quantity`
 
-Reglas:
+Reglas vigentes (flujo V4/V5 por STOP + RESTlet/`import_ot`):
 
-- Se publica el valor vigente, no un delta.
-- El envio se hace por batch.
-- El retorno se agrupa por OT.
-- Despues del push, Cronometro debe hacer pull para recalzar estado local.
+- Cada STOP publica un **delta de tramo**, no el acumulado historico del timer ni el valor absoluto vigente de la tarea.
+- El tramo de un STOP es: desde el STOP anterior del mismo `operation_timer_id` (exclusivo) hasta el STOP actual (inclusivo). Si es el primer STOP del timer, desde el primer START hasta ese STOP.
+- NetSuite TEK/`Importacion OT` **suma** cada aporte; reenviar acumulados duplica setup y/o run.
+- La cantidad enviada en un STOP es la del evento (`details_json.completed_quantity`), no un recalculo del historial.
+- ZIM400 usa el mismo `actual_run_time` del item de push (minutos del tramo).
+- Tras el push, Cronometro debe hacer pull para recalzar estado local (`last_pushed_*` / actuals).
+
+Nota historica (batch previo a V4): existia documentacion de "valor vigente, no delta" y envio por batch agrupado por OT. Eso **no** aplica al worker V4 por `stop_event_id`.
 
 ### Modo vigente: RESTlet + Importacion OT
 
