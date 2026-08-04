@@ -160,6 +160,63 @@ function asNullableInt(value) {
   return Math.trunc(n);
 }
 
+function formatPayloadSummary({ setup, run, qty } = {}) {
+  return `setup=${asNonNegativeInt(setup)} run=${asNonNegativeInt(run)} qty=${asNonNegativeInt(qty)}`;
+}
+
+function normalizeEmployeeId(value) {
+  if (value == null || value === '') return null;
+  const asInt = asNullableInt(value);
+  if (asInt != null) return String(asInt);
+  const raw = String(value).trim();
+  return raw || null;
+}
+
+/** Actor del STOP (usuario Cronometro + emp NS) para Log NetSuite / ZIM400. */
+async function resolvePushActorFromStopEventId(stopEventId) {
+  const evId = Number(stopEventId);
+  if (!Number.isInteger(evId) || evId <= 0) {
+    return { user_id: null, username: null, netsuite_employee_id: null, stop_event_id: null };
+  }
+  const ev = await TimerEvent.findByPk(evId, { attributes: ['id', 'user_id'] });
+  if (!ev) {
+    return { user_id: null, username: null, netsuite_employee_id: null, stop_event_id: evId };
+  }
+  const uid = Number(ev.user_id);
+  if (!Number.isInteger(uid) || uid <= 0) {
+    return { user_id: null, username: null, netsuite_employee_id: null, stop_event_id: evId };
+  }
+  const user = await User.findByPk(uid, { attributes: ['id', 'username', 'netsuiteEmployeeId'] });
+  if (!user) {
+    return { user_id: uid, username: null, netsuite_employee_id: null, stop_event_id: evId };
+  }
+  return {
+    user_id: Number(user.id),
+    username: user.username ? String(user.username) : null,
+    netsuite_employee_id: normalizeEmployeeId(user.netsuiteEmployeeId),
+    stop_event_id: evId
+  };
+}
+
+function stampPushActorOnItems(items, actor, extra = {}) {
+  const list = Array.isArray(items) ? items : [];
+  if (!actor && !extra) return list;
+  for (const it of list) {
+    if (!it || typeof it !== 'object') continue;
+    if (actor) {
+      if (it.user_id == null && actor.user_id != null) it.user_id = actor.user_id;
+      if (it.username == null && actor.username != null) it.username = actor.username;
+      if (it.netsuite_employee_id == null && actor.netsuite_employee_id != null) {
+        it.netsuite_employee_id = actor.netsuite_employee_id;
+      }
+      if (it.stop_event_id == null && actor.stop_event_id != null) it.stop_event_id = actor.stop_event_id;
+    }
+    if (extra.payload_source != null && it.payload_source == null) it.payload_source = extra.payload_source;
+    if (extra.queue_id != null && it.queue_id == null) it.queue_id = extra.queue_id;
+  }
+  return list;
+}
+
 function compactPayload(obj) {
   const out = {};
   for (const [k, v] of Object.entries(obj || {})) {
@@ -597,6 +654,18 @@ async function buildPushComparisonRows(items, netsuiteResult) {
       ? String(nsResult.message || nsResult.error || nsResult.reason || '')
       : '';
 
+    const userId = it.user_id != null && Number.isInteger(Number(it.user_id)) ? Number(it.user_id) : null;
+    const username = it.username != null && String(it.username).trim() ? String(it.username).trim() : null;
+    const empId = normalizeEmployeeId(it.netsuite_employee_id);
+    const stopEventId =
+      it.stop_event_id != null && Number.isInteger(Number(it.stop_event_id)) ? Number(it.stop_event_id) : null;
+    const payloadSource = it.payload_source != null ? String(it.payload_source) : null;
+    const payloadSummary = formatPayloadSummary({
+      setup: tMonEnviado,
+      run: tEjeEnviado,
+      qty: qtyEnviado
+    });
+
     return {
       operation_id: Number(it.operation_id),
       ot_number: String(it.ot_number || ''),
@@ -606,6 +675,12 @@ async function buildPushComparisonRows(items, netsuiteResult) {
       area: op ? String(op.area || '') : '',
       netsuite_work_order_id: it.netsuite_work_order_id != null ? String(it.netsuite_work_order_id) : '',
       netsuite_operation_id: nsOpId,
+      user_id: userId,
+      username,
+      netsuite_employee_id: empId,
+      stop_event_id: stopEventId,
+      payload_source: payloadSource,
+      payload_summary: payloadSummary,
       t_mon_base: tMonBase,
       t_mon_enviado: tMonEnviado,
       t_mon_netsuite: tMonNetsuite,
@@ -795,20 +870,51 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
   let stepPull = null;
   try {
     stepPush = await createSyncStep(syncRun.id, 'PUSH_IMPORT_OT', { note: 'pushActualsBatch(buildActualsPayload())' });
-    const { items } = await buildActualsPayload();
+    const { items: rawItems } = await buildActualsPayload();
+    const items = stampPushActorOnItems(Array.isArray(rawItems) ? rawItems : [], null, {
+      payload_source: 'operational_accum'
+    });
     let netsuitePush = null;
     let markedSuccessfulPushes = 0;
     let reportRows = [];
+    let pushItems = [];
     if (items.length > 0) {
       netsuitePush = await pushActualsBatch(items);
       markedSuccessfulPushes = await markSuccessfulPushes(items, netsuitePush);
       reportRows = await buildPushComparisonRows(items, netsuitePush);
+      pushItems = items.map((it) => ({
+        operation_id: it.operation_id,
+        ot_number: it.ot_number,
+        operation_sequence: it.operation_sequence,
+        netsuite_work_order_id: it.netsuite_work_order_id,
+        netsuite_operation_id: it.netsuite_operation_id,
+        actual_setup_time: it.actual_setup_time,
+        actual_run_time: it.actual_run_time,
+        completed_quantity: it.completed_quantity,
+        absolute_actual_setup_time: it.absolute_actual_setup_time,
+        absolute_actual_run_time: it.absolute_actual_run_time,
+        absolute_completed_quantity: it.absolute_completed_quantity,
+        user_id: null,
+        username: null,
+        netsuite_employee_id: null,
+        payload_source: 'operational_accum',
+        payload_summary: formatPayloadSummary({
+          setup: it.actual_setup_time,
+          run: it.actual_run_time,
+          qty: it.completed_quantity
+        })
+      }));
     }
     await finishSyncStep(stepPush, {
       ok: true,
       result: {
         itemCount: items.length,
         markedSuccessfulPushes,
+        payload_source: 'operational_accum',
+        user_id: null,
+        username: null,
+        netsuite_employee_id: null,
+        push_items: pushItems,
         netsuite: netsuitePush,
         report_rows: reportRows
       }
@@ -1284,11 +1390,16 @@ async function runV4QueueSync(queueItem) {
       });
     } else {
       const stopEventId = Number(queueItem.trigger_event_id);
+      const actor = await resolvePushActorFromStopEventId(stopEventId);
       const built =
         Number.isInteger(stopEventId) && stopEventId > 0
           ? await buildActualsPayloadForStopEvent({ operationId, stopEventId })
           : await buildActualsPayload({ operationIds: [operationId] });
       items = Array.isArray(built && built.items) ? built.items : [];
+      stampPushActorOnItems(items, actor, {
+        queue_id: queueItem.id,
+        payload_source: 'v4_stop_queue'
+      });
       if (items.length > 0) {
         const netsuitePush = await pushActualsBatch(items);
         const marked = await markSuccessfulPushes(items, netsuitePush);
@@ -1301,20 +1412,51 @@ async function runV4QueueSync(queueItem) {
           netsuite_operation_id: it.netsuite_operation_id,
           actual_setup_time: it.actual_setup_time,
           actual_run_time: it.actual_run_time,
-          completed_quantity: it.completed_quantity
+          completed_quantity: it.completed_quantity,
+          absolute_actual_setup_time: it.absolute_actual_setup_time,
+          absolute_actual_run_time: it.absolute_actual_run_time,
+          absolute_completed_quantity: it.absolute_completed_quantity,
+          stop_event_id: it.stop_event_id != null ? it.stop_event_id : actor.stop_event_id,
+          user_id: it.user_id != null ? it.user_id : actor.user_id,
+          username: it.username != null ? it.username : actor.username,
+          netsuite_employee_id:
+            it.netsuite_employee_id != null ? it.netsuite_employee_id : actor.netsuite_employee_id,
+          queue_id: queueItem.id,
+          payload_source: 'v4_stop_queue',
+          payload_summary: formatPayloadSummary({
+            setup: it.actual_setup_time,
+            run: it.actual_run_time,
+            qty: it.completed_quantity
+          })
         }));
         await finishSyncStep(stepPush, {
           ok: true,
           result: {
             itemCount: items.length,
             markedSuccessfulPushes: marked,
+            queue_id: queueItem.id,
+            trigger_event_id: Number.isInteger(stopEventId) && stopEventId > 0 ? stopEventId : null,
+            user_id: actor.user_id,
+            username: actor.username,
+            netsuite_employee_id: actor.netsuite_employee_id,
             push_items: pushItems,
             netsuite: netsuitePush,
             report_rows: reportRows
           }
         });
       } else {
-        await finishSyncStep(stepPush, { ok: true, result: { itemCount: 0, pushSkipped: true } });
+        await finishSyncStep(stepPush, {
+          ok: true,
+          result: {
+            itemCount: 0,
+            pushSkipped: true,
+            queue_id: queueItem.id,
+            trigger_event_id: Number.isInteger(stopEventId) && stopEventId > 0 ? stopEventId : null,
+            user_id: actor.user_id,
+            username: actor.username,
+            netsuite_employee_id: actor.netsuite_employee_id
+          }
+        });
       }
     }
 
@@ -1726,6 +1868,14 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
       return '';
     }
   };
+  const parseJsonSafe = (raw) => {
+    if (raw == null || raw === '') return null;
+    try {
+      return typeof raw === 'object' ? raw : JSON.parse(String(raw));
+    } catch (_) {
+      return null;
+    }
+  };
 
   const steps = await SyncRunStep.findAll({
     where: { step_name: { [Op.in]: ['PUSH_IMPORT_OT', 'PUSH'] } },
@@ -1733,18 +1883,15 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
     limit: stepLimit
   });
 
-  const rows = [];
+  const pending = [];
+  const syncRunIds = new Set();
+
   for (const s of steps) {
     const stepTs = new Date(s.started_at);
     const stepDayKey = toDayKey(stepTs);
     if (hasFrom && stepDayKey < dateFromRaw) continue;
     if (hasTo && stepDayKey > dateToRaw) continue;
-    let parsed = null;
-    try {
-      parsed = s.result_json ? JSON.parse(String(s.result_json)) : null;
-    } catch (_) {
-      parsed = null;
-    }
+    const parsed = parseJsonSafe(s.result_json);
     const reportRows = parsed && Array.isArray(parsed.report_rows) ? parsed.report_rows : [];
     let rowsToEmit = reportRows;
     if (rowsToEmit.length === 0 && parsed && Array.isArray(parsed.push_items)) {
@@ -1757,6 +1904,9 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
         const ns = nsByOp.get(nsOpId);
         const status = ns ? (ns.success === true ? 'SUCCESS' : 'ERROR') : 'UNKNOWN';
         const message = ns ? String(ns.message || ns.error || ns.reason || '') : 'Sin resultado detallado';
+        const setup = Number(it && it.actual_setup_time) || 0;
+        const run = Number(it && it.actual_run_time) || 0;
+        const qty = Number(it && it.completed_quantity) || 0;
         return {
           operation_id: Number(it && it.operation_id),
           ot_number: String((it && it.ot_number) || ''),
@@ -1766,15 +1916,21 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
           area: '',
           netsuite_work_order_id: it && it.netsuite_work_order_id != null ? String(it.netsuite_work_order_id) : '',
           netsuite_operation_id: nsOpId,
+          user_id: it && it.user_id != null ? Number(it.user_id) : null,
+          username: it && it.username != null ? String(it.username) : null,
+          netsuite_employee_id: normalizeEmployeeId(it && it.netsuite_employee_id),
+          stop_event_id: it && it.stop_event_id != null ? Number(it.stop_event_id) : null,
+          payload_source: it && it.payload_source != null ? String(it.payload_source) : null,
+          payload_summary: it && it.payload_summary ? String(it.payload_summary) : formatPayloadSummary({ setup, run, qty }),
           t_mon_base: 0,
-          t_mon_enviado: Number(it && it.actual_setup_time) || 0,
-          t_mon_netsuite: Number(it && it.actual_setup_time) || 0,
+          t_mon_enviado: setup,
+          t_mon_netsuite: setup,
           t_eje_base: 0,
-          t_eje_enviado: Number(it && it.actual_run_time) || 0,
-          t_eje_netsuite: Number(it && it.actual_run_time) || 0,
+          t_eje_enviado: run,
+          t_eje_netsuite: run,
           qty_base: 0,
-          qty_enviado: Number(it && it.completed_quantity) || 0,
-          qty_netsuite: Number(it && it.completed_quantity) || 0,
+          qty_enviado: qty,
+          qty_netsuite: qty,
           sync_status: status,
           sync_message: message
         };
@@ -1783,16 +1939,414 @@ exports.listPushLogRows = async function listPushLogRows(req, res) {
     for (const r of rowsToEmit) {
       if (otFilter && String(r.ot_number || '').trim() !== otFilter) continue;
       if (resourceFilter && String(r.resource_code || '').trim().toUpperCase() !== resourceFilter) continue;
-      rows.push({
-        ...r,
-        sync_run_id: s.sync_run_id,
+      const syncRunId = Number(s.sync_run_id);
+      if (Number.isInteger(syncRunId) && syncRunId > 0) syncRunIds.add(syncRunId);
+      pending.push({
+        row: r,
+        sync_run_id: syncRunId,
         push_at: s.started_at,
-        step_status: s.status
+        step_status: s.status,
+        parsed
       });
-      if (rows.length >= rowLimit) break;
+      if (pending.length >= rowLimit) break;
     }
-    if (rows.length >= rowLimit) break;
+    if (pending.length >= rowLimit) break;
   }
+
+  const syncRunIdList = [...syncRunIds];
+  const syncRunById = new Map();
+  const zimCtxBySyncRunId = new Map();
+  const actorBySyncRunId = new Map();
+  const zimPayloadByOpKey = new Map();
+
+  if (syncRunIdList.length > 0) {
+    const runs = await SyncRun.findAll({
+      where: { id: { [Op.in]: syncRunIdList } },
+      attributes: ['id', 'summary_json', 'flow_type']
+    });
+    for (const run of runs) {
+      syncRunById.set(Number(run.id), {
+        summary: parseJsonSafe(run.summary_json),
+        flow_type: run.flow_type ? String(run.flow_type) : null
+      });
+    }
+
+    const zimSteps = await SyncRunStep.findAll({
+      where: {
+        sync_run_id: { [Op.in]: syncRunIdList },
+        step_name: 'PUSH_ZIM400'
+      },
+      attributes: ['sync_run_id', 'result_json']
+    });
+    for (const zs of zimSteps) {
+      const zParsed = parseJsonSafe(zs.result_json);
+      const sid = Number(zs.sync_run_id);
+      const diagnostic =
+        (zParsed && zParsed.diagnostic) ||
+        (zParsed && zParsed.result && zParsed.result.diagnostic) ||
+        null;
+      const batchResults = Array.isArray(zParsed && zParsed.results) ? zParsed.results : [];
+      zimCtxBySyncRunId.set(sid, { parsed: zParsed, diagnostic, batchResults });
+
+      const registerZimPayload = (operationId, stopEventId, payload, meta) => {
+        const opId = Number(operationId);
+        const detail = {
+          stop_event_id: stopEventId != null ? Number(stopEventId) : null,
+          request_payload: payload || null,
+          employee_mapping: meta && meta.employee_mapping ? meta.employee_mapping : null
+        };
+        if (Number.isInteger(opId) && opId > 0) {
+          zimPayloadByOpKey.set(`${sid}:${opId}`, detail);
+        }
+        zimPayloadByOpKey.set(`${sid}:*`, detail);
+      };
+
+      if (diagnostic) {
+        registerZimPayload(
+          diagnostic.work_order_operation_id,
+          diagnostic.trigger_event_id,
+          diagnostic.request_payload,
+          diagnostic.request_payload_meta
+        );
+      }
+      for (const br of batchResults) {
+        const nestedDiag =
+          (br && br.diagnostic) ||
+          (br && br.result && br.result.diagnostic) ||
+          null;
+        if (nestedDiag) {
+          registerZimPayload(
+            br.operation_id != null ? br.operation_id : nestedDiag.work_order_operation_id,
+            br.stop_event_id != null ? br.stop_event_id : nestedDiag.trigger_event_id,
+            nestedDiag.request_payload,
+            nestedDiag.request_payload_meta
+          );
+        }
+      }
+    }
+
+    const queueIds = new Set();
+    const stopEventIds = new Set();
+    for (const sid of syncRunIdList) {
+      const runInfo = syncRunById.get(sid);
+      const summary = runInfo && runInfo.summary;
+      const qFromSummary = summary && summary.queueId != null ? Number(summary.queueId) : null;
+      if (Number.isInteger(qFromSummary) && qFromSummary > 0) queueIds.add(qFromSummary);
+
+      const zimCtx = zimCtxBySyncRunId.get(sid);
+      const diag = zimCtx && zimCtx.diagnostic;
+      if (diag) {
+        const q = diag.queue_id != null ? Number(diag.queue_id) : null;
+        if (Number.isInteger(q) && q > 0) queueIds.add(q);
+        const te = diag.trigger_event_id != null ? Number(diag.trigger_event_id) : null;
+        if (Number.isInteger(te) && te > 0) stopEventIds.add(te);
+      }
+    }
+    for (const p of pending) {
+      const parsed = p.parsed;
+      if (parsed) {
+        const q = parsed.queue_id != null ? Number(parsed.queue_id) : null;
+        if (Number.isInteger(q) && q > 0) queueIds.add(q);
+        const te = parsed.trigger_event_id != null ? Number(parsed.trigger_event_id) : null;
+        if (Number.isInteger(te) && te > 0) stopEventIds.add(te);
+        if (parsed.stop_event_id != null && Number.isInteger(Number(parsed.stop_event_id))) {
+          stopEventIds.add(Number(parsed.stop_event_id));
+        }
+      }
+      if (p.row && p.row.stop_event_id != null && Number.isInteger(Number(p.row.stop_event_id))) {
+        stopEventIds.add(Number(p.row.stop_event_id));
+      }
+    }
+
+    const queueById = new Map();
+    if (queueIds.size > 0) {
+      const queues = await NetsuiteSyncQueue.findAll({
+        where: { id: { [Op.in]: [...queueIds] } },
+        attributes: ['id', 'trigger_event_id', 'work_order_operation_id', 'created_by_user_id']
+      });
+      for (const q of queues) {
+        queueById.set(Number(q.id), q);
+        const te = q.trigger_event_id != null ? Number(q.trigger_event_id) : null;
+        if (Number.isInteger(te) && te > 0) stopEventIds.add(te);
+      }
+    }
+
+    const actorByStopEventId = new Map();
+    if (stopEventIds.size > 0) {
+      const events = await TimerEvent.findAll({
+        where: { id: { [Op.in]: [...stopEventIds] } },
+        attributes: ['id', 'user_id']
+      });
+      const userIds = [
+        ...new Set(
+          events
+            .map((ev) => Number(ev.user_id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        )
+      ];
+      const userById = new Map();
+      if (userIds.length > 0) {
+        const users = await User.findAll({
+          where: { id: { [Op.in]: userIds } },
+          attributes: ['id', 'username', 'netsuiteEmployeeId']
+        });
+        for (const u of users) userById.set(Number(u.id), u);
+      }
+      for (const ev of events) {
+        const uid = Number(ev.user_id);
+        const user = Number.isInteger(uid) && uid > 0 ? userById.get(uid) : null;
+        actorByStopEventId.set(Number(ev.id), {
+          user_id: user ? Number(user.id) : Number.isInteger(uid) && uid > 0 ? uid : null,
+          username: user && user.username ? String(user.username) : null,
+          netsuite_employee_id: user ? normalizeEmployeeId(user.netsuiteEmployeeId) : null,
+          stop_event_id: Number(ev.id)
+        });
+      }
+    }
+
+    const resolveQueueIdForSyncRun = (sid, parsed) => {
+      if (parsed && parsed.queue_id != null && Number.isInteger(Number(parsed.queue_id))) {
+        return Number(parsed.queue_id);
+      }
+      const runInfo = syncRunById.get(sid);
+      if (runInfo && runInfo.summary && runInfo.summary.queueId != null) {
+        const q = Number(runInfo.summary.queueId);
+        if (Number.isInteger(q) && q > 0) return q;
+      }
+      const zimCtx = zimCtxBySyncRunId.get(sid);
+      if (zimCtx && zimCtx.diagnostic && zimCtx.diagnostic.queue_id != null) {
+        const q = Number(zimCtx.diagnostic.queue_id);
+        if (Number.isInteger(q) && q > 0) return q;
+      }
+      return null;
+    };
+
+    for (const sid of syncRunIdList) {
+      const runInfo = syncRunById.get(sid);
+      const parsedSample = pending.find((p) => p.sync_run_id === sid);
+      const qid = resolveQueueIdForSyncRun(sid, parsedSample && parsedSample.parsed);
+      let actor = null;
+      if (qid != null && queueById.has(qid)) {
+        const q = queueById.get(qid);
+        const te = q.trigger_event_id != null ? Number(q.trigger_event_id) : null;
+        if (Number.isInteger(te) && te > 0) actor = actorByStopEventId.get(te) || null;
+      }
+      if (!actor) {
+        const zimCtx = zimCtxBySyncRunId.get(sid);
+        const te =
+          zimCtx && zimCtx.diagnostic && zimCtx.diagnostic.trigger_event_id != null
+            ? Number(zimCtx.diagnostic.trigger_event_id)
+            : parsedSample && parsedSample.parsed && parsedSample.parsed.trigger_event_id != null
+              ? Number(parsedSample.parsed.trigger_event_id)
+              : null;
+        if (Number.isInteger(te) && te > 0) actor = actorByStopEventId.get(te) || null;
+      }
+      if (!actor && runInfo && runInfo.flow_type === 'v4_stop_queue') {
+        // keep null
+      }
+      actorBySyncRunId.set(sid, actor);
+    }
+
+    // Attach per-row actors from stop_event_id when present
+    for (const p of pending) {
+      p._actorByStop =
+        p.row && p.row.stop_event_id != null
+          ? actorByStopEventId.get(Number(p.row.stop_event_id)) || null
+          : null;
+      if (
+        !p._actorByStop &&
+        p.parsed &&
+        p.parsed.trigger_event_id != null &&
+        Number.isInteger(Number(p.parsed.trigger_event_id))
+      ) {
+        p._actorByStop = actorByStopEventId.get(Number(p.parsed.trigger_event_id)) || null;
+      }
+    }
+
+    // Enrich emp from zim payload if still missing
+    const stopToSyncRuns = new Map();
+    for (const sid of syncRunIdList) {
+      const zimCtx = zimCtxBySyncRunId.get(sid);
+      if (!zimCtx) continue;
+      const addStop = (te) => {
+        const id = Number(te);
+        if (!Number.isInteger(id) || id <= 0) return;
+        if (!stopToSyncRuns.has(id)) stopToSyncRuns.set(id, new Set());
+        stopToSyncRuns.get(id).add(sid);
+      };
+      if (zimCtx.diagnostic && zimCtx.diagnostic.trigger_event_id != null) {
+        addStop(zimCtx.diagnostic.trigger_event_id);
+      }
+      for (const br of zimCtx.batchResults || []) {
+        if (br && br.stop_event_id != null) addStop(br.stop_event_id);
+        const nested =
+          (br && br.diagnostic) || (br && br.result && br.result.diagnostic) || null;
+        if (nested && nested.trigger_event_id != null) addStop(nested.trigger_event_id);
+      }
+    }
+    if (stopToSyncRuns.size > 0) {
+      const zimRows = await NetsuiteSyncZim400.findAll({
+        where: { stop_event_id: { [Op.in]: [...stopToSyncRuns.keys()] } },
+        attributes: ['stop_event_id', 'work_order_operation_id', 'payload_json', 'diagnostic_json']
+      });
+      for (const zr of zimRows) {
+        const payload = parseJsonSafe(zr.payload_json);
+        const diagnostic = parseJsonSafe(zr.diagnostic_json);
+        const emp =
+          normalizeEmployeeId(payload && payload.custrecord_zim_reloj_empleado) ||
+          normalizeEmployeeId(
+            diagnostic &&
+              diagnostic.request_payload &&
+              diagnostic.request_payload.custrecord_zim_reloj_empleado
+          );
+        const mapping =
+          diagnostic &&
+          diagnostic.request_payload_meta &&
+          diagnostic.request_payload_meta.employee_mapping
+            ? diagnostic.request_payload_meta.employee_mapping
+            : null;
+        const detail = {
+          stop_event_id: Number(zr.stop_event_id),
+          request_payload: payload || (diagnostic && diagnostic.request_payload) || null,
+          employee_mapping: mapping,
+          netsuite_employee_id: emp
+        };
+        const sidSet = stopToSyncRuns.get(Number(zr.stop_event_id)) || new Set();
+        const opId = Number(zr.work_order_operation_id);
+        for (const sid of sidSet) {
+          if (Number.isInteger(opId) && opId > 0) zimPayloadByOpKey.set(`${sid}:${opId}`, detail);
+          zimPayloadByOpKey.set(`${sid}:*`, detail);
+        }
+      }
+    }
+  }
+
+  const rows = pending.map((p) => {
+    const r = p.row || {};
+    const sid = p.sync_run_id;
+    const parsed = p.parsed || {};
+    const runInfo = syncRunById.get(sid);
+    const flowType = runInfo && runInfo.flow_type ? runInfo.flow_type : null;
+    const isOperational =
+      String(r.payload_source || parsed.payload_source || '') === 'operational_accum' ||
+      (flowType && String(flowType).toLowerCase().includes('operational'));
+
+    let username =
+      r.username != null && String(r.username).trim()
+        ? String(r.username).trim()
+        : parsed.username != null && String(parsed.username).trim()
+          ? String(parsed.username).trim()
+          : null;
+    let userId =
+      r.user_id != null && Number.isInteger(Number(r.user_id))
+        ? Number(r.user_id)
+        : parsed.user_id != null && Number.isInteger(Number(parsed.user_id))
+          ? Number(parsed.user_id)
+          : null;
+    let empId =
+      normalizeEmployeeId(r.netsuite_employee_id) || normalizeEmployeeId(parsed.netsuite_employee_id);
+
+    const actor =
+      p._actorByStop ||
+      (Number.isInteger(sid) ? actorBySyncRunId.get(sid) : null) ||
+      null;
+    if (!username && actor && actor.username) username = actor.username;
+    if (userId == null && actor && actor.user_id != null) userId = actor.user_id;
+    if (!empId && actor && actor.netsuite_employee_id) empId = actor.netsuite_employee_id;
+
+    const zimDetail =
+      (Number.isInteger(Number(r.operation_id)) && zimPayloadByOpKey.get(`${sid}:${Number(r.operation_id)}`)) ||
+      zimPayloadByOpKey.get(`${sid}:*`) ||
+      null;
+    if (!empId && zimDetail && zimDetail.netsuite_employee_id) {
+      empId = normalizeEmployeeId(zimDetail.netsuite_employee_id);
+    }
+    if (!empId && zimDetail && zimDetail.request_payload) {
+      empId = normalizeEmployeeId(zimDetail.request_payload.custrecord_zim_reloj_empleado);
+    }
+    if (!username && zimDetail && zimDetail.employee_mapping && zimDetail.employee_mapping.username) {
+      username = String(zimDetail.employee_mapping.username);
+    }
+    if (userId == null && zimDetail && zimDetail.employee_mapping && zimDetail.employee_mapping.user_id != null) {
+      userId = Number(zimDetail.employee_mapping.user_id);
+    }
+
+    if (isOperational && !username) {
+      username = null;
+    }
+
+    const setup = asNonNegativeInt(r.t_mon_enviado);
+    const runMin = asNonNegativeInt(r.t_eje_enviado);
+    const qty = asNonNegativeInt(r.qty_enviado);
+    const payloadSummary =
+      r.payload_summary != null && String(r.payload_summary).trim()
+        ? String(r.payload_summary).trim()
+        : formatPayloadSummary({ setup, run: runMin, qty });
+
+    const pushItemMatch =
+      parsed && Array.isArray(parsed.push_items)
+        ? parsed.push_items.find(
+            (it) =>
+              Number(it && it.operation_id) === Number(r.operation_id) ||
+              String(it && it.netsuite_operation_id) === String(r.netsuite_operation_id)
+          )
+        : null;
+
+    const payloadDetail = {
+      import_ot: pushItemMatch
+        ? {
+            operation_id: pushItemMatch.operation_id,
+            ot_number: pushItemMatch.ot_number,
+            operation_sequence: pushItemMatch.operation_sequence,
+            netsuite_work_order_id: pushItemMatch.netsuite_work_order_id,
+            netsuite_operation_id: pushItemMatch.netsuite_operation_id,
+            actual_setup_time: pushItemMatch.actual_setup_time,
+            actual_run_time: pushItemMatch.actual_run_time,
+            completed_quantity: pushItemMatch.completed_quantity,
+            absolute_actual_setup_time: pushItemMatch.absolute_actual_setup_time,
+            absolute_actual_run_time: pushItemMatch.absolute_actual_run_time,
+            absolute_completed_quantity: pushItemMatch.absolute_completed_quantity,
+            stop_event_id: pushItemMatch.stop_event_id,
+            user_id: pushItemMatch.user_id != null ? pushItemMatch.user_id : userId,
+            username: pushItemMatch.username != null ? pushItemMatch.username : username,
+            netsuite_employee_id:
+              pushItemMatch.netsuite_employee_id != null ? pushItemMatch.netsuite_employee_id : empId
+          }
+        : {
+            operation_id: r.operation_id,
+            ot_number: r.ot_number,
+            operation_sequence: r.operation_sequence,
+            netsuite_work_order_id: r.netsuite_work_order_id,
+            netsuite_operation_id: r.netsuite_operation_id,
+            actual_setup_time: setup,
+            actual_run_time: runMin,
+            completed_quantity: qty,
+            user_id: userId,
+            username,
+            netsuite_employee_id: empId
+          },
+      zim400: zimDetail
+        ? {
+            stop_event_id: zimDetail.stop_event_id,
+            request_payload: zimDetail.request_payload,
+            employee_mapping: zimDetail.employee_mapping || null
+          }
+        : null
+    };
+
+    return {
+      ...r,
+      sync_run_id: sid,
+      push_at: p.push_at,
+      step_status: p.step_status,
+      user_id: userId,
+      username,
+      netsuite_employee_id: empId,
+      payload_source: r.payload_source || parsed.payload_source || (isOperational ? 'operational_accum' : null),
+      payload_summary: payloadSummary,
+      payload_detail: payloadDetail
+    };
+  });
 
   return res.status(200).json({ count: rows.length, rows });
 };

@@ -739,6 +739,26 @@
                     <template v-slot:item.push_at="{ item }">
                       {{ formatReportDate(item.push_at) }}
                     </template>
+                    <template v-slot:item.username="{ item }">
+                      {{ item.username || '—' }}
+                    </template>
+                    <template v-slot:item.netsuite_employee_id="{ item }">
+                      {{ item.netsuite_employee_id || '—' }}
+                    </template>
+                    <template v-slot:item.payload_summary="{ item }">
+                      <div class="d-flex align-center" style="gap:6px; max-width: 280px;">
+                        <span class="text-truncate" :title="item.payload_summary || ''">{{ item.payload_summary || '—' }}</span>
+                        <v-btn
+                          x-small
+                          text
+                          color="primary"
+                          :disabled="!item.payload_detail"
+                          @click="openNsPushPayloadDetail(item)"
+                        >
+                          Ver
+                        </v-btn>
+                      </div>
+                    </template>
                     <template v-slot:item.operation_name="{ item }">
                       {{ item.operation_name || '—' }}
                     </template>
@@ -1179,6 +1199,19 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="nsPushPayloadDialog" max-width="900">
+      <v-card>
+        <v-card-title class="text-h6">{{ nsPushPayloadTitle || 'Detalle payload NetSuite' }}</v-card-title>
+        <v-card-text>
+          <pre class="sync-json">{{ prettyJson(nsPushPayloadDetail) }}</pre>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text @click="nsPushPayloadDialog = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
@@ -1405,6 +1438,9 @@ export default {
         { text: 'Operacion', value: 'operation_name', sortable: true },
         { text: 'Recurso', value: 'resource_code', sortable: true },
         { text: 'Area', value: 'area', sortable: true },
+        { text: 'Usuario', value: 'username', sortable: true },
+        { text: 'Emp NS', value: 'netsuite_employee_id', sortable: true },
+        { text: 'Payload', value: 'payload_summary', sortable: false },
         { text: 'T_mon_base', value: 't_mon_base', sortable: true, align: 'end' },
         { text: 'T_mon_enviado', value: 't_mon_enviado', sortable: true, align: 'end' },
         { text: 'T_mon_netsuite', value: 't_mon_netsuite', sortable: true, align: 'end' },
@@ -1435,6 +1471,9 @@ export default {
       syncRunDetail: null,
       syncRunDetailSteps: [],
       selectedSyncRunStep: null,
+      nsPushPayloadDialog: false,
+      nsPushPayloadDetail: null,
+      nsPushPayloadTitle: '',
       reportTableOptions: {
         page: 1,
         itemsPerPage: 50,
@@ -3019,6 +3058,15 @@ export default {
           'error'
         )
       }
+    },
+    openNsPushPayloadDetail(item) {
+      if (!item || !item.payload_detail) return
+      const ot = item.ot_number || 'OT'
+      const seq = item.operation_sequence != null ? item.operation_sequence : '—'
+      const user = item.username || '—'
+      this.nsPushPayloadTitle = `Payload ${ot} seq ${seq} · ${user}`
+      this.nsPushPayloadDetail = item.payload_detail
+      this.nsPushPayloadDialog = true
     },
     prettyJson(value) {
       if (value == null || value === '') return '—'
