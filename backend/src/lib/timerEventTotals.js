@@ -160,10 +160,47 @@ function computeTotalsFromEvents(events, options = {}) {
   };
 }
 
+function secondsToRoundedMinutes(seconds) {
+  const s = Math.max(0, Number(seconds) || 0);
+  if (s <= 0) return 0;
+  return Math.ceil(s / 60);
+}
+
+/**
+ * Inicio/fin y minutos del tramo STOP (mismo criterio que Import OT por STOP).
+ * Evita el desfase ZIM: minutos del tramo completo vs inicio = ultimo START/RESUME.
+ */
+function resolveStopSegmentTiming(allEvents, stopEvent) {
+  const segment = selectEventsForStopSegment(allEvents, stopEvent);
+  const totals = computeTotalsFromEvents(segment);
+  const endedAt = stopEvent && stopEvent.event_at ? stopEvent.event_at : null;
+  let startedAt = null;
+  for (const ev of segment) {
+    const t = String(ev && ev.event_type ? ev.event_type : '').toUpperCase();
+    if (t === 'START' || t === 'RESUME') {
+      startedAt = ev.event_at;
+      break;
+    }
+  }
+  if (!startedAt && segment.length) startedAt = segment[0].event_at;
+
+  return {
+    startedAt,
+    endedAt,
+    runMinutes: secondsToRoundedMinutes(totals.total_run_seconds),
+    setupMinutes: secondsToRoundedMinutes(totals.total_setup_seconds),
+    activeMinutes: secondsToRoundedMinutes(totals.total_active_seconds),
+    pauseMinutes: secondsToRoundedMinutes(totals.total_pause_seconds),
+    segmentEventCount: segment.length
+  };
+}
+
 module.exports = {
   getShiftDateString,
   computeTotalsFromEvents,
   normalizeTimerMode,
   isStopLikeEventType,
-  selectEventsForStopSegment
+  selectEventsForStopSegment,
+  resolveStopSegmentTiming,
+  secondsToRoundedMinutes
 };

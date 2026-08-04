@@ -11,6 +11,7 @@ const {
   buildActualsPayload,
   buildActualsPayloadForStopEvent
 } = require('../services/netsuite/buildActualsPayload');
+const { resolveStopSegmentTiming } = require('../lib/timerEventTotals');
 const { clearTokenCache } = require('../services/netsuite/oauthToken');
 const { getNetsuiteConfig } = require('../services/netsuite/config');
 const { getNetsuiteAccessToken } = require('../services/netsuite/oauthToken');
@@ -332,17 +333,112 @@ async function fetchManufacturingTaskContextByTaskId(taskId) {
   };
 }
 
-async function inferStopStartAt(stopEvent) {
-  if (!stopEvent || !stopEvent.operation_timer_id || !stopEvent.event_at) return null;
-  const startLike = await TimerEvent.findOne({
-    where: {
-      operation_timer_id: stopEvent.operation_timer_id,
-      event_type: { [Op.in]: ['START', 'RESUME'] },
-      event_at: { [Op.lte]: stopEvent.event_at }
-    },
-    order: [['event_at', 'DESC']]
+async function inferStopSegmentStartAt(stopEvent) {
+  if (!stopEvent || !stopEvent.work_order_operation_id || !stopEvent.event_at) return null;
+  const opId = Number(stopEvent.work_order_operation_id);
+  if (!Number.isInteger(opId) || opId <= 0) return null;
+  const allEvents = await TimerEvent.findAll({
+    where: { work_order_operation_id: opId },
+    order: [
+      ['event_at', 'ASC'],
+      ['id', 'ASC']
+    ]
   });
-  return startLike ? startLike.event_at : null;
+  const timing = resolveStopSegmentTiming(allEvents, stopEvent);
+  return timing.startedAt || null;
+}
+
+/** @deprecated Usar inferStopSegmentStartAt; se mantiene por compat de tests internos. */
+async function inferStopStartAt(stopEvent) {
+  return inferStopSegmentStartAt(stopEvent);
+}
+
+async function resolveStopSegmentTimingForEvent(stopEvent) {
+  if (!stopEvent || !stopEvent.work_order_operation_id) {
+    return {
+      startedAt: null,
+      endedAt: stopEvent && stopEvent.event_at ? stopEvent.event_at : null,
+      runMinutes: 0,
+      setupMinutes: 0,
+      activeMinutes: 0,
+      pauseMinutes: 0,
+      segmentEventCount: 0
+    };
+  }
+  const opId = Number(stopEvent.work_order_operation_id);
+  const allEvents = await TimerEvent.findAll({
+    where: { work_order_operation_id: opId },
+    order: [
+      ['event_at', 'ASC'],
+      ['id', 'ASC']
+    ]
+  });
+  return resolveStopSegmentTiming(allEvents, stopEvent);
+}
+
+/**
+ * Cierre de turno: un item Import OT por operacion, sumando deltas de cada STOP/AUTO_STOP.
+ * Evita atribuir el acumulado global de la OT al ZIM/empleado de un solo tramo corto.
+ */
+async function buildActualsPayloadFromShiftStopEvents(stopEvents) {
+  const list = Array.isArray(stopEvents) ? stopEvents : [];
+  const merged = new Map();
+
+  for (const se of list) {
+    const operationId = Number(se && se.work_order_operation_id);
+    const stopEventId = Number(se && (se.stop_event_id != null ? se.stop_event_id : se.id));
+    if (!Number.isInteger(operationId) || operationId <= 0) continue;
+    if (!Number.isInteger(stopEventId) || stopEventId <= 0) continue;
+
+    const built = await buildActualsPayloadForStopEvent({ operationId, stopEventId });
+    const items = Array.isArray(built && built.items) ? built.items : [];
+    for (const it of items) {
+      const key = Number(it.operation_id);
+      const cur = merged.get(key);
+      if (!cur) {
+        merged.set(key, {
+          ...it,
+          payload_source: 'stop_segment',
+          stop_event_ids: [stopEventId]
+        });
+      } else {
+        cur.actual_setup_time = asNonNegativeInt(cur.actual_setup_time) + asNonNegativeInt(it.actual_setup_time);
+        cur.actual_run_time = asNonNegativeInt(cur.actual_run_time) + asNonNegativeInt(it.actual_run_time);
+        cur.completed_quantity =
+          asNonNegativeInt(cur.completed_quantity) + asNonNegativeInt(it.completed_quantity);
+        cur.stop_event_ids.push(stopEventId);
+      }
+    }
+  }
+
+  const opIds = [...merged.keys()];
+  if (opIds.length === 0) return { items: [] };
+
+  const ops = await WorkOrderOperation.findAll({
+    where: { id: { [Op.in]: opIds } },
+    attributes: [
+      'id',
+      'last_pushed_actual_setup_time',
+      'last_pushed_actual_run_time',
+      'last_pushed_completed_quantity'
+    ]
+  });
+  const opById = new Map(ops.map((op) => [Number(op.id), op]));
+
+  for (const [opId, it] of merged.entries()) {
+    const op = opById.get(opId);
+    const lpSetup = op
+      ? Math.max(0, Math.floor(Number(op.last_pushed_actual_setup_time) || 0))
+      : 0;
+    const lpRun = op ? Math.max(0, Math.floor(Number(op.last_pushed_actual_run_time) || 0)) : 0;
+    const lpQty = op ? Math.max(0, Math.floor(Number(op.last_pushed_completed_quantity) || 0)) : 0;
+    it.absolute_actual_setup_time = lpSetup + asNonNegativeInt(it.actual_setup_time);
+    it.absolute_actual_run_time = lpRun + asNonNegativeInt(it.actual_run_time);
+    it.absolute_completed_quantity = lpQty + asNonNegativeInt(it.completed_quantity);
+    it.payload_source = 'stop_segment';
+  }
+
+  return { items: [...merged.values()] };
 }
 
 async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
@@ -368,7 +464,10 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
   const workCenterIdRaw = taskCtx && taskCtx.manufacturingWorkCenter ? taskCtx.manufacturingWorkCenter : null;
   const workOrderId = asNullableInt(workOrderIdRaw);
   const workCenterId = asNullableInt(workCenterIdRaw);
-  const startedAt = (await inferStopStartAt(ev)) || ev.event_at;
+
+  // Misma fuente que Import OT por STOP: tramo del timer (no ultimo START, no acumulado OT).
+  const segmentTiming = await resolveStopSegmentTimingForEvent(ev);
+  const startedAt = segmentTiming.startedAt || ev.event_at;
   const endedAt = ev.event_at;
   if (startedAt && endedAt && new Date(endedAt).getTime() < new Date(startedAt).getTime()) {
     throw new Error('ZIM400 local validation failed: custrecord_zim_reloj_fin es anterior a custrecord_zim_reloj_inicio.');
@@ -383,19 +482,11 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
       'ZIM400 mapping failed: workOrder no resuelto como referencia numerica para custrecord_zim_reloj_ot.'
     );
   }
-  // ZIM400 debe usar la misma fuente de verdad que PUSH para tiempo/cantidad.
-  // Si no hay pushItem disponible, usar fallback por tramo STOP para no bloquear el envio.
-  const startedMs = startedAt ? new Date(startedAt).getTime() : NaN;
-  const endedMs = endedAt ? new Date(endedAt).getTime() : NaN;
-  const stopDurationSeconds =
-    Number.isFinite(startedMs) && Number.isFinite(endedMs)
-      ? Math.max(0, Math.floor((endedMs - startedMs) / 1000))
-      : 0;
-  const fallbackMinutesLoaded = Math.max(0, Math.ceil(stopDurationSeconds / 60));
+
   const pushRunMinutesRaw = pushItem && pushItem.actual_run_time != null ? Number(pushItem.actual_run_time) : NaN;
-  const minutesLoaded = Number.isFinite(pushRunMinutesRaw)
-    ? Math.max(0, Math.floor(pushRunMinutesRaw))
-    : fallbackMinutesLoaded;
+  const segmentRunMinutes = asNonNegativeInt(segmentTiming.runMinutes);
+  // Minutos ZIM = tramo STOP del empleado. No reutilizar delta acumulado de la OT (operational_accum).
+  const minutesLoaded = segmentRunMinutes;
   const seqForText = taskCtx && Number.isFinite(taskCtx.operationSequence) && taskCtx.operationSequence > 0
     ? taskCtx.operationSequence
     : (op.operation_sequence || '');
@@ -436,9 +527,7 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
   const qtyTerminated = Number.isFinite(pushQtyRaw)
     ? Math.max(0, Math.floor(pushQtyRaw))
     : (Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0);
-  const sourceOfTruth = (Number.isFinite(pushRunMinutesRaw) || Number.isFinite(pushQtyRaw))
-    ? 'push_item'
-    : 'stop_event_fallback';
+  const sourceOfTruth = 'stop_segment';
   const payload = compactPayload({
     custrecord_zim_reloj_ot: workOrderId,
     custrecord_zim_reloj_ot_id: workOrderId,
@@ -461,11 +550,28 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
     custrecord_zim_reloj_cantidad: Number(op.planned_quantity || 0),
     custrecord_zim_reloj_cantidad_terminada: qtyTerminated
   });
-  return { payload, stopEventId, op, taskCtx, employeeDiagnostic, sourceOfTruth };
+  return {
+    payload,
+    stopEventId,
+    op,
+    taskCtx,
+    employeeDiagnostic,
+    sourceOfTruth,
+    segmentTiming,
+    pushItemRunMinutes: Number.isFinite(pushRunMinutesRaw) ? Math.max(0, Math.floor(pushRunMinutesRaw)) : null
+  };
 }
 
 async function runZim400Publisher(queueItem, pushItem) {
-  const { payload, stopEventId, op, employeeDiagnostic, sourceOfTruth } = await buildZim400PayloadFromQueueItem(queueItem, pushItem);
+  const {
+    payload,
+    stopEventId,
+    op,
+    employeeDiagnostic,
+    sourceOfTruth,
+    segmentTiming,
+    pushItemRunMinutes
+  } = await buildZim400PayloadFromQueueItem(queueItem, pushItem);
   const [row] = await NetsuiteSyncZim400.findOrCreate({
     where: { stop_event_id: stopEventId },
     defaults: {
@@ -491,6 +597,20 @@ async function runZim400Publisher(queueItem, pushItem) {
   row.payload_json = safeJsonString(payload);
   const startedAt = new Date();
   await row.save();
+  const payloadMeta = {
+    minutes_semantics: 'stop_segment_run_minutes',
+    start_semantics: 'stop_segment_first_start_or_resume',
+    qty_semantics:
+      pushItem && pushItem.completed_quantity != null
+        ? 'from_push_completed_quantity'
+        : 'from_stop_event_fallback',
+    source_of_truth: sourceOfTruth,
+    segment_run_minutes: segmentTiming ? asNonNegativeInt(segmentTiming.runMinutes) : null,
+    segment_setup_minutes: segmentTiming ? asNonNegativeInt(segmentTiming.setupMinutes) : null,
+    segment_event_count: segmentTiming ? asNonNegativeInt(segmentTiming.segmentEventCount) : null,
+    push_item_run_minutes: pushItemRunMinutes,
+    employee_mapping: employeeDiagnostic || null
+  };
   try {
     const out = await createZim400Record(payload);
     const diagnostic = {
@@ -501,12 +621,7 @@ async function runZim400Publisher(queueItem, pushItem) {
       record_type: String(process.env.NETSUITE_ZIM400_RECORD_TYPE || 'CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL'),
       method: 'CREATE',
       request_payload: payload,
-      request_payload_meta: {
-        minutes_semantics: sourceOfTruth === 'push_item' ? 'from_push_actual_run_time' : 'duracion_tramo_stop_ceil_min_fallback',
-        qty_semantics: sourceOfTruth === 'push_item' ? 'from_push_completed_quantity' : 'from_stop_event_fallback',
-        source_of_truth: sourceOfTruth,
-        employee_mapping: employeeDiagnostic || null
-      },
+      request_payload_meta: payloadMeta,
       response: {
         ok: true,
         http_status: out.http_status || 200,
@@ -541,12 +656,7 @@ async function runZim400Publisher(queueItem, pushItem) {
       record_type: String(process.env.NETSUITE_ZIM400_RECORD_TYPE || 'CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL'),
       method: 'CREATE',
       request_payload: payload,
-      request_payload_meta: {
-        minutes_semantics: sourceOfTruth === 'push_item' ? 'from_push_actual_run_time' : 'duracion_tramo_stop_ceil_min_fallback',
-        qty_semantics: sourceOfTruth === 'push_item' ? 'from_push_completed_quantity' : 'from_stop_event_fallback',
-        source_of_truth: sourceOfTruth,
-        employee_mapping: employeeDiagnostic || null
-      },
+      request_payload_meta: payloadMeta,
       response,
       error_message: String(error && error.message ? error.message : error),
       attempt: row.attempt_count,
@@ -869,10 +979,14 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
   let stepWait = null;
   let stepPull = null;
   try {
-    stepPush = await createSyncStep(syncRun.id, 'PUSH_IMPORT_OT', { note: 'pushActualsBatch(buildActualsPayload())' });
-    const { items: rawItems } = await buildActualsPayload();
+    stepPush = await createSyncStep(syncRun.id, 'PUSH_IMPORT_OT', {
+      note: 'pushActualsBatch(buildActualsPayloadFromShiftStopEvents)'
+    });
+    const { items: rawItems } = await buildActualsPayloadFromShiftStopEvents(
+      Array.isArray(shift && shift.stopEvents) ? shift.stopEvents : []
+    );
     const items = stampPushActorOnItems(Array.isArray(rawItems) ? rawItems : [], null, {
-      payload_source: 'operational_accum'
+      payload_source: 'stop_segment'
     });
     let netsuitePush = null;
     let markedSuccessfulPushes = 0;
@@ -894,10 +1008,11 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
         absolute_actual_setup_time: it.absolute_actual_setup_time,
         absolute_actual_run_time: it.absolute_actual_run_time,
         absolute_completed_quantity: it.absolute_completed_quantity,
+        stop_event_ids: Array.isArray(it.stop_event_ids) ? it.stop_event_ids : null,
         user_id: null,
         username: null,
         netsuite_employee_id: null,
-        payload_source: 'operational_accum',
+        payload_source: 'stop_segment',
         payload_summary: formatPayloadSummary({
           setup: it.actual_setup_time,
           run: it.actual_run_time,
@@ -910,7 +1025,7 @@ async function runOperationalPushWaitPullLogged(syncRun, { delaySeconds, started
       result: {
         itemCount: items.length,
         markedSuccessfulPushes,
-        payload_source: 'operational_accum',
+        payload_source: 'stop_segment',
         user_id: null,
         username: null,
         netsuite_employee_id: null,
