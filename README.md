@@ -8,6 +8,8 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-08-04 | Se corrigen los IDs tecnicos reales de los campos aditivos ZIM400 a `custrecord_mcv_setup_time` y `custrecord_mcv_run_time` (confirmados en NetSuite SB) y se habilitan en el payload `PUSH_ZIM400`. | Los IDs propuestos `custrecord_mcv_reloj_min_setup` / `custrecord_mcv_reloj_min_run` no coinciden con los creados en NetSuite. | Solo documentacion + publisher ZIM400; `custrecord_zim_reloj_minutos_cargados`, `import_ot` y demas flujo vigente sin cambio. | Modulo Poblar Reporte ZIM400 / Mapping de campos |
+| 2026-08-04 | Se define la separacion aditiva de minutos de montaje y ejecucion en ZIM400 mediante dos campos nuevos en `ZIM - Data Reloj Control` y dos propiedades nuevas en el payload `PUSH_ZIM400`. Se prohibe modificar o reemplazar los campos, valores, contratos y flujos que ya estan operativos. | Conservar en el reporte la distincion `actual_setup_time` / `actual_run_time` que Cronometro ya conoce, sin poner en riesgo la integracion vigente. | Cambio futuro y no disruptivo: `custrecord_zim_reloj_minutos_cargados` y el resto del payload actual siguen enviandose exactamente como hoy; los historicos no se recalculan ni rellenan. | Modulo Poblar Reporte ZIM400 / Mapping de campos |
 | 2026-07-31 | Se publica producto **V6.0.0** tras validar en SB el fix de delta por STOP (Import OT 2/0 luego 0/2; TEK sumo +2 setup/+2 run sin duplicar). Titulos de login y banner `.chrono-brand` pasan al azul identidad At-Once `#08a8e0`. | Dejar visible e inequívoco en UI el corte de version del fix de reenvio acumulado. | `APP_RELEASE=V6.0.0`; estilos login/Home/brand CSS. Sin cambio NetSuite. | Versionado UI, Login, encabezado operativo |
 | 2026-07-31 | Se corrige el payload V4/V5 por STOP: cada STOP publica solo el tramo desde el STOP anterior del mismo `operation_timer_id` (setup/run), no el acumulado historico del timer. | En SB/PROD TEK suma cada `Importacion OT`; reenviar setup/run acumulado duplicaba tiempos (caso OT18905 y reproduccion OT16955 seq 5: setup 3+3=6). | `buildActualsPayloadForStopEvent` + `selectEventsForStopSegment`; ZIM400 hereda el delta correcto via `pushItem`. Sin cambio de contrato RESTlet ni de campos NetSuite. | Integracion NetSuite IN, Flujo V4, timer_events, Poblar Reporte ZIM400 |
 | 2026-07-31 | Se evalua la incorporacion de Spec Kit como capa de gobernanza y se define no instalarlo directamente sobre la raiz del proyecto. | Cronometro ya esta avanzado, sin `.specify`, con `specs/` manual y reglas de agente que requieren saneamiento previo. | No afecta NetSuite ni runtime; evita introducir estructura generada antes de ordenar la documentacion y reglas vigentes. | Gobernanza documental / Spec Kit |
@@ -1250,6 +1252,39 @@ La entrega a ZIM400 debe tratarse como un modulo independiente, con armado de pa
 
 La granularidad del modulo sera **un registro por STOP**. Cada STOP cerrado en Cronometro debe producir, cuando corresponda, un registro en `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL`, poblando el maximo de campos disponibles con la informacion ya existente en Cronometro y en la data OUT de NetSuite.
 
+#### Separacion aditiva de minutos de montaje y ejecucion (decision 2026-08-04)
+
+Objetivo: conservar en ZIM400 la distincion que ya existe en Cronometro entre `actual_setup_time` y `actual_run_time`, sin intervenir ningun comportamiento operativo vigente.
+
+Alcance aprobado:
+
+| Nuevo dato | Campo en `ZIM - Data Reloj Control` (ID real NetSuite SB) | Tipo | Fuente en el payload `PUSH_ZIM400` |
+|---|---|---|---|
+| MCV Montaje min | `custrecord_mcv_setup_time` | Numero entero | `actual_setup_time` |
+| MCV Ejecucion min | `custrecord_mcv_run_time` | Numero entero | `actual_run_time` |
+
+Reglas obligatorias de compatibilidad:
+
+1. El cambio es estrictamente aditivo: se crean dos campos NetSuite y se agregan dos propiedades al payload ZIM400.
+2. No se elimina, renombra, reemplaza, recalcula ni cambia el significado de `custrecord_zim_reloj_minutos_cargados`; debe seguir enviandose exactamente con la logica vigente.
+3. No se modifica `custrecord_zim_reloj_horas` ni ningun otro campo, mapping, filtro, formula, endpoint, contrato, cola, reintento, idempotencia o flujo actual.
+4. No se modifica el payload ni el procesamiento de `import_ot`. La mejora pertenece exclusivamente al publisher `PUSH_ZIM400`.
+5. El payload ZIM400 agregara siempre ambos campos nuevos con los valores del mismo item de STOP: `actual_setup_time` para montaje y `actual_run_time` para ejecucion, incluso cuando uno de ellos sea cero. La solucion no depende de asumir que ambos nunca podran ser mayores que cero.
+6. La Saved Search ZIM400 incorporara las dos columnas nuevas sin retirar ni alterar la columna actual `ZIM - Reloj Minutos Cargados`.
+7. Los registros historicos permanecen intactos y tendran los campos nuevos vacios; no se contempla reconstruccion ni backfill en esta mejora.
+8. El despliegue debe respetar dependencia: primero crear y validar los campos en NetSuite; despues habilitar las dos propiedades nuevas del payload y, finalmente, agregar las columnas al reporte.
+9. La reversibilidad consiste en dejar de enviar y/o mostrar los campos nuevos; no debe requerir revertir ninguna parte del funcionamiento anterior.
+
+Criterios de aceptacion:
+
+- Un STOP de montaje conserva el comportamiento vigente y, adicionalmente, graba su valor en `custrecord_mcv_setup_time`.
+- Un STOP de ejecucion conserva el comportamiento vigente y, adicionalmente, graba su valor en `custrecord_mcv_run_time`.
+- `custrecord_zim_reloj_minutos_cargados` sigue recibiendo el mismo valor que antes del cambio.
+- Los dos tiempos pueden consultarse por separado en ZIM400 sin perder la columna historica.
+- Un fallo del publisher ZIM400 sigue sin bloquear ni alterar el push exitoso a `import_ot`.
+
+Gobernanza de esta mejora: se especifica directamente en este `README.md`, fuente oficial vigente. Conforme a la decision arquitectonica del 2026-07-31, Spec Kit no se instala ni se declara herramienta oficial de Cronometro para este cambio.
+
 #### Destino NetSuite ZIM400
 
 | Elemento | Valor |
@@ -1295,6 +1330,8 @@ custrecord_zim_reloj_ot_fecha_ini
 custrecord_zim_reloj_ot_fecha_fin
 custrecord_zim_reloj_ot_estado
 custrecord_zim_reloj_cantidad_rechazada
+custrecord_mcv_setup_time
+custrecord_mcv_run_time
 ```
 
 Nota critica: el campo de zona tiene ID tecnico `custrecord_zim_reoj_zona`, sin la letra `l` en `reloj`. No corregirlo a `custrecord_zim_reloj_zona` en codigo; usar el ID real observado.
@@ -1311,6 +1348,8 @@ Nota critica: el campo de zona tiene ID tecnico `custrecord_zim_reoj_zona`, sin 
 | Numero Secuencia | `custrecord_zim_reloj_num_secuencia` | Si | `operation_sequence` |
 | Operacion | `custrecord_zim_reloj_operacion` | Si | `operation_name` |
 | Minutos Cargados | `custrecord_zim_reloj_minutos_cargados` | Si | duracion del STOP en minutos |
+| MCV Montaje min | `custrecord_mcv_setup_time` | Si | `actual_setup_time` del mismo item STOP (entero >= 0; se envia aunque sea 0) |
+| MCV Ejecucion min | `custrecord_mcv_run_time` | Si | `actual_run_time` del mismo item STOP (entero >= 0; se envia aunque sea 0) |
 | Inicio | `custrecord_zim_reloj_inicio` | Si | inicio del timer/evento STOP |
 | Fin | `custrecord_zim_reloj_fin` | Si | fin del timer/evento STOP |
 | Cantidad Producir | `custrecord_zim_reloj_cantidad` | Si | `planned_quantity` |

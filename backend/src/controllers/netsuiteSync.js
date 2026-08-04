@@ -483,10 +483,19 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
     );
   }
 
+  const pushSetupMinutesRaw = pushItem && pushItem.actual_setup_time != null ? Number(pushItem.actual_setup_time) : NaN;
   const pushRunMinutesRaw = pushItem && pushItem.actual_run_time != null ? Number(pushItem.actual_run_time) : NaN;
   const segmentRunMinutes = asNonNegativeInt(segmentTiming.runMinutes);
+  const segmentSetupMinutes = asNonNegativeInt(segmentTiming.setupMinutes);
   // Minutos ZIM = tramo STOP del empleado. No reutilizar delta acumulado de la OT (operational_accum).
   const minutesLoaded = segmentRunMinutes;
+  // Campos aditivos MCV (NetSuite SB): no reemplazan custrecord_zim_reloj_minutos_cargados.
+  const mcvSetupTime = Number.isFinite(pushSetupMinutesRaw)
+    ? Math.max(0, Math.floor(pushSetupMinutesRaw))
+    : segmentSetupMinutes;
+  const mcvRunTime = Number.isFinite(pushRunMinutesRaw)
+    ? Math.max(0, Math.floor(pushRunMinutesRaw))
+    : segmentRunMinutes;
   const seqForText = taskCtx && Number.isFinite(taskCtx.operationSequence) && taskCtx.operationSequence > 0
     ? taskCtx.operationSequence
     : (op.operation_sequence || '');
@@ -540,6 +549,8 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
     custrecord_zim_reoj_zona: 1,
     custrecord_zim_reloj_empleado: userNetsuiteEmployeeId,
     custrecord_zim_reloj_minutos_cargados: minutesLoaded,
+    custrecord_mcv_setup_time: mcvSetupTime,
+    custrecord_mcv_run_time: mcvRunTime,
     custrecord_zim_reloj_horas: Number((minutesLoaded / 60).toFixed(2)),
     custrecord_zim_reloj_inicio: startedAt || null,
     custrecord_zim_reloj_fin: endedAt || null,
