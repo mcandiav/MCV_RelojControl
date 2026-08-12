@@ -4,7 +4,7 @@ const { APP_RELEASE } = require('./scripts/app-release')
 const UI_VERSION = resolveBuildVersion({ fallback: 'dev' })
 process.env.VUE_APP_BUILD_VERSION = UI_VERSION
 
-const PAGE_TITLE = `Usuario - Cronometro ${APP_RELEASE}@${UI_VERSION}`
+const PAGE_TITLE = `Usuario - Cronometro UI ${APP_RELEASE}`
 
 module.exports = {
   transpileDependencies: [

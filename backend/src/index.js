@@ -30,6 +30,8 @@ const corsOptions = require('./config/corsOptions');
 /** Evita bucle SIGTERM: EasyPanel/Docker suelen hacer healthcheck HTTP mientras corre db.sync (alter). */
 let dbReady = false;
 const BUILD_VERSION = String(process.env.APP_BUILD_VERSION || process.env.GIT_SHA || process.env.BUILD_VERSION || 'V2').trim();
+const { APP_RELEASE, APP_GIT } = require('./lib/appVersion');
+const GIT_VERSION = String(APP_GIT || BUILD_VERSION).trim();
 
 app.use(function setCommonHeaders(req, res, next) {
     res.set("Access-Control-Allow-Private-Network", "true");
@@ -66,8 +68,13 @@ app.use('/chronometer/netsuite', (req, res, next) => {
 
 // 200 siempre: muchos healthchecks solo miran código HTTP (503 durante sync = reinicios en bucle).
 app.get(['/', '/health'], (req, res) => {
-    if (dbReady) return res.status(200).json({ status: 'ok', build: BUILD_VERSION });
-    return res.status(200).json({ status: 'starting', build: BUILD_VERSION });
+    const payload = {
+        status: dbReady ? 'ok' : 'starting',
+        version: APP_RELEASE,
+        git: GIT_VERSION,
+        build: GIT_VERSION
+    };
+    return res.status(200).json(payload);
 });
 
 /** GET sin auth: probar desde el front (otro subdominio) que haya TLS + CORS. */
@@ -124,7 +131,7 @@ app.use('/chronometer', chronometerRoutes);
 
 // Puerto abierto de inmediato: healthcheck TCP/HTTP no mata el contenedor durante sync.
 server.listen(8000, () => {
-    console.log(`HTTP en puerto 8000 (build=${BUILD_VERSION}) (sync DB en curso; /health = 503 hasta listo).`);
+    console.log(`HTTP en puerto 8000 (version=${APP_RELEASE} git=${GIT_VERSION}) (sync DB en curso; /health = 200 starting hasta listo).`);
 });
 
 runSchemaMigrations(db)
@@ -137,7 +144,7 @@ runSchemaMigrations(db)
         await registerShiftCloseCrons();
         startNetsuiteSyncQueueWorker();
         dbReady = true;
-        console.log(`Server initialized (API lista, build=${BUILD_VERSION}).`);
+        console.log(`Server initialized (API lista, version=${APP_RELEASE} git=${GIT_VERSION}).`);
     })
     .catch((error) => {
         console.error('Error al sincronizar la base de datos:', error);

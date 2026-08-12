@@ -170,7 +170,7 @@
 <script>
 import axios from 'axios'
 import { mapActions } from 'vuex'
-import { getReleaseStamp, isTestBuild } from '@/utils/buildMode'
+import { getReleaseStamp, isTestBuild, releaseState, refreshApiProductVersion } from '@/utils/buildMode'
 import atOnceLogo from '@/assets/at-once-logo.png'
 
 export default {
@@ -192,12 +192,15 @@ export default {
     }
   },
 
-  created() {
+  async created() {
+    await refreshApiProductVersion(axios)
     this.cargarOperarios()
   },
 
   computed: {
     releaseStamp() {
+      const _api = releaseState.apiVersion
+      void _api
       const stamp = getReleaseStamp()
       return isTestBuild() ? `${stamp} [TEST]` : stamp
     }
@@ -309,7 +312,7 @@ export default {
 }
 
 .login-hero-title {
-  color: var(--atonce-blue, #08a8e0);
+  color: #fff;
   letter-spacing: 0.04em;
 }
 
@@ -319,7 +322,7 @@ export default {
   width: 72px;
   height: 3px;
   margin: 12px auto 0;
-  background: linear-gradient(90deg, var(--atonce-blue, #08a8e0), var(--atonce-cyan, #10f8f8));
+  background: linear-gradient(90deg, #ff6b35, #ffa726);
   border-radius: 2px;
 }
 
@@ -334,7 +337,7 @@ export default {
 .login-product-label {
   font-size: 1rem;
   font-weight: 500;
-  color: var(--atonce-blue, #08a8e0);
+  color: rgba(255, 255, 255, 0.72);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -344,9 +347,9 @@ export default {
   color: #fff;
   padding: 5px 14px;
   border-radius: 8px;
-  background: rgba(8, 168, 224, 0.28);
-  border: 1px solid rgba(16, 248, 248, 0.55);
-  box-shadow: 0 2px 10px rgba(8, 168, 224, 0.35);
+  background: rgba(255, 107, 53, 0.22);
+  border: 1px solid rgba(255, 167, 38, 0.55);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 
 .login-corner-logo {

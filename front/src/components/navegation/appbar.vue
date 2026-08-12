@@ -47,7 +47,7 @@
 
 <script>
 import { mapActions, mapGetters } from 'vuex'
-import { getReleaseStamp, isTestBuild } from '@/utils/buildMode'
+import { getReleaseStamp, isTestBuild, releaseState } from '@/utils/buildMode'
 import atOnceLogo from '@/assets/at-once-logo.png'
 import bignottiLogo from '@/assets/logo.png'
 
@@ -63,6 +63,8 @@ export default {
       isAdmin: 'auth/isAdmin'
     }),
     cronometroTitle() {
+      const _api = releaseState.apiVersion
+      void _api
       const base = `Cronometro ${getReleaseStamp()}`
       return isTestBuild() ? `${base} [TEST]` : base
     }

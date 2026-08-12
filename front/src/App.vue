@@ -6,7 +6,8 @@
 
 <script>
 import { mapGetters } from 'vuex'
-import { getReleaseStamp, isTestBuild } from '@/utils/buildMode'
+import axios from 'axios'
+import { getReleaseStamp, isTestBuild, releaseState, refreshApiProductVersion } from '@/utils/buildMode'
 
 export default {
   name: 'App',
@@ -14,6 +15,14 @@ export default {
   },
   data() {
     return {
+    }
+  },
+  computed: {
+    ...mapGetters({
+      user: 'auth/user'
+    }),
+    _releaseStampWatch() {
+      return releaseState.apiVersion
     }
   },
   watch: {
@@ -25,11 +34,13 @@ export default {
         this.syncDocumentTitle()
       },
       deep: true
+    },
+    _releaseStampWatch() {
+      this.syncDocumentTitle()
     }
   },
-  mounted() {
-  },
-  created() {
+  async created() {
+    await refreshApiProductVersion(axios)
     this.syncDocumentTitle()
   },
   methods: {
@@ -40,11 +51,6 @@ export default {
       const base = `Cronometro ${getReleaseStamp()}`
       document.title = isTestBuild() ? `${who} - ${base} [TEST]` : `${who} - ${base}`
     }
-  },
-  computed: {
-    ...mapGetters({
-      user: 'auth/user'
-    })
   }
 }
 </script>

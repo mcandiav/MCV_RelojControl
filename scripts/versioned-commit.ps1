@@ -1,7 +1,8 @@
-# Crea commit con prefijo [VERSION@hash] visible en EasyPanel Deploy History.
-# VERSION = producto (APP_RELEASE / VERSION), no el nombre de rama.
+# Commit con prefijo EasyPanel:
+#   [UI <ver>@<hash> · API <ver>@<hash>] <descripción>
+# VERSION = producto (no nombre de rama).
 # Uso (después de git add):
-#   powershell -File scripts/versioned-commit.ps1 "fix(front): descripción"
+#   powershell -File scripts/versioned-commit.ps1 "feat: descripción"
 
 param(
   [Parameter(Mandatory = $true, Position = 0)]
@@ -35,7 +36,7 @@ if (-not $staged) {
 git commit -m $Message
 $release = Get-AppRelease
 $sha = git rev-parse --short HEAD
-$versioned = "[$release@$sha] $Message"
+$versioned = "[UI $release@$sha · API $release@$sha] $Message"
 git commit --amend -m $versioned
 $deploySha = git rev-parse --short HEAD
 
@@ -43,3 +44,4 @@ Write-Host ""
 Write-Host "Commit: $versioned"
 Write-Host "Hash a pushear: $deploySha"
 Write-Host "EasyPanel mostrará esa línea en Deployment History."
+Write-Host "Badge de app (sin hash): UI $release · API $release"

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Crea un commit cuyo asunto empieza con [VERSION@hash] para EasyPanel.
- * VERSION = producto (APP_RELEASE / VERSION), no el nombre de rama.
+ * Commit con prefijo EasyPanel:
+ *   [UI <ver>@<hash> · API <ver>@<hash>] <descripción>
+ * Versión = VERSION / APP_RELEASE (producto), no el nombre de rama.
  *
  * Uso (después de git add):
- *   node scripts/versioned-commit.mjs "fix(front): descripción del cambio"
+ *   node scripts/versioned-commit.mjs "feat: descripción del cambio"
  */
 import { execSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
@@ -46,7 +47,7 @@ if (!staged) {
 sh(`git commit -m ${JSON.stringify(subject)}`);
 const release = getAppRelease();
 const sha = sh('git rev-parse --short HEAD');
-const versioned = `[${release}@${sha}] ${subject}`;
+const versioned = `[UI ${release}@${sha} · API ${release}@${sha}] ${subject}`;
 sh(`git commit --amend -m ${JSON.stringify(versioned)}`);
 const deploySha = sh('git rev-parse --short HEAD');
 
@@ -54,3 +55,4 @@ console.log('');
 console.log(`Commit: ${versioned}`);
 console.log(`Hash a pushear: ${deploySha}`);
 console.log('EasyPanel mostrará la línea anterior en Deployment History.');
+console.log('Badge de app (sin hash): UI ' + release + ' · API ' + release);

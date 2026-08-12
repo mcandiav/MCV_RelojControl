@@ -1224,7 +1224,7 @@ import '@mdi/font/css/materialdesignicons.css'
 import appbar from '@/components/navegation/appbar.vue'
 import logoCronometro from '@/assets/at-once-logo.png'
 import { mapGetters } from 'vuex'
-import { getReleaseStamp } from '@/utils/buildMode'
+import { getReleaseStamp, releaseState, refreshApiProductVersion } from '@/utils/buildMode'
 import {
   plannedRunDisplayMinutes,
   plannedSetupDisplayMinutes,
@@ -1510,7 +1510,8 @@ export default {
       USER_RULES
     }
   },
-  created() {
+  async created() {
+    await refreshApiProductVersion(axios)
     this.applyRouteTab()
     this.refreshBoard()
     if (this.isAdmin) this.loadAreaOperations()
@@ -1607,6 +1608,9 @@ export default {
       isAdmin: 'auth/isAdmin'
     }),
     releaseStamp() {
+      // Dependencia reactiva de releaseState.apiVersion
+      const _api = releaseState.apiVersion
+      void _api
       return getReleaseStamp()
     },
     reportRefreshLoading() {

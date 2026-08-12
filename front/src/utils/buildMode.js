@@ -1,3 +1,4 @@
+import Vue from 'vue'
 import { APP_RELEASE } from '@/constants/appRelease'
 
 /** Versión de producto visible para operarios (no confundir con hash de build Git). */
@@ -7,22 +8,62 @@ export function getAppReleaseLabel() {
   return APP_RELEASE
 }
 
-/** Sello de versión visible: release de producto + hash de build (ej. V6.0.0@abc1234). */
+/** Estado reactivo del badge (API version llega de /health). */
+export const releaseState = Vue.observable({
+  apiVersion: null
+})
+
+/** Badge de app: sin hash. Formato: UI <ver> · API <ver> */
 export function getReleaseStamp() {
-  return `${APP_RELEASE}@${getUiVersion()}`
+  const api = releaseState.apiVersion || '—'
+  return `UI ${APP_RELEASE} · API ${api}`
+}
+
+export function getApiProductVersion() {
+  return releaseState.apiVersion
+}
+
+export function setApiProductVersion(version) {
+  const v = version != null ? String(version).trim() : ''
+  releaseState.apiVersion = v || null
+  return releaseState.apiVersion
+}
+
+/**
+ * Lee la versión de producto del API (campo `version` de /health).
+ * @param {import('axios').AxiosInstance} http
+ */
+export async function refreshApiProductVersion(http) {
+  if (!http || typeof http.get !== 'function') return releaseState.apiVersion
+  try {
+    const res = await http.get('/health')
+    const data = res && res.data ? res.data : null
+    const version = data && (data.version || data.app_version || data.appVersion)
+    if (version) setApiProductVersion(version)
+  } catch (_) {
+    /* badge queda API — */
+  }
+  return releaseState.apiVersion
 }
 
 function readWindowBuildPath() {
   if (typeof window === 'undefined') return ''
-  if (window.__CRONOMETRO_BUILD_PATH == null) return ''
-  const v = String(window.__CRONOMETRO_BUILD_PATH).trim()
-  return v
+  const raw =
+    window.__CRONOMETRO_BUILD_PATH__ != null
+      ? window.__CRONOMETRO_BUILD_PATH__
+      : window.__CRONOMETRO_BUILD_PATH
+  if (raw == null) return ''
+  return String(raw).trim()
 }
 
 function readWindowBuildVersion() {
   if (typeof window === 'undefined') return ''
-  if (window.__CRONOMETRO_BUILD_VERSION == null) return ''
-  return String(window.__CRONOMETRO_BUILD_VERSION).trim()
+  const raw =
+    window.__CRONOMETRO_BUILD_VERSION__ != null
+      ? window.__CRONOMETRO_BUILD_VERSION__
+      : window.__CRONOMETRO_BUILD_VERSION
+  if (raw == null) return ''
+  return String(raw).trim()
 }
 
 export function getBuildPath() {
@@ -32,6 +73,7 @@ export function getBuildPath() {
   return raw.toLowerCase()
 }
 
+/** Hash de build del front (solo diagnóstico / EasyPanel; no va al badge). */
 export function getUiVersion() {
   const runtime = readWindowBuildVersion()
   const env =
