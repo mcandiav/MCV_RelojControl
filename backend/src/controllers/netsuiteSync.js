@@ -28,6 +28,7 @@ const NetsuiteSyncZim400 = require('../models/netsuite_sync_zim400');
 const { requeueStuckProcessing } = require('../services/netsuiteSyncQueue');
 const { createZim400Record } = require('../services/netsuite/zim400Client');
 const config = require('../config/config');
+const { archiveTimerEvents } = require('../lib/timerEventArchive');
 let netsuitePushInFlight = false;
 let netsuiteOperationalSyncInFlight = false;
 const IMPORT_OT_GATE_TIMEOUT_WARNING_MESSAGE =
@@ -1389,11 +1390,14 @@ async function resetChronometersForPulledRows(rows) {
   });
   const opIds = ops.map((o) => o.id).filter((id) => Number.isInteger(id));
   if (opIds.length === 0) {
-    return { operations: 0, timersDeleted: 0, eventsDeleted: 0, totalsDeleted: 0 };
+    return { operations: 0, timersDeleted: 0, eventsDeleted: 0, totalsDeleted: 0, eventsArchived: 0 };
   }
 
+  const archiveWhere = { work_order_operation_id: { [Op.in]: opIds } };
+  const archiveResult = await archiveTimerEvents({ where: archiveWhere });
+
   const eventsDeleted = await TimerEvent.destroy({
-    where: { work_order_operation_id: { [Op.in]: opIds } }
+    where: archiveWhere
   });
   const totalsDeleted = await OperationTimeTotal.destroy({
     where: { work_order_operation_id: { [Op.in]: opIds } }
@@ -1406,7 +1410,8 @@ async function resetChronometersForPulledRows(rows) {
     operations: opIds.length,
     timersDeleted,
     eventsDeleted,
-    totalsDeleted
+    totalsDeleted,
+    eventsArchived: archiveResult.archived
   };
 }
 
@@ -1419,16 +1424,27 @@ async function replaceAllWipRows(rows) {
   return WorkOrderOperation.sequelize.transaction(async (t) => {
     // Universo WIP = verdad NetSuite: reemplazar todo lo local.
     // No usar TRUNCATE: falla con FK en MariaDB (1701).
-    // Orden de borrado por dependencias:
-    // timer_events -> operation_time_totals -> operation_timers -> work_order_operations
+    // Orden: archivar timer_events (+ purge >30d) -> destroy vivos -> WIP.
+    const archiveResult = await archiveTimerEvents({ where: {}, transaction: t });
+
     await TimerEvent.destroy({ where: {}, transaction: t });
     await OperationTimeTotal.destroy({ where: {}, transaction: t });
     await OperationTimer.destroy({ where: {}, transaction: t });
     await WorkOrderOperation.destroy({ where: {}, transaction: t });
 
-    if (deduped.length === 0) return { imported: 0 };
+    if (deduped.length === 0) {
+      return {
+        imported: 0,
+        eventsArchived: archiveResult.archived,
+        eventsPurged: archiveResult.purged
+      };
+    }
     await WorkOrderOperation.bulkCreate(deduped, { transaction: t });
-    return { imported: deduped.length };
+    return {
+      imported: deduped.length,
+      eventsArchived: archiveResult.archived,
+      eventsPurged: archiveResult.purged
+    };
   });
 }
 

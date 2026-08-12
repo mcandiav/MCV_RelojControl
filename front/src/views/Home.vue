@@ -916,6 +916,7 @@
                   </v-row>
                   <div v-if="userLogTotal != null" class="text-caption grey--text mb-2">
                     {{ userLogTotal }} tramo(s) de estado (play/pausa/stop) · página {{ userLogTableOptions.page }} · {{ userLogFilters.dateFrom }} — {{ userLogFilters.dateTo }}
+                    · historial últimos 30 días (vivo + archivo)
                   </div>
                   <div class="table-scroll-wrap user-log-wrap">
                   <v-data-table

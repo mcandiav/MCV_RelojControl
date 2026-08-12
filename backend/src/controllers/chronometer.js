@@ -13,6 +13,7 @@ const OperationTimeTotal = require('../models/operation_time_total');
 const config = require('../config/config');
 const { getShiftDateString, computeTotalsFromEvents } = require('../lib/timerEventTotals');
 const { fetchUserLogSessions } = require('../lib/userLogSessions');
+const { archiveTimerEvents } = require('../lib/timerEventArchive');
 const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
 const { enqueueFromStop } = require('../services/netsuiteSyncQueue');
 const TIMER_LOCKED_SAME_STATION_CODE = 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER';
@@ -1638,8 +1639,11 @@ exports.deleteOperation = async function deleteOperation(req, res) {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ message: 'Invalid operation id.' });
 
+  const archiveWhere = { work_order_operation_id: id };
+  await archiveTimerEvents({ where: archiveWhere });
+
   await OperationTimer.destroy({ where: { work_order_operation_id: id } });
-  await TimerEvent.destroy({ where: { work_order_operation_id: id } });
+  await TimerEvent.destroy({ where: archiveWhere });
   await OperationTimeTotal.destroy({ where: { work_order_operation_id: id } });
 
   const deleted = await WorkOrderOperation.destroy({ where: { id } });

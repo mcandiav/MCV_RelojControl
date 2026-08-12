@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const TimerEvent = require('../models/timer_event');
+const TimerEventArchive = require('../models/timer_event_archive');
 const OperationTimer = require('../models/operation_timer');
 const User = require('../models/user');
 const WorkOrderOperation = require('../models/work_order_operation');
@@ -204,7 +205,7 @@ function mapSegmentToRow(segment, timer, user, op, segmentIndex) {
   const pauseMinutes = segment.state === 'PAUSED' ? durationMinutes : null;
 
   return {
-    id: `${timer.id}-${segmentIndex}-${startedMs}`,
+    id: `live-${timer.id}-${segmentIndex}-${startedMs}`,
     operation_timer_id: timer.id,
     user_id: user ? user.id : null,
     user_name: formatUserDisplayName(user),
@@ -224,8 +225,85 @@ function mapSegmentToRow(segment, timer, user, op, segmentIndex) {
     is_open: isOpen,
     warning_ignored: warningIgnored,
     warning_precedence: Boolean(startDetails && startDetails.precedence_warning === true),
-    warning_details: warningIgnored ? startDetails : null
+    warning_details: warningIgnored ? startDetails : null,
+    source: 'live'
   };
+}
+
+function mapArchivedSegmentToRow(segment, meta, segmentIndex) {
+  const isOpen = !segment.end_at;
+  const status = resolveSegmentStatus(segment);
+  const stopInfo = segment.stop_details || { user_finished: null, operation_total: null };
+  const startDetails = parseDetails(segment.start_event_details);
+  const startedMs = new Date(segment.start_at).getTime();
+  const endMs = segment.end_at ? new Date(segment.end_at).getTime() : Date.now();
+  const durationMinutes = secondsToMinutes(Math.max(0, (endMs - startedMs) / 1000));
+  const warningIgnored = Boolean(startDetails && startDetails.warning_ignored === true);
+
+  let completedTotal = stopInfo.operation_total;
+  if (completedTotal == null) {
+    completedTotal = toNonNegIntOrNull(meta.completed_quantity);
+  }
+
+  const setupMinutes = segment.state === 'SETUP' ? durationMinutes : null;
+  const runMinutes = segment.state === 'RUN' ? durationMinutes : null;
+  const pauseMinutes = segment.state === 'PAUSED' ? durationMinutes : null;
+  const rc = String(meta.resource_code || '').trim().toUpperCase() || '—';
+
+  return {
+    id: `arch-${meta.operation_timer_id || 'x'}-${segmentIndex}-${startedMs}`,
+    operation_timer_id: meta.operation_timer_id,
+    user_id: meta.user_id,
+    user_name: meta.user_name_snapshot || '—',
+    ot_number: meta.ot_number || '—',
+    operation_sequence: meta.operation_sequence != null ? meta.operation_sequence : null,
+    resource_code: rc,
+    planned_quantity: toNonNegIntOrNull(meta.planned_quantity),
+    completed_quantity: completedTotal,
+    user_finished_quantity: stopInfo.user_finished,
+    setup_minutes: setupMinutes,
+    run_minutes: runMinutes,
+    pause_minutes: pauseMinutes,
+    started_at: segment.start_at,
+    ended_at: segment.end_at,
+    clock_status: status.label,
+    clock_status_code: status.code,
+    is_open: isOpen,
+    warning_ignored: warningIgnored,
+    warning_precedence: Boolean(startDetails && startDetails.precedence_warning === true),
+    warning_details: warningIgnored ? startDetails : null,
+    source: 'archive'
+  };
+}
+
+function buildArchiveFilterWhere({
+  fromYmd,
+  toYmd,
+  userId,
+  workOrderFilter,
+  resourceFilter,
+  operationFilter
+}) {
+  const where = {
+    event_type: { [Op.in]: SESSION_EVENT_TYPES }
+  };
+  if (fromYmd || toYmd) {
+    where.event_at = {};
+    if (fromYmd) where.event_at[Op.gte] = new Date(`${fromYmd}T00:00:00.000Z`);
+    if (toYmd) where.event_at[Op.lte] = new Date(`${toYmd}T23:59:59.999Z`);
+  }
+  if (Number.isInteger(userId) && userId > 0) where.user_id = userId;
+  if (workOrderFilter) where.ot_number = { [Op.like]: `%${workOrderFilter}%` };
+  if (resourceFilter) where.resource_code = { [Op.like]: `%${resourceFilter}%` };
+  if (operationFilter) {
+    const seq = parseInt(operationFilter, 10);
+    if (Number.isInteger(seq) && String(seq) === operationFilter.trim()) {
+      where.operation_sequence = seq;
+    } else {
+      where.operation_name = { [Op.like]: `%${operationFilter}%` };
+    }
+  }
+  return where;
 }
 
 function compareRows(a, b, sortBy, sortDir) {
@@ -287,18 +365,14 @@ function compareRows(a, b, sortBy, sortDir) {
   return cmp * dir;
 }
 
-async function fetchUserLogSessions({
+async function fetchLiveUserLogRows({
   fromYmd,
   toYmd,
   userId,
   workOrderFilter,
   resourceFilter,
   operationFilter,
-  warningIgnoredFilter,
-  sortBy,
-  sortDir,
-  page,
-  pageSize
+  warningIgnoredFilter
 }) {
   const opWhere = buildOpWhere({ workOrderFilter, resourceFilter, operationFilter });
   const opFilterActive = Object.keys(opWhere).length > 0;
@@ -345,9 +419,7 @@ async function fetchUserLogSessions({
   });
   eventsInRange.forEach((ev) => timerIdSet.add(ev.operation_timer_id));
 
-  if (timerIdSet.size === 0) {
-    return { rows: [], total: 0 };
-  }
+  if (timerIdSet.size === 0) return [];
 
   const timerWhere = { id: { [Op.in]: Array.from(timerIdSet) } };
   if (Number.isInteger(userId) && userId > 0) timerWhere.current_user_id = userId;
@@ -378,9 +450,7 @@ async function fetchUserLogSessions({
   });
 
   const timerIds = timers.map((t) => t.id);
-  if (!timerIds.length) {
-    return { rows: [], total: 0 };
-  }
+  if (!timerIds.length) return [];
 
   const allEvents = await TimerEvent.findAll({
     where: {
@@ -415,7 +485,148 @@ async function fetchUserLogSessions({
       rows.push(row);
     });
   }
+  return rows;
+}
 
+async function fetchArchivedUserLogRows({
+  fromYmd,
+  toYmd,
+  userId,
+  workOrderFilter,
+  resourceFilter,
+  operationFilter,
+  warningIgnoredFilter
+}) {
+  const rangeWhere = buildArchiveFilterWhere({
+    fromYmd,
+    toYmd,
+    userId,
+    workOrderFilter,
+    resourceFilter,
+    operationFilter
+  });
+
+  const eventsInRange = await TimerEventArchive.findAll({
+    where: rangeWhere,
+    attributes: ['operation_timer_id']
+  });
+
+  const timerIdSet = new Set();
+  eventsInRange.forEach((ev) => {
+    if (ev.operation_timer_id != null) timerIdSet.add(ev.operation_timer_id);
+  });
+  if (timerIdSet.size === 0) return [];
+
+  const allEvents = await TimerEventArchive.findAll({
+    where: {
+      operation_timer_id: { [Op.in]: Array.from(timerIdSet) },
+      event_type: { [Op.in]: SESSION_EVENT_TYPES }
+    },
+    order: [
+      ['operation_timer_id', 'ASC'],
+      ['event_at', 'ASC']
+    ]
+  });
+
+  const eventsByTimer = new Map();
+  const metaByTimer = new Map();
+  for (const ev of allEvents) {
+    const tid = ev.operation_timer_id;
+    const list = eventsByTimer.get(tid) || [];
+    list.push(ev);
+    eventsByTimer.set(tid, list);
+    if (!metaByTimer.has(tid)) {
+      metaByTimer.set(tid, {
+        operation_timer_id: tid,
+        user_id: ev.user_id,
+        user_name_snapshot: ev.user_name_snapshot,
+        ot_number: ev.ot_number,
+        operation_sequence: ev.operation_sequence,
+        operation_name: ev.operation_name,
+        resource_code: ev.resource_code,
+        planned_quantity: ev.planned_quantity,
+        completed_quantity: ev.completed_quantity
+      });
+    }
+  }
+
+  const rows = [];
+  for (const [tid, events] of eventsByTimer.entries()) {
+    const meta = metaByTimer.get(tid) || { operation_timer_id: tid };
+    const segments = buildSegmentsFromEvents(events);
+    segments.forEach((segment, idx) => {
+      if (!sessionOverlapsRange(segment.start_at, segment.end_at, fromYmd, toYmd)) return;
+      const row = mapArchivedSegmentToRow(segment, meta, idx);
+      if (warningIgnoredFilter !== null && Boolean(row.warning_ignored) !== Boolean(warningIgnoredFilter)) {
+        return;
+      }
+      // Re-aplicar filtros denormalizados a nivel tramo (meta del timer puede
+      // mezclar si el timer cambio de OT; el rango ya filtro eventos).
+      if (workOrderFilter && !String(row.ot_number || '').toLowerCase().includes(workOrderFilter.toLowerCase())) {
+        return;
+      }
+      if (resourceFilter && !String(row.resource_code || '').toLowerCase().includes(resourceFilter.toLowerCase())) {
+        return;
+      }
+      rows.push(row);
+    });
+  }
+  return rows;
+}
+
+function dedupeLogRows(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const key = [
+      row.source || '',
+      row.operation_timer_id || '',
+      row.clock_status_code || '',
+      row.started_at || '',
+      row.ended_at || ''
+    ].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+async function fetchUserLogSessions({
+  fromYmd,
+  toYmd,
+  userId,
+  workOrderFilter,
+  resourceFilter,
+  operationFilter,
+  warningIgnoredFilter,
+  sortBy,
+  sortDir,
+  page,
+  pageSize
+}) {
+  const [liveRows, archiveRows] = await Promise.all([
+    fetchLiveUserLogRows({
+      fromYmd,
+      toYmd,
+      userId,
+      workOrderFilter,
+      resourceFilter,
+      operationFilter,
+      warningIgnoredFilter
+    }),
+    fetchArchivedUserLogRows({
+      fromYmd,
+      toYmd,
+      userId,
+      workOrderFilter,
+      resourceFilter,
+      operationFilter,
+      warningIgnoredFilter
+    })
+  ]);
+
+  const rows = dedupeLogRows([...liveRows, ...archiveRows]);
   const sortKey = sortBy || 'started_at';
   const direction = sortDir === 'ASC' ? 'ASC' : 'DESC';
   rows.sort((a, b) => compareRows(a, b, sortKey, direction));

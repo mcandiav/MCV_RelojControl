@@ -8,11 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
-| 2026-08-04 | Se corrigen los IDs tecnicos reales de los campos aditivos ZIM400 a `custrecord_mcv_setup_time` y `custrecord_mcv_run_time` (confirmados en NetSuite SB) y se habilitan en el payload `PUSH_ZIM400`. | Los IDs propuestos `custrecord_mcv_reloj_min_setup` / `custrecord_mcv_reloj_min_run` no coinciden con los creados en NetSuite. | Solo documentacion + publisher ZIM400; `custrecord_zim_reloj_minutos_cargados`, `import_ot` y demas flujo vigente sin cambio. | Modulo Poblar Reporte ZIM400 / Mapping de campos |
-| 2026-08-04 | Se define la separacion aditiva de minutos de montaje y ejecucion en ZIM400 mediante dos campos nuevos en `ZIM - Data Reloj Control` y dos propiedades nuevas en el payload `PUSH_ZIM400`. Se prohibe modificar o reemplazar los campos, valores, contratos y flujos que ya estan operativos. | Conservar en el reporte la distincion `actual_setup_time` / `actual_run_time` que Cronometro ya conoce, sin poner en riesgo la integracion vigente. | Cambio futuro y no disruptivo: `custrecord_zim_reloj_minutos_cargados` y el resto del payload actual siguen enviandose exactamente como hoy; los historicos no se recalculan ni rellenan. | Modulo Poblar Reporte ZIM400 / Mapping de campos |
-| 2026-07-31 | Se publica producto **V6.0.0** tras validar en SB el fix de delta por STOP (Import OT 2/0 luego 0/2; TEK sumo +2 setup/+2 run sin duplicar). Titulos de login y banner `.chrono-brand` pasan al azul identidad At-Once `#08a8e0`. | Dejar visible e inequívoco en UI el corte de version del fix de reenvio acumulado. | `APP_RELEASE=V6.0.0`; estilos login/Home/brand CSS. Sin cambio NetSuite. | Versionado UI, Login, encabezado operativo |
-| 2026-07-31 | Se corrige el payload V4/V5 por STOP: cada STOP publica solo el tramo desde el STOP anterior del mismo `operation_timer_id` (setup/run), no el acumulado historico del timer. | En SB/PROD TEK suma cada `Importacion OT`; reenviar setup/run acumulado duplicaba tiempos (caso OT18905 y reproduccion OT16955 seq 5: setup 3+3=6). | `buildActualsPayloadForStopEvent` + `selectEventsForStopSegment`; ZIM400 hereda el delta correcto via `pushItem`. Sin cambio de contrato RESTlet ni de campos NetSuite. | Integracion NetSuite IN, Flujo V4, timer_events, Poblar Reporte ZIM400 |
-| 2026-07-31 | Se evalua la incorporacion de Spec Kit como capa de gobernanza y se define no instalarlo directamente sobre la raiz del proyecto. | Cronometro ya esta avanzado, sin `.specify`, con `specs/` manual y reglas de agente que requieren saneamiento previo. | No afecta NetSuite ni runtime; evita introducir estructura generada antes de ordenar la documentacion y reglas vigentes. | Gobernanza documental / Spec Kit |
+| 2026-08-12 | Se define retencion de `Log Usuarios` por 30 dias mediante archivo previo al wipe del pull+replace: tabla `timer_events_archive`, consulta unificada vivo+archivo en la misma pestana, purge de filas >30 dias en cada sync. Rol: Arquitecto. | El pull+replace borra toda `timer_events` y el reporte queda vacio; se necesita historial informal reciente sin Nextcloud ni NetSuite. | Backend: archivar antes de destroy, modelo nuevo, endpoint Log Usuarios lee vivo+archivo. Front: misma pestana. Sin cambio de contrato NetSuite ni payload. | Reporte Log Usuarios V5.3, Base de datos, Flujo oficial de sincronizacion, Decisiones cerradas |
 | 2026-07-14 | Se cierra la definicion de la advertencia por operaciones anteriores pendientes: regla de finalizacion, alcance completo de la OT, contrato HTTP `409 PREVIOUS_OPERATIONS_PENDING`, override auditado y prioridad de entrega. | Reducir errores de seleccion de operacion y eliminar ambiguedades para la implementacion. | Validacion obligatoria en backend sobre todas las secuencias anteriores de la OT, confirmacion en frontend y trazabilidad en `timer_events.details_json`. Sin tabla nueva ni cambios en NetSuite, Saved Search OUT, RESTlet, import_ot, ZIM400 o payload de sincronizacion. | Requisitos funcionales de UI y operacion, Auditoria operativa, timer_events |
 | 2026-06-26 | Se define nuevo reporte administrativo `Log Usuarios` V5.3 con filtros visibles, ordenamiento por columnas y paginacion para auditar acciones Play, Pause y Stop sobre OT's. | Dar trazabilidad operativa por usuario, OT, operacion, fecha/hora y accion ejecutada en el cronometro. | Cambio en frontend y backend de Cronometro; usa `timer_events` como fuente interna. Sin impacto en NetSuite, Saved Search OUT, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Reportes administrativos, Auditoria operativa, timer_events |
 | 2026-06-26 | Se define mejora visual no disruptiva para multiplicar el tiempo planificado visible de EJECUCION por la cantidad de entrada. | Evitar que la barra y el color del cronometro indiquen sobretiempo prematuro cuando NetSuite entrega `runRate` como tiempo por unidad y la OT tiene cantidad a fabricar mayor que 1. | Cambio solo de presentacion en frontend: no modifica NetSuite, Saved Search OUT, backend, base de datos, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Requisitos funcionales de UI y operacion, Tablero operativo V3, Integracion NetSuite OUT |
@@ -46,36 +42,9 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 | 2026-03-28 | Se cambia fuente OUT oficial de Dataset a Saved Search. | Dataset no reproducia correctamente la granularidad requerida. | Extraccion NetSuite -> Cronometro queda alineada con 1 operacion logica = 1 fila. | Integracion NetSuite OUT |
 | 2026-03-25 | Se corrige contrato de retorno hacia NetSuite a 3 datos reales por operacion. | Evitar simplificacion incorrecta de un tiempo consolidado unico. | Define correctamente el push funcional hacia NetSuite. | Regla de negocio clave |
 
-## Evaluacion arquitectonica: Spec Kit
-
-Spec Kit no queda incorporado directamente en la raiz de Cronometro en esta etapa.
-
-Criterio vigente:
-
-1. Cronometro es una aplicacion productiva/operativa ya avanzada, con arquitectura, QA, reglas de agente y documentacion tecnica existentes.
-2. La instalacion directa de Spec Kit agregaria `.specify`, plantillas, workflows y skills generadas que pueden convivir tecnicamente con la app, pero aumentan el ruido documental si no se ordena antes la gobernanza actual.
-3. La carpeta `specs/` ya existe como practica documental manual, por lo que no debe asumirse que Spec Kit es la fuente oficial hasta hacer una migracion controlada.
-4. Antes de cualquier instalacion se debe sanear la capa de agentes: `AGENTS.md`, `.cursor/rules/`, ramas reales de trabajo, versionado y reglas de deploy deben quedar consistentes con Cronometro.
-5. Si se decide probar Spec Kit, debe hacerse en rama o copia experimental, con comparacion posterior contra este README, QA y reglas vigentes. Solo despues de esa validacion se podra declarar como herramienta oficial del proyecto.
-
-Decision actual: usar Spec Kit solo como evaluacion experimental futura, no como cambio inmediato sobre la linea principal de Cronometro.
-
-Impacto por area:
-
-| Area | Impacto |
-|---|---|
-| NetSuite | Ninguno directo. No cambia Saved Search, RESTlet, Import OT ni ZIM400. |
-| Configuracion | Ninguno directo. No requiere cambios en NetSuite ni EasyPanel. |
-| Desarrollo | Potencial beneficio futuro para ordenar nuevas mejoras, pero riesgo de friccion si se instala antes de sanear reglas y documentacion. |
-| Operacion | Ninguno directo para operarios. La app sigue funcionando igual. |
-| Documentacion | Alto impacto potencial; por eso la adopcion debe ser controlada y documentada. |
-
-Siguiente accion recomendada: crear primero una revision de gobernanza documental de agentes para Cronometro y corregir inconsistencias visibles antes de evaluar una instalacion experimental de Spec Kit.
-
 ## Estado actual final
 
-- Producto visible vigente: **V6.0.0** (`front/src/constants/appRelease.js` / `front/scripts/app-release.js`).
-- Rama de trabajo sandbox: `V5` (incluye el fix de delta por STOP publicado como V6.0.0).
+- Proyecto en baseline funcional `V3`.
 - Debe existir una sola version cerrada del programa para sandbox y productivo.
 - Las diferencias entre SB y PROD deben vivir solo en configuracion de entorno, secretos, dominios, credenciales y parametros operativos.
 - Fuente OUT oficial: Saved Search `customsearch_mcv_cronometro_out`.
@@ -83,7 +52,6 @@ Siguiente accion recomendada: crear primero una revision de gobernanza documenta
 - Modo real vigente de push: backend `NETSUITE_PUSH_MODE=restlet` + NetSuite `import_ot_via_restlet`.
 - Staging record vigente: `customrecord_3k_importacion_ot`.
 - Procesamiento posterior vigente: Map/Reduce `customscript_3k_procesar_imp_ot_mr`, deployment `customdeploy_3k_procesar_imp_ot_mr_prog`.
-- **Regla IN por STOP (cerrada 2026-07-31):** cada STOP publica solo el tramo desde el STOP anterior del mismo `operation_timer_id`; TEK suma cada aporte. No reenviar acumulado historico del timer.
 - Fuente de verdad operativa: NetSuite.
 - Flujo operativo final base: `Stop -> Push -> Gate Import OT -> Pull(+replace)`.
 - Cierre programado operational: debe usar un unico `sync_run` con `STOP_BATCH -> PUSH_IMPORT_OT -> PUSH_ZIM400 -> GATE_IMPORT_OT -> GATE_ZIM400_STATUS -> PULL`, evitando cualquier doble publicacion de actuals hacia `import_ot`.
@@ -184,6 +152,7 @@ No usar `4000` para backend en documentacion, proxy ni ejemplos.
   - `work_order_operations`
   - `operation_timers`
   - `timer_events`
+  - `timer_events_archive` (historial de Log Usuarios; retencion 30 dias; ver seccion Log Usuarios)
   - `operation_time_totals`
   - `sync_runs`
   - `sync_run_steps`
@@ -199,6 +168,7 @@ En la pestana Reporte, solo administradores:
 - Operaciones: listado WIP, estado de cronometro y sync pendiente.
 - Sincronizaciones: log persistente de STOP / PUSH / GATE / PULL.
 - Log NetSuite: comparacion por operacion entre base, enviado y NetSuite para tiempo de montaje, ejecucion y cantidad.
+- Log Usuarios: tramos play/pausa/stop; fuente unificada `timer_events` (vivo) + `timer_events_archive` (ultimos 30 dias).
 
 Endpoints admin relacionados:
 
@@ -520,23 +490,139 @@ Criterios de aceptacion:
 
 El sistema debe exponer una vista administrativa llamada `Log Usuarios` dentro de la pestaña `Reporte`. Esta vista debe permitir auditar las acciones ejecutadas por los usuarios sobre las OT's desde la tabla interna `timer_events`.
 
-La finalidad del reporte es trazabilidad operativa interna del Cronometro. No debe modificar ni enviar informacion a NetSuite.
+La finalidad del reporte es trazabilidad operativa interna del Cronometro (uso informal de consulta). No debe modificar ni enviar informacion a NetSuite. La auditoria formal de produccion sigue siendo NetSuite.
+
+#### Retencion 30 dias (decision 2026-08-12) — especificación para Programador
+
+##### Problema
+
+El flujo `Pull(+replace)` vigente (`replaceAllWipRows`) elimina **todas** las filas de `timer_events` antes de reimportar el WIP desde NetSuite. Como `Log Usuarios` se construye desde `timer_events`, el reporte queda vacio tras cada sincronizacion con replace.
+
+Tambien existe borrado parcial de eventos en `resetChronometersForPulledRows` (por `work_order_operation_id` afectados). Ese camino tambien debe archivar antes de destruir.
+
+##### Objetivo
+
+Conservar una ventana movil de **ultimos 30 dias** de eventos de usuario para la misma pestana `Log Usuarios`, sin Nextcloud, sin cargar NetSuite, sin pestana nueva y sin cambiar el contrato de sincronizacion hacia/desde NetSuite.
+
+##### Solucion acordada (opcion C)
+
+1. Antes de cualquier `TimerEvent.destroy` asociado a pull/replace o reset post-pull, **copiar** los eventos afectados a `timer_events_archive`.
+2. Continuar el wipe/destroy de `timer_events` como hoy (el sync no cambia de semantica operativa).
+3. El endpoint de `Log Usuarios` consulta **vivo + archivo** (union logica) y aplica los mismos filtros/orden/paginacion.
+4. En el mismo momento del sync (tras archivar, o al final del replace), **purge** de `timer_events_archive` con antigüedad **mayor a 30 dias**.
+
+##### Fuera de alcance
+
+- Nextcloud u otro repositorio externo.
+- Nueva pestana o segundo reporte.
+- Cambios a Saved Search OUT, RESTlet, `import_ot`, ZIM400 o payload de push.
+- Retencion formal / compliance (NetSuite sigue siendo la verdad formal).
+
+##### Tabla nueva: `timer_events_archive`
+
+Crear modelo Sequelize + tabla MariaDB (via el mecanismo de sync/alter vigente del proyecto).
+
+Columnas minimas obligatorias:
+
+| Columna | Tipo orientativo | Notas |
+|---|---|---|
+| `id` | PK autoincrement | Id propio del archivo (no reutilizar como unico global con vivo). |
+| `source_timer_event_id` | INT NULL | Id original en `timer_events` al momento del archivo; util para idempotencia. |
+| `operation_timer_id` | INT NULL | Copia del vivo; puede quedar huerfano tras el wipe. |
+| `work_order_operation_id` | INT NULL | Copia del vivo; puede quedar huerfano tras el wipe. |
+| `user_id` | INT NULL | Preferible conservar FK logica a `users` si el usuario sigue existiendo. |
+| `event_type` | STRING(32) | Mismos valores que `timer_events`. |
+| `event_at` | DATETIME | Fecha/hora del evento; base del filtro de fechas y del purge 30 dias. |
+| `details_json` | TEXT/LONGTEXT NULL | Copia fiel del vivo. |
+| `archived_at` | DATETIME | Momento en que se copio al archivo. |
+| `ot_number` | STRING NULL | **Denormalizado** al archivar. |
+| `operation_sequence` | INT NULL | **Denormalizado** al archivar. |
+| `operation_name` | STRING NULL | **Denormalizado** al archivar si esta disponible. |
+| `resource_code` | STRING NULL | **Denormalizado** al archivar. |
+| `user_name_snapshot` | STRING NULL | **Denormalizado** (nombre visible al archivar). |
+| `station_id` | STRING/INT NULL | Si esta disponible desde el timer al archivar. |
+
+Reglas de diseno:
+
+1. **Denormalizar** OT/operacion/recurso/usuario visibles al archivar. Tras el wipe, `work_order_operations` / `operation_timers` ya no existen con esos IDs; el reporte historico no debe depender de JOINs al WIP vivo.
+2. No poner FK restrictiva desde el archivo hacia `work_order_operations` u `operation_timers` (fallaria el wipe o dejaria basura). Si hay FK a `users`, debe ser nullable / ON DELETE SET NULL o equivalente seguro.
+3. Indices recomendados: `event_at`, `user_id`, `event_type`, `ot_number`, (`source_timer_event_id`, `archived_at`) o unico parcial segun motor para idempotencia.
+
+##### Momento de archivo (hooks obligatorios)
+
+Programador debe archivar **antes** de destruir eventos en estos caminos (nombres vigentes en codigo):
+
+1. `replaceAllWipRows` — hoy hace `TimerEvent.destroy({ where: {} })` (wipe total). Archivar **todas** las filas vivas de `timer_events` dentro de la misma transaccion, **antes** del destroy.
+2. `resetChronometersForPulledRows` — hoy destruye eventos por `work_order_operation_id IN (...)`. Archivar **solo esos** eventos antes del destroy.
+
+Si aparecen otros `TimerEvent.destroy` ligados a sync/pull, aplicar la misma regla.
+
+Orden dentro de la transaccion de replace:
+
+```text
+1. SELECT/copiar timer_events -> timer_events_archive (con snapshots denormalizados)
+2. PURGE timer_events_archive WHERE event_at < now - 30 days
+   (o al final de la transaccion; debe ocurrir en el mismo sync)
+3. TimerEvent.destroy (wipe vivo)  // comportamiento vigente
+4. destroy totals / timers / work_order_operations  // vigente
+5. bulkCreate WIP desde NetSuite  // vigente
+```
+
+Idempotencia:
+
+- Si un `source_timer_event_id` ya fue archivado en un intento previo fallido/reintento, no duplicar filas semanticamente iguales (usar unique o skip-if-exists). Criterio minimo: no insertar dos veces el mismo `source_timer_event_id` si sigue siendo el mismo evento vivo no regenerado. Si el wipe ya ocurrio y se regeneran IDs nuevos en un ciclo futuro, son eventos nuevos.
+
+##### Consulta unificada (misma pestana)
+
+No crear otro reporte. El endpoint vigente de Log Usuarios (p. ej. el que alimenta `fetchUserLogSessions` / `GET` user-log) debe:
+
+1. Leer eventos del rango desde `timer_events` (vivo).
+2. Leer eventos del mismo rango desde `timer_events_archive`.
+3. Unir ambos conjuntos **antes** de armar tramos/segmentos (misma logica actual de segmentos play/pausa/stop).
+4. Aplicar filtros, sort y paginacion sobre el conjunto unificado.
+5. Evitar duplicados: en regimen normal un evento esta en vivo **o** en archivo, no en ambos (porque el wipe sigue al archivo). Si por carrera/reintento apareciera duplicado, preferir una sola fila (p. ej. por `source_timer_event_id` o por clave `operation_timer_id + event_type + event_at`).
+
+Para filas del archivo, OT/usuario/recurso salen de las columnas denormalizadas. Para filas vivas, se mantiene el JOIN vigente a operaciones/usuarios/timers.
+
+##### Retencion / purge
+
+- Ventana: **30 dias** contados desde `event_at` (no desde `archived_at`), zona horaria operativa del proyecto (`America/Santiago` para interpretacion de “dia” en UI; el purge puede usar cutoff UTC equivalente a “ahora - 30 dias”).
+- Ejecutar purge en **cada sync** que archiva (replace total o reset post-pull), para no depender de un cron aparte.
+- No purgar `timer_events` vivo por antigüedad en esta entrega: el vivo sigue gobernado por el wipe del sync.
+
+##### Frontend
+
+- Misma pestana `Log Usuarios`; sin cambios de UX obligatorios.
+- Opcional (no bloqueante): texto breve tipo “Historial de los ultimos 30 dias (vivo + archivo)”.
+- El boton de exportar Excel existente debe exportar el mismo universo unificado que la grilla (mismo rango de filtros).
+
+##### Criterios de aceptacion adicionales (retencion)
+
+1. Tras un `pull+replace`, `Log Usuarios` sigue mostrando eventos de dias anteriores (dentro de 30 dias) que existian antes del wipe.
+2. Eventos nuevos posteriores al sync aparecen desde `timer_events` vivo.
+3. Filtrar un rango que cruce “antes y despues del sync” muestra ambos sin pedir otra pestana.
+4. Filas con `event_at` anterior a 30 dias no aparecen tras el purge del sync.
+5. NetSuite, push, gate y replace de WIP no cambian de contrato.
+6. No se introduce dependencia Nextcloud ni almacenamiento externo.
 
 #### Fuente de datos
 
-Fuente principal:
+Fuentes (consulta unificada):
 
 ```text
-timer_events
+timer_events            (vivo, post-ultimo sync o actividad actual)
+timer_events_archive    (historial copiado antes del wipe; retencion 30 dias)
 ```
 
-Relaciones esperadas:
+Relaciones esperadas (vivo):
 
 ```text
 timer_events.operation_timer_id -> operation_timers.id
 timer_events.work_order_operation_id -> work_order_operations.id
 timer_events.user_id -> users.id
 ```
+
+El archivo **no** depende de esas FK al WIP tras el replace; usa snapshots denormalizados.
 
 #### Mapeo visual de acciones
 
@@ -678,10 +764,11 @@ No debe exponer passwords, tokens, payloads sensibles ni informacion tecnica inn
 6. Puede ordenar por fecha, usuario, accion, OT y operacion.
 7. La tabla muestra los eventos mas recientes primero por defecto.
 8. La vista pagina los resultados.
-9. El reporte usa `timer_events` como fuente.
+9. El reporte usa consulta unificada `timer_events` + `timer_events_archive` (retencion 30 dias).
 10. No cambia NetSuite ni la sincronizacion hacia NetSuite.
-11. No cambia el comportamiento operativo del cronometro.
+11. No cambia el comportamiento operativo del cronometro (el wipe de vivo en replace se mantiene; solo se agrega archivo previo).
 12. El reporte es solo lectura.
+13. Tras pull+replace, el historial de hasta 30 dias permanece visible en la misma pestana.
 
 #### Transicion asistida de MONTAJE a EJECUCION
 
@@ -1065,86 +1152,12 @@ Cronometro publica tres datos reales por operacion:
 2. `actual_run_time`
 3. `completed_quantity`
 
-Reglas vigentes (flujo V4/V5 por STOP + RESTlet/`import_ot`):
+Reglas:
 
-- Cada STOP publica un **delta de tramo**, no el acumulado historico del timer ni el valor absoluto vigente de la tarea.
-- El tramo de un STOP es: desde el STOP anterior del mismo `operation_timer_id` (exclusivo) hasta el STOP actual (inclusivo). Si es el primer STOP del timer, desde el primer START hasta ese STOP.
-- NetSuite TEK/`Importacion OT` **suma** cada aporte; reenviar acumulados duplica setup y/o run.
-- La cantidad enviada en un STOP es la del evento (`details_json.completed_quantity`), no un recalculo del historial.
-- ZIM400 usa el mismo `actual_run_time` del item de push (minutos del tramo).
-- Tras el push, Cronometro debe hacer pull para recalzar estado local (`last_pushed_*` / actuals).
-
-Nota historica (batch previo a V4): existia documentacion de "valor vigente, no delta" y envio por batch agrupado por OT. Eso **no** aplica al worker V4 por `stop_event_id`.
-
-### Incidente y correccion V6.0.0: reenvio acumulado por STOP
-
-**Estado:** corregido y validado en Sandbox (2026-07-31). Producto visible `V6.0.0`.
-
-#### Sintoma
-
-Al cerrar ejecucion despues de una transicion montaje → ejecucion (o tras varios STOP del mismo cronometro), Cronometro reenviaba a `import_ot` el acumulado historico del timer. NetSuite TEK suma cada `Importacion OT`, por lo que setup y/o run quedaban sobreestimados.
-
-Caso productivo de referencia: **OT18905** / tarea NetSuite **118493** (DENTADO). Ejemplo:
-
-| Evento | Setup enviado | Run enviado |
-|---|---:|---:|
-| Transicion setup → run | 29 | 0 |
-| STOP final de run | **29** (repetido) | 15 |
-
-TEK aplico setup 29+29. El mismo patron se vio en run con forma escalera (p. ej. 142 → 312 → 420) cuando habia varios STOP del mismo timer.
-
-#### Causa
-
-En `backend/src/services/netsuite/buildActualsPayload.js`, la funcion `buildActualsPayloadForStopEvent()` tomaba **todos** los `timer_events` del mismo `operation_timer_id` con `event_at <= STOP actual` y llamaba `computeTotalsFromEvents()` sobre ese historial completo. Las variables `pendingSetupDelta` / `pendingRunDelta` no eran un delta real de tramo.
-
-`transitionSetupStop()` reutiliza el mismo `OperationTimer` al pasar de SETUP a RUN: eso es correcto. El defecto era solo el builder del payload.
-
-Nota: un “bajon” de minutos entre jornadas (p. ej. 60 → 19) no indica reset de NetSuite; suele ser otro `operation_timer_id` (otro ciclo/usuario/estacion). El bug duplicaba **dentro** del mismo timer.
-
-#### Correccion
-
-1. `selectEventsForStopSegment()` en `backend/src/lib/timerEventTotals.js`: selecciona eventos del mismo timer entre el STOP anterior (exclusivo) y el STOP actual (inclusivo); si no hay STOP anterior, desde el inicio del timer.
-2. `buildActualsPayloadForStopEvent()` usa esa ventana antes de `computeTotalsFromEvents()`.
-3. ZIM400 hereda el `actual_run_time` del mismo `pushItem` (minutos del tramo).
-4. Prueba local: `backend/scripts/test-stop-segment-delta.js`.
-
-#### Resultado esperado por STOP
-
-| Escenario | STOP 1 | STOP 2 | STOP 3 |
-|---|---|---|---|
-| Setup luego run (29 + 15) | setup 29 / run 0 | setup **0** / run 15 | — |
-| Varios STOP solo run (100, 50, 20) | run 100 | run 50 | run 20 |
-| Setup + run + setup + run | 30/0 · 0/100 · 20/0 · 0/50 | | |
-
-#### Validacion Sandbox (OT16955 seq 5 — CONTROL DIMENSIONAL, tarea 107295)
-
-Antes del fix (`[V5@…]` previo):
-
-| Import OT | JSON | Efecto TEK |
-|---|---|---|
-| 124002 | setup 3 / run 0 | |
-| 124102 | setup **3** / run 2 | tarea: setup **6**, run **2** |
-
-Despues del fix (build `4c99098` / `[V5@f4f5e7e]`):
-
-| Import OT | JSON | ROT | Efecto TEK |
-|---|---|---|---|
-| 124202 | setup **2** / run 0 | ROT79875 | |
-| 124302 | setup **0** / run **2** | ROT79876 | tarea: setup **8** (+2), run **4** (+2) |
-
-Conclusión: TEK suma solo el tramo nuevo; el setup ya no se reenvia en el segundo STOP.
-
-#### Commits de referencia
-
-| Asunto EasyPanel | Contenido |
-|---|---|
-| `[V5@f4f5e7e] fix: delta por STOP evita reenvio acumulado de setup/run a import_ot` | Correccion del builder |
-| `[V5@c4508e2] feat: V6.0.0 titulos azul At-Once tras fix delta STOP` | Version visible V6.0.0 + azul `#08a8e0` en titulos |
-
-#### Fuera de alcance de esta correccion
-
-- No recalcular ni corregir automaticamente los actuals ya aplicados en NetSuite PROD (p. ej. tarea 118493). Eso requiere decision operativa aparte.
-- No cambia RESTlet, Saved Search OUT ni esquema MariaDB.
+- Se publica el valor vigente, no un delta.
+- El envio se hace por batch.
+- El retorno se agrupa por OT.
+- Despues del push, Cronometro debe hacer pull para recalzar estado local.
 
 ### Modo vigente: RESTlet + Importacion OT
 
@@ -1252,39 +1265,6 @@ La entrega a ZIM400 debe tratarse como un modulo independiente, con armado de pa
 
 La granularidad del modulo sera **un registro por STOP**. Cada STOP cerrado en Cronometro debe producir, cuando corresponda, un registro en `CUSTOMRECORD_ZIM_DATA_RELOJ_CONTROL`, poblando el maximo de campos disponibles con la informacion ya existente en Cronometro y en la data OUT de NetSuite.
 
-#### Separacion aditiva de minutos de montaje y ejecucion (decision 2026-08-04)
-
-Objetivo: conservar en ZIM400 la distincion que ya existe en Cronometro entre `actual_setup_time` y `actual_run_time`, sin intervenir ningun comportamiento operativo vigente.
-
-Alcance aprobado:
-
-| Nuevo dato | Campo en `ZIM - Data Reloj Control` (ID real NetSuite SB) | Tipo | Fuente en el payload `PUSH_ZIM400` |
-|---|---|---|---|
-| MCV Montaje min | `custrecord_mcv_setup_time` | Numero entero | `actual_setup_time` |
-| MCV Ejecucion min | `custrecord_mcv_run_time` | Numero entero | `actual_run_time` |
-
-Reglas obligatorias de compatibilidad:
-
-1. El cambio es estrictamente aditivo: se crean dos campos NetSuite y se agregan dos propiedades al payload ZIM400.
-2. No se elimina, renombra, reemplaza, recalcula ni cambia el significado de `custrecord_zim_reloj_minutos_cargados`; debe seguir enviandose exactamente con la logica vigente.
-3. No se modifica `custrecord_zim_reloj_horas` ni ningun otro campo, mapping, filtro, formula, endpoint, contrato, cola, reintento, idempotencia o flujo actual.
-4. No se modifica el payload ni el procesamiento de `import_ot`. La mejora pertenece exclusivamente al publisher `PUSH_ZIM400`.
-5. El payload ZIM400 agregara siempre ambos campos nuevos con los valores del mismo item de STOP: `actual_setup_time` para montaje y `actual_run_time` para ejecucion, incluso cuando uno de ellos sea cero. La solucion no depende de asumir que ambos nunca podran ser mayores que cero.
-6. La Saved Search ZIM400 incorporara las dos columnas nuevas sin retirar ni alterar la columna actual `ZIM - Reloj Minutos Cargados`.
-7. Los registros historicos permanecen intactos y tendran los campos nuevos vacios; no se contempla reconstruccion ni backfill en esta mejora.
-8. El despliegue debe respetar dependencia: primero crear y validar los campos en NetSuite; despues habilitar las dos propiedades nuevas del payload y, finalmente, agregar las columnas al reporte.
-9. La reversibilidad consiste en dejar de enviar y/o mostrar los campos nuevos; no debe requerir revertir ninguna parte del funcionamiento anterior.
-
-Criterios de aceptacion:
-
-- Un STOP de montaje conserva el comportamiento vigente y, adicionalmente, graba su valor en `custrecord_mcv_setup_time`.
-- Un STOP de ejecucion conserva el comportamiento vigente y, adicionalmente, graba su valor en `custrecord_mcv_run_time`.
-- `custrecord_zim_reloj_minutos_cargados` sigue recibiendo el mismo valor que antes del cambio.
-- Los dos tiempos pueden consultarse por separado en ZIM400 sin perder la columna historica.
-- Un fallo del publisher ZIM400 sigue sin bloquear ni alterar el push exitoso a `import_ot`.
-
-Gobernanza de esta mejora: se especifica directamente en este `README.md`, fuente oficial vigente. Conforme a la decision arquitectonica del 2026-07-31, Spec Kit no se instala ni se declara herramienta oficial de Cronometro para este cambio.
-
 #### Destino NetSuite ZIM400
 
 | Elemento | Valor |
@@ -1330,8 +1310,6 @@ custrecord_zim_reloj_ot_fecha_ini
 custrecord_zim_reloj_ot_fecha_fin
 custrecord_zim_reloj_ot_estado
 custrecord_zim_reloj_cantidad_rechazada
-custrecord_mcv_setup_time
-custrecord_mcv_run_time
 ```
 
 Nota critica: el campo de zona tiene ID tecnico `custrecord_zim_reoj_zona`, sin la letra `l` en `reloj`. No corregirlo a `custrecord_zim_reloj_zona` en codigo; usar el ID real observado.
@@ -1348,8 +1326,6 @@ Nota critica: el campo de zona tiene ID tecnico `custrecord_zim_reoj_zona`, sin 
 | Numero Secuencia | `custrecord_zim_reloj_num_secuencia` | Si | `operation_sequence` |
 | Operacion | `custrecord_zim_reloj_operacion` | Si | `operation_name` |
 | Minutos Cargados | `custrecord_zim_reloj_minutos_cargados` | Si | duracion del STOP en minutos |
-| MCV Montaje min | `custrecord_mcv_setup_time` | Si | `actual_setup_time` del mismo item STOP (entero >= 0; se envia aunque sea 0) |
-| MCV Ejecucion min | `custrecord_mcv_run_time` | Si | `actual_run_time` del mismo item STOP (entero >= 0; se envia aunque sea 0) |
 | Inicio | `custrecord_zim_reloj_inicio` | Si | inicio del timer/evento STOP |
 | Fin | `custrecord_zim_reloj_fin` | Si | fin del timer/evento STOP |
 | Cantidad Producir | `custrecord_zim_reloj_cantidad` | Si | `planned_quantity` |
@@ -1695,6 +1671,8 @@ Propuesta/evaluable, no vigente en productivo salvo decision explicita. Si se ac
 3. Gate Importacion OT: esperar estabilidad hasta 600 segundos, revisando cada 30 segundos.
 4. Pull + replace en tabla local WIP.
 5. Si el gate expira, ejecutar pull igualmente con warning critico.
+
+Antes del wipe de `timer_events` en el replace (y antes del destroy parcial en reset post-pull), el backend debe archivar eventos a `timer_events_archive` y purgar del archivo lo anterior a 30 dias. Ver `Reporte Log Usuarios V5.3` / retencion. Esto no altera el orden Push -> Gate -> Pull ni el contrato NetSuite.
 
 El flujo manual y el cierre de turno programado deben usar la misma semantica de sincronizacion y dejar registro en `sync_runs` / `sync_run_steps`.
 
@@ -2258,9 +2236,9 @@ Vigente. No mantener forks funcionales por entorno.
 
 Prohibida en SB y PROD operativo. `usuarios.txt`, `load_users()` o cualquier mecanismo equivalente no debe crear usuarios al arrancar la API. Los usuarios deben ser exclusivamente los administrados desde Cronometro.
 
-### Delta por STOP hacia import_ot / TEK (V6.0.0)
+### Retencion Log Usuarios 30 dias (archivo pre-wipe)
 
-Decision cerrada 2026-07-31. Cada STOP del worker V4/V5 debe publicar unicamente el tramo de tiempo generado desde el STOP anterior del mismo `operation_timer_id` (setup y run). TEK/`Importacion OT` suma cada aporte; reenviar el acumulado historico del timer duplica tiempos. Validado en SB con OT16955 seq 5 (payloads 2/0 luego 0/2; TEK +2/+2). Correccion en `selectEventsForStopSegment` + `buildActualsPayloadForStopEvent`. La correccion de actuals ya aplicados en PROD (p. ej. OT18905 / tarea 118493) queda fuera de alcance y requiere decision operativa aparte.
+Decision cerrada 2026-08-12. Ante el wipe de `timer_events` en pull+replace, archivar a `timer_events_archive` (con snapshots denormalizados), consultar vivo+archivo en la misma pestana `Log Usuarios`, y purgar archivo >30 dias en cada sync. Sin Nextcloud, sin pestana nueva, sin impacto NetSuite. Detalle normativo en seccion `Reporte Log Usuarios V5.3`.
 
 ## Documentos sueltos consolidados en este README
 

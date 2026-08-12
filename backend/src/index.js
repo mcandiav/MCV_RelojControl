@@ -11,6 +11,7 @@ const { runSchemaMigrations } = require('./libs/runSchemaMigrations');
 require('./models/work_order_operation');
 require('./models/operation_timer');
 require('./models/timer_event');
+require('./models/timer_event_archive');
 require('./models/operation_time_total');
 require('./models/shift_close_slot');
 require('./models/sync_run');
