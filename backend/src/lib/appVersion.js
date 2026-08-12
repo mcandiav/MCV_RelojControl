@@ -23,7 +23,7 @@ function readVersionFile() {
 
 /** Product version (not Git hash). Prefer env, then VERSION file, then fallback. */
 const APP_RELEASE = String(
-  process.env.APP_RELEASE || readVersionFile() || 'V6.0.1'
+  process.env.APP_RELEASE || readVersionFile() || 'V6.1.0'
 ).trim();
 
 const APP_GIT = String(
