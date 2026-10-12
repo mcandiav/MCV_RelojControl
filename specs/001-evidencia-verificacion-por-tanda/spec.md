@@ -3,7 +3,7 @@
 **Proyecto implementador:** Cronómetro (Bignotti)  
 **Proyecto de decisión:** Evidencia-trabajo  
 **Fecha:** 2026-10-10  
-**Estado:** CÓDIGO IMPLEMENTADO EN EL REPO; CAMPO NETSUITE PENDIENTE DE CREACIÓN POR EL CONFIGURADOR; NO DESPLEGADO  
+**Estado:** CERRADA. Desplegada en SB como V6.2.0 (`8a9e6a4`) y validada el 2026-10-11. Pendiente solo el pase a PROD.  
 **Prioridad:** modificación mínima del flujo existente
 
 ## Contrato NetSuite cerrado — Configurador
@@ -106,4 +106,18 @@ No control de calidad ni inspección por unidad, no justificaciones, ni alertas,
 - No hay pantalla para reabrir una tanda. La respuesta solo se captura en ese popup.
 - Persistencia local: `product_verified` en `timer_events.details_json` del evento STOP.
 - ZIM400 sigue siendo un registro por STOP. La verificación se adjunta a ese mismo registro cuando hubo cantidad mayor que 0. Las demás filas omiten el campo. No se fuerza otra asociación.
-- Nombres NetSuite: ver el contrato cerrado al inicio. Falta que el Configurador cree el campo y la lista en el ambiente.
+- Nombres NetSuite: ver el contrato cerrado al inicio. Campo y lista creados en SB por el Configurador.
+
+## 10. Cierre y evidencia (SB, 2026-10-11)
+Versión desplegada: `UI V6.2.0 · API V6.2.0`. El campo `custrecord_mcv_verif_producto` existe en `customrecord_zim_data_reloj_control` y la columna «Verificación de producto» aparece en `customsearch400`.
+
+| ID ZIM400 | OT | Cantidad terminada | Verificación de producto | Prueba |
+|---|---|---|---|---|
+| 1494449 | OT16662 | 1 | Sí | T01 |
+| 1494450 | OT16561 | 2 | No | T02, T06 |
+| 1494349 | OT16275 | 0 | vacío | sin cantidad no se pregunta |
+| anteriores a 1494349 | varias | 0 o 1 | vacío, nunca No | T05 |
+
+`PUSH_ZIM400` y `PUSH_IMPORT_OT` terminan sin error. El reporte ZIM400 muestra la columna con «Sí» y «No» (T10).
+
+Una primera entrega de esta función se retiró porque arrastraba un commit ajeno: borraba `resolveStopSegmentTiming`, con lo que ZIM400 fallaba, y revertía el delta por STOP de `import_ot`. `V5` se volvió a V6.1.0 y la función se reprogramó encima.
