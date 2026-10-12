@@ -16,6 +16,7 @@ const { fetchUserLogSessions } = require('../lib/userLogSessions');
 const { archiveTimerEvents } = require('../lib/timerEventArchive');
 const { isNetsuiteSyncWindowActive } = require('../services/netsuiteSyncLock');
 const { enqueueFromStop } = require('../services/netsuiteSyncQueue');
+const { resolveStopProductVerification } = require('../services/netsuite/zim400ProductVerification');
 const TIMER_LOCKED_SAME_STATION_CODE = 'TIMER_LOCKED_BY_SAME_STATION_OTHER_USER';
 const TIMER_TERMINAL_LOCK_CODE = 'TIMER_LOCKED_BY_OTHER_TERMINAL';
 const PREVIOUS_OPERATIONS_PENDING_CODE = 'PREVIOUS_OPERATIONS_PENDING';
@@ -1119,6 +1120,14 @@ exports.stopTimer = async function stopTimer(req, res) {
     completedQtyToStore = n;
   }
 
+  const productVerification = resolveStopProductVerification(
+    completedQtyToStore,
+    req.body ? req.body.product_verified : undefined
+  );
+  if (productVerification.error) {
+    return res.status(400).json({ message: productVerification.error });
+  }
+
   if (timer.status === 'ACTIVE') {
     timer.total_elapsed_seconds = accumulateElapsedSeconds(timer);
   }
@@ -1145,6 +1154,9 @@ exports.stopTimer = async function stopTimer(req, res) {
   const stopDetails = {};
   if (completedQtyToStore !== null) stopDetails.completed_quantity = completedQtyToStore;
   if (operationCompletedTotal !== null) stopDetails.operation_completed_total = operationCompletedTotal;
+  if (productVerification.store === true || productVerification.store === false) {
+    stopDetails.product_verified = productVerification.store;
+  }
 
   const stopEvent = await appendEvent({
     timerId: timer.id,

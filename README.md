@@ -8,6 +8,7 @@ Toda informacion relevante de documentos sueltos del directorio `cronometro/` qu
 
 | Fecha | Cambio realizado | Motivo | Impacto | Seccion afectada |
 |---|---|---|---|---|
+| 2026-10-11 | V6.2.0: verificacion de producto por tanda (SPEC 001), reprogramada sobre V6.1.0. El despliegue anterior con esta funcion se retiro porque arrastraba un commit que borraba `resolveStopSegmentTiming` (ZIM400 fallaba) y revertia el delta por STOP de `import_ot`. Rol: Programador. | Con cantidad mayor que 0 el operario declara si el producto terminado corresponde al de su operacion; la respuesta viaja en el mismo registro ZIM400. | Front: radios Si/No en el popup existente. Backend: `product_verified` en `timer_events.details_json` del STOP y campo `custrecord_mcv_verif_producto` en el payload ZIM400. Montaje, stop masivo y cierre de turno no envian el campo. Sin tabla nueva y sin cambio de tiempos ni de cantidades. | Poblar Reporte ZIM400, Tablero operativo V3 |
 | 2026-08-12 | Se define retencion de `Log Usuarios` por 30 dias mediante archivo previo al wipe del pull+replace: tabla `timer_events_archive`, consulta unificada vivo+archivo en la misma pestana, purge de filas >30 dias en cada sync. Rol: Arquitecto. | El pull+replace borra toda `timer_events` y el reporte queda vacio; se necesita historial informal reciente sin Nextcloud ni NetSuite. | Backend: archivar antes de destroy, modelo nuevo, endpoint Log Usuarios lee vivo+archivo. Front: misma pestana. Sin cambio de contrato NetSuite ni payload. | Reporte Log Usuarios V5.3, Base de datos, Flujo oficial de sincronizacion, Decisiones cerradas |
 | 2026-07-14 | Se cierra la definicion de la advertencia por operaciones anteriores pendientes: regla de finalizacion, alcance completo de la OT, contrato HTTP `409 PREVIOUS_OPERATIONS_PENDING`, override auditado y prioridad de entrega. | Reducir errores de seleccion de operacion y eliminar ambiguedades para la implementacion. | Validacion obligatoria en backend sobre todas las secuencias anteriores de la OT, confirmacion en frontend y trazabilidad en `timer_events.details_json`. Sin tabla nueva ni cambios en NetSuite, Saved Search OUT, RESTlet, import_ot, ZIM400 o payload de sincronizacion. | Requisitos funcionales de UI y operacion, Auditoria operativa, timer_events |
 | 2026-06-26 | Se define nuevo reporte administrativo `Log Usuarios` V5.3 con filtros visibles, ordenamiento por columnas y paginacion para auditar acciones Play, Pause y Stop sobre OT's. | Dar trazabilidad operativa por usuario, OT, operacion, fecha/hora y accion ejecutada en el cronometro. | Cambio en frontend y backend de Cronometro; usa `timer_events` como fuente interna. Sin impacto en NetSuite, Saved Search OUT, RESTlet, import_ot, ZIM400 ni payload de sincronizacion. | Reportes administrativos, Auditoria operativa, timer_events |
@@ -270,6 +271,7 @@ Criterio de aceptacion:
 - Leyenda de colores en una sola linea y centrada.
 - Al detener MONTAJE no se muestra popup de cantidad terminada.
 - Popup de cantidad terminada solo al detener EJECUCION.
+- En ese mismo popup, si la cantidad ingresada es un entero mayor que 0, debajo del campo se pregunta «¿Verificó que el producto terminado corresponde al producto requerido para esta operación?» con radios `Sí` y `No`, ambos sin seleccion al abrir. Sin respuesta no se confirma y el cronometro sigue. Cantidad vacia o 0 detiene como antes, sin guardar respuesta. Montaje, stop masivo y cierre de turno no hacen la pregunta.
 
 #### Tiempo planificado visible para el operador
 
@@ -1560,6 +1562,37 @@ Matriz integral esperada para el payload ZIM400:
 | `custrecord_zim_reloj_tiempo_planificado` | Number | planificado OUT/NetSuite | Numerico |
 | `custrecord_zim_reloj_cantidad` | Number | cantidad a producir | Numerico |
 | `custrecord_zim_reloj_cantidad_terminada` | Number | cantidad terminada | Numerico |
+| `custrecord_mcv_verif_producto` | Lista | `timer_events.details_json.product_verified` del STOP | Solo si la cantidad de esa tanda es mayor que 0. `Sí` o `No` segun la respuesta. Sin declaracion se omite el campo. Un `No` no se omite. |
+
+#### Contrato NetSuite: Verificacion de producto (SPEC 001)
+
+El Configurador crea el campo con estos nombres exactos. El codigo ya los envia.
+
+```text
+Record type: customrecord_zim_data_reloj_control
+Campo script id: custrecord_mcv_verif_producto
+Etiqueta: Verificación de producto
+Tipo: Lista/Registro
+Lista script id: customlist_mcv_verif_producto
+Nombre de la lista: Verificación de producto
+Valor de lista, nombre exacto: Sí
+Valor de lista, nombre exacto: No
+Obligatorio: No
+Valor por defecto: ninguno
+Columna en saved search: customsearch400
+Etiqueta de columna: Verificación de producto
+Registros vacios: vacio o Sin registro. Nunca No.
+```
+
+Representacion REST que envia Cronometro. `refName` es el nombre exacto del valor de la lista:
+
+```text
+Sí:  "custrecord_mcv_verif_producto": { "refName": "Sí" }
+No:  "custrecord_mcv_verif_producto": { "refName": "No" }
+Sin declaracion: la clave no se envia
+```
+
+Clave local, no es campo NetSuite: `product_verified` dentro de `timer_events.details_json` del evento STOP. `true` = Sí, `false` = No, clave ausente = sin declaracion. El reintento ZIM400 rearma el payload desde ese evento, sin volver a preguntar al operario.
 
 Despues de cada creacion exitosa, el diagnostico debe consultar o permitir consultar por `netsuite_record_id` para confirmar los valores reales persistidos. El criterio de exito funcional no es solo recibir `204`; tambien debe poder localizarse el registro en SuiteQL y en la Saved Search `customsearch400` bajo filtros equivalentes.
 

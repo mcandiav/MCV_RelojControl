@@ -27,6 +27,10 @@ const NetsuiteSyncQueue = require('../models/netsuite_sync_queue');
 const NetsuiteSyncZim400 = require('../models/netsuite_sync_zim400');
 const { requeueStuckProcessing } = require('../services/netsuiteSyncQueue');
 const { createZim400Record } = require('../services/netsuite/zim400Client');
+const {
+  ZIM400_PRODUCT_VERIFICATION_FIELD,
+  applyZim400ProductVerification
+} = require('../services/netsuite/zim400ProductVerification');
 const config = require('../config/config');
 const { archiveTimerEvents } = require('../lib/timerEventArchive');
 let netsuitePushInFlight = false;
@@ -456,9 +460,10 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
       ? await User.findByPk(Number(ev.user_id), { attributes: ['id', 'username', 'netsuiteEmployeeId'] })
       : null;
   let qtyStop = null;
+  let eventDetails = null;
   try {
-    const d = ev.details_json ? JSON.parse(String(ev.details_json)) : null;
-    qtyStop = d && d.completed_quantity != null ? Number(d.completed_quantity) : null;
+    eventDetails = ev.details_json ? JSON.parse(String(ev.details_json)) : null;
+    qtyStop = eventDetails && eventDetails.completed_quantity != null ? Number(eventDetails.completed_quantity) : null;
   } catch (_) {}
   const taskCtx = await fetchManufacturingTaskContextByTaskId(op.netsuite_operation_id);
   const workOrderIdRaw = taskCtx && taskCtx.workOrder ? taskCtx.workOrder : (op.netsuite_work_order_id || null);
@@ -538,7 +543,7 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
     ? Math.max(0, Math.floor(pushQtyRaw))
     : (Number.isFinite(qtyStop) ? Math.max(0, Math.floor(qtyStop)) : 0);
   const sourceOfTruth = 'stop_segment';
-  const payload = compactPayload({
+  const payload = compactPayload(applyZim400ProductVerification({
     custrecord_zim_reloj_ot: workOrderId,
     custrecord_zim_reloj_ot_id: workOrderId,
     custrecord_zim_reloj_ot_text: op.ot_number ? `Orden de Trabajo #${op.ot_number}` : null,
@@ -561,7 +566,7 @@ async function buildZim400PayloadFromQueueItem(queueItem, pushItem) {
     ),
     custrecord_zim_reloj_cantidad: Number(op.planned_quantity || 0),
     custrecord_zim_reloj_cantidad_terminada: qtyTerminated
-  });
+  }, eventDetails));
   return {
     payload,
     stopEventId,
@@ -621,7 +626,8 @@ async function runZim400Publisher(queueItem, pushItem) {
     segment_setup_minutes: segmentTiming ? asNonNegativeInt(segmentTiming.setupMinutes) : null,
     segment_event_count: segmentTiming ? asNonNegativeInt(segmentTiming.segmentEventCount) : null,
     push_item_run_minutes: pushItemRunMinutes,
-    employee_mapping: employeeDiagnostic || null
+    employee_mapping: employeeDiagnostic || null,
+    product_verification: payload[ZIM400_PRODUCT_VERIFICATION_FIELD] || null
   };
   try {
     const out = await createZim400Record(payload);

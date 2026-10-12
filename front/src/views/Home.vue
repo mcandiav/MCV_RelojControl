@@ -1058,6 +1058,29 @@
             :disabled="stopQtyLoading"
             @keyup.enter="confirmStopWithQuantity"
           />
+          <div v-if="stopQtyNeedsVerification" class="mt-4">
+            <p class="body-2 mb-1">¿Verificó que el producto terminado corresponde al producto requerido para esta operación?</p>
+            <v-radio-group
+              v-model="stopQtyProductVerified"
+              row
+              hide-details
+              class="mt-0 pt-0"
+              :disabled="stopQtyLoading"
+              @change="stopQtyVerificationError = false"
+            >
+              <v-radio label="Sí" :value="true" />
+              <v-radio label="No" :value="false" />
+            </v-radio-group>
+            <v-alert
+              v-if="stopQtyVerificationError"
+              type="error"
+              dense
+              outlined
+              class="mt-2 mb-0"
+            >
+              Seleccione Sí o No para registrar la verificación del producto.
+            </v-alert>
+          </div>
           <v-alert
             v-if="stopQtyWarningText"
             type="warning"
@@ -1308,6 +1331,8 @@ export default {
       stopQtyPlanned: null,
       stopQtyChronoCompleted: 0,
       stopQtyNetsuiteCompleted: 0,
+      stopQtyProductVerified: null,
+      stopQtyVerificationError: false,
       stopQtyLoading: false,
       setupTransitionDialog: false,
       setupTransitionOpId: null,
@@ -1784,6 +1809,14 @@ export default {
         return `Hay (${chrono}+${ns}) terminadas.`
       }
       return `Hay (${chrono}+${ns})/${Math.floor(planned)} terminadas.`
+    },
+    parsedStopQty() {
+      const raw = String(this.stopQtyValue || '').trim()
+      if (!/^\d+$/.test(raw)) return null
+      return parseInt(raw, 10)
+    },
+    stopQtyNeedsVerification() {
+      return this.parsedStopQty != null && this.parsedStopQty > 0
     },
     stopQtyWarningText() {
       const raw = String(this.stopQtyValue || '').trim()
@@ -3177,6 +3210,8 @@ export default {
       this.stopQtyNetsuiteCompleted = qty.netsuite
       // Delta por cierre: iniciar vacío para no reenviar el acumulado por error.
       this.stopQtyValue = ''
+      this.stopQtyProductVerified = null
+      this.stopQtyVerificationError = false
       this.stopQtyDialog = true
     },
     closeStopQuantityDialog(force = false) {
@@ -3185,6 +3220,8 @@ export default {
       this.stopQtyOpId = null
       this.stopQtyTimerId = null
       this.stopQtyValue = ''
+      this.stopQtyProductVerified = null
+      this.stopQtyVerificationError = false
       this.stopQtyPlanned = null
       this.stopQtyChronoCompleted = 0
       this.stopQtyNetsuiteCompleted = 0
@@ -3275,6 +3312,14 @@ export default {
         }
         body.completed_quantity = parseInt(trimmed, 10)
       }
+      if (body.completed_quantity > 0) {
+        if (this.stopQtyProductVerified !== true && this.stopQtyProductVerified !== false) {
+          this.stopQtyVerificationError = true
+          return
+        }
+        body.product_verified = this.stopQtyProductVerified
+      }
+      this.stopQtyVerificationError = false
       this.stopQtyLoading = true
       try {
         await axios.post('/chronometer/timers/stop', body)
@@ -3282,6 +3327,11 @@ export default {
         await this.refreshOperationsForCurrentRole()
         this.closeStopQuantityDialog(true)
       } catch (error) {
+        const apiMsg = error.response && error.response.data && error.response.data.message
+        if (apiMsg === 'Seleccione Sí o No para registrar la verificación del producto.') {
+          this.stopQtyVerificationError = true
+          return
+        }
         const msg = this.timerTerminalLockMessage(error, 'No fue posible detener el cronómetro.')
         alert(msg)
       } finally {
